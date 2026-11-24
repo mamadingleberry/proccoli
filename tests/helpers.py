@@ -16,6 +16,86 @@ FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 LAPTOP = os.path.join(FIXTURES, "alderlake-laptop")
 
 
+def _prepare_headless_display() -> None:
+    """Make widget tests see what the app sees: a font DPI (Broadway has
+    none, so libadwaita 1.5's ``sp`` breakpoints would never match: see
+    ``ui.compat.ensure_font_dpi``) and the app's own CSS, which
+    ``Application`` installs (M57: the legend's compact slots)."""
+    if os.environ.get("PROCCOLI_UI_TESTS") != "1":
+        return
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk
+    if Gtk.init_check():
+        from proccoli.ui.compat import ensure_font_dpi
+        from proccoli.ui.style import install_css
+        ensure_font_dpi(Gtk.Settings.get_default())
+        install_css()
+
+
+_prepare_headless_display()
+
+
+def pump(until=lambda: False, timeout: float = 2.0) -> bool:
+    """Run the main loop until ``until()`` is true or ``timeout`` seconds
+    pass; returns ``until()``."""
+    import time
+    from gi.repository import GLib
+    ctx = GLib.MainContext.default()
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        while ctx.pending():
+            ctx.iteration(False)
+        if until():
+            return True
+        time.sleep(0.01)
+    return until()
+
+
+def resize_or_skip(test: unittest.TestCase, win, width: int, height: int) -> None:
+    """``resize_window``, failing the test if the size never arrives, or
+    skipping it if the size is larger than the headless screen.
+
+    GTK 4.14's Broadway (Ubuntu 24.04) keeps windows within its 1024×768
+    screen, while newer Broadway doesn't. The layout arithmetic behind such
+    tests is also unit-tested without a display (``test_layout``)."""
+    if resize_window(win, width, height):
+        return
+    from gi.repository import Gdk
+    monitors = Gdk.Display.get_default().get_monitors()
+    if monitors.get_n_items():
+        screen = monitors.get_item(0).get_geometry()
+        if width > screen.width or height > screen.height:
+            test.skipTest(f"the headless screen ({screen.width}×{screen.height}) "
+                          f"can't hold a {width}×{height} window with this GTK")
+    test.fail(f"the window never became {width}×{height}")
+
+
+def resize_window(win, width: int, height: int) -> bool:
+    """Resize a window that is already on screen; True once it has the size.
+
+    GTK 4.14's Broadway backend (Ubuntu 24.04) ignores ``set_default_size``
+    on a mapped window, so if the size doesn't arrive, show the window again
+    at the new size. Newer GTK resizes in place."""
+    win.set_default_size(width, height)
+    def arrived():
+        return (win.get_width(), win.get_height()) == (width, height)
+    if pump(arrived, timeout=0.5):
+        return True
+    win.set_visible(False)
+    win.present()
+    return pump(arrived, timeout=3.0)
+
+
+def descendants(widget):
+    """Every widget under ``widget`` (depth first), for UI tests."""
+    child = widget.get_first_child()
+    while child is not None:
+        yield child
+        yield from descendants(child)
+        child = child.get_next_sibling()
+
+
 class FakeRoot:
     """A writable fake filesystem root for SysRoot-based code.
 

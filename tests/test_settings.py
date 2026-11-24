@@ -41,9 +41,10 @@ class SchemaFileTest(unittest.TestCase):
 
     def test_keys_used_by_the_design_exist(self):
         spec = SchemaSpec.parse(source_schema_path())
-        for k in ("window-width", "window-height", "is-maximized", "last-viewed-page",
-                  "base", "temperature-unit", "graph-data-points", "gpu-details-disabled", "gpu-view"):
+        for k in ("window-width", "window-height", "is-maximized",
+                  "base", "temperature-unit", "graph-time-range", "gpu-details-disabled", "gpu-view"):
             self.assertIn(k, spec.keys)
+        self.assertNotIn("last-viewed-page", spec.keys)   # M55: always the Overview
 
 
 class Probe(GObject.Object):
@@ -61,7 +62,7 @@ class SettingsBehaviour:
 
     def test_defaults(self):
         self.assertEqual(self.s.get("refresh-speed"), "normal")
-        self.assertEqual(self.s.get("graph-data-points"), 60)
+        self.assertEqual(self.s.get("graph-time-range"), "1-minute")
         self.assertEqual(self.s.get("gpu-details-disabled"), [])
         self.assertIs(self.s.get("is-maximized"), False)
 
@@ -77,14 +78,14 @@ class SettingsBehaviour:
         with self.assertRaises(ValueError):
             self.s.set("temperature-unit", "rankine")      # not an enum nick
         with self.assertRaises(ValueError):
-            self.s.set("graph-data-points", 5)             # below range
+            self.s.set("log-max-size", 5)                  # below range
         with self.assertRaises(ValueError):
             self.s.set("gpu-details-disabled", "0000:00:02.0")   # a string, not a list
         with self.assertRaises(ValueError):
             self.s.set("window-width", "wide")             # wrong type
         with self.assertRaises(KeyError):
             self.s.get("no-such-key")
-        self.assertEqual(self.s.get("graph-data-points"), 60)  # unchanged
+        self.assertEqual(self.s.get("log-max-size"), 1024)  # unchanged
 
     def test_changed_callback(self):
         seen = []
@@ -101,9 +102,9 @@ class SettingsBehaviour:
         self.s.disconnect(hid)
 
     def test_reset(self):
-        self.s.set("graph-data-points", 120)
-        self.s.reset("graph-data-points")
-        self.assertEqual(self.s.get("graph-data-points"), 60)
+        self.s.set("graph-time-range", "5-minutes")
+        self.s.reset("graph-time-range")
+        self.assertEqual(self.s.get("graph-time-range"), "1-minute")
 
     def test_bind_two_way(self):
         obj = Probe()

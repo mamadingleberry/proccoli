@@ -16,11 +16,13 @@ from ...core.units import Base, TemperatureUnit
 from ...devices.base import Monitor, Snapshot
 from ..page import FittingPage, PageKind, ScrollingPage, SidebarSummary
 from ..axes import history_span_s
-from ..layout import LIMITS, GraphLimits, fit_heights, group_rows, needs_update, stack_pair
+from ..layout import (LIMITS, GraphLimits, fit_heights, graph_in_area, group_rows, needs_update,
+                      stack_pair)
 from ..widgets.graph import Graph, GraphStyle
 from ..widgets.double_graph_box import SPACING as PAIR_SPACING, DoubleGraphBox
 from ..widgets.graph_box import GraphBox
 from ..widgets.info_row import InfoRow
+from ..widgets.legend_chart import LegendChart
 
 # Preferences that change how values are formatted.
 UNIT_KEYS = ("base", "network-bits", "temperature-unit")
@@ -36,11 +38,13 @@ class DevicePage(FittingPage):
         self.settings = settings
         self.graphs: list[Graph] = []
         self.pairs: list[DoubleGraphBox] = []
+        self._reserves: dict = {}       # graph -> measure(width): its area's extra (M57)
+        self.legend_charts: list[LegendChart] = []
         self.limits: GraphLimits = LIMITS
         self.entry_index: Optional[int] = None    # set by the sidebar
         self.track(settings, settings.connect_changed(
             "show-graph-grids", lambda _k, v: self._set_grid(v)))
-        for key in ("graph-data-points", "refresh-speed", "show-graph-axes"):
+        for key in ("graph-time-range", "refresh-speed", "show-graph-axes"):
             self.track(settings, settings.connect_changed(key, lambda *_: self._set_axes()))
         for key in UNIT_KEYS:
             self.track(settings, settings.connect_changed(key, lambda *_: self.refresh_labels()))
@@ -73,6 +77,18 @@ class DevicePage(FittingPage):
         graph.set_entry_base(self.entry_index)
         self.graphs.append(graph)
         return graph
+
+    def add_legend_chart(self, group: Adw.PreferencesGroup, title: str,
+                         max_value: Optional[float] = 100.0, min_max: float = 0.0,
+                         **options) -> LegendChart:
+        """A ``LegendChart`` (many lines, legend inside its card) fitted like
+        any page graph, its legend counted in its area (M59)."""
+        chart = LegendChart(title, max_value=max_value, min_max=min_max, **options)
+        self.add_graph(chart.graph)
+        self.reserve(chart.graph, chart.legend_height)
+        self.legend_charts.append(chart)
+        group.add(chart)
+        return chart
 
     def graph_box(self, group: Adw.PreferencesGroup, title: str,
                   series: Iterable[tuple[str, str]], max_value: Optional[float] = 100.0,
@@ -175,8 +191,12 @@ class DevicePage(FittingPage):
         if any(not ok for ok, _ in bounds):
             return False
         rows = group_rows([b.get_y() for _, b in bounds])
-        current = [max(graphs[i].get_content_height() for i in r) for r in rows]
         widths = [min(bounds[i][1].get_width() for i in r) for r in rows]
+        # A graph's area includes what's reserved for it (a legend, M57).
+        reserves = [self.graph_reserve(g, int(b.get_width())) for g, (_, b)
+                    in zip(graphs, bounds)]
+        current = [max(graphs[i].get_content_height() + reserves[i] for i in r)
+                   for r in rows]
         bottom = 0.0
         for g in graphs:      # the lowest graph row, with its title and info
             row = g.get_ancestor(Adw.PreferencesRow) or g
@@ -190,9 +210,33 @@ class DevicePage(FittingPage):
         targets = fit_heights(vh, fixed, widths, self.limits)
         for r, target in zip(rows, targets):
             for i in r:
-                if needs_update(graphs[i].get_content_height(), target):
-                    graphs[i].set_content_height(target)
-        return False
+                height = graph_in_area(target, reserves[i])
+                if needs_update(graphs[i].get_content_height(), height):
+                    graphs[i].set_content_height(height)
+        return self.fit_legends()
+
+    def fit_key(self) -> tuple:
+        # A legend chart's legend can wrap to more or fewer lines.
+        heights = tuple(c.legend_height(c.graph.get_width())
+                        for c in self.legend_charts if c.graph.get_mapped())
+        return (*super().fit_key(), heights)
+
+    def fit_legends(self) -> bool:
+        """Compact legends where values would cramp their chart; True if
+        any changed (fit again)."""
+        changed = False
+        for chart in self.legend_charts:
+            changed |= chart.fit_legend()
+        return changed
+
+    def reserve(self, graph: Graph, measure) -> None:
+        """Count ``measure(width)`` pixels (e.g. a legend under ``graph``)
+        as part of ``graph``'s area when fitting (M57)."""
+        self._reserves[graph] = measure
+
+    def graph_reserve(self, graph: Graph, width: int) -> int:
+        measure = self._reserves.get(graph)
+        return measure(width) if measure is not None else 0
 
     def _arrange_pairs(self, viewport_w: int, viewport_h: int) -> bool:
         """Stack or unstack pairs for this viewport; True if any changed."""

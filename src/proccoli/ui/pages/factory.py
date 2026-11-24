@@ -4,12 +4,15 @@ touching the window."""
 
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
 from ...devices.base import DeviceKind, Monitor
 from ..page import ResourcePage
 
 PageBuilder = Callable[[Monitor], ResourcePage]
+
+log = logging.getLogger(__name__)
 
 
 class PageFactory:
@@ -23,11 +26,21 @@ class PageFactory:
         return list(self._builders)
 
     def create(self, monitor: Monitor) -> ResourcePage:
+        """The device's page, or an ``ErrorPage`` (M55) when the device
+        failed to set up or its page raised while being built."""
+        from ...devices.base import FailedMonitor
+        from .error import ErrorPage, error_text
+        if isinstance(monitor, FailedMonitor):
+            return ErrorPage(monitor, *error_text(monitor))
         try:
             builder = self._builders[monitor.info.kind]
         except KeyError:
             raise ValueError(f"no page registered for {monitor.info.kind}") from None
-        return builder(monitor)
+        try:
+            return builder(monitor)
+        except Exception as exc:  # noqa: BLE001 - one broken page must not stop the window
+            log.exception("building the page for %s failed", monitor.info.id)
+            return ErrorPage(monitor, *error_text(monitor, exc))
 
 
 def standard_page_factory(ctx) -> PageFactory:

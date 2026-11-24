@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Sequence
 
 from gi.repository import Adw, Gtk
@@ -19,7 +20,11 @@ BASES = [("decimal", "Decimal (kB, MB, GB)"), ("binary", "Binary (KiB, MiB, GiB)
 TEMPERATURE_UNITS = [("celsius", "Celsius"), ("fahrenheit", "Fahrenheit"), ("kelvin", "Kelvin")]
 LOG_LEVELS = [("off", "Off"), ("error", "Errors"), ("warning", "Warnings"),
               ("info", "Information and Performance"), ("debug", "Everything (Debug)")]
+GRAPH_TIME_RANGES = [("30-seconds", "30 Seconds"), ("1-minute", "1 Minute"),
+                     ("2-minutes", "2 Minutes"), ("5-minutes", "5 Minutes"),
+                     ("10-minutes", "10 Minutes")]
 METER_TYPES = [("progress-bar", "Progress Bar"), ("graph", "Graph")]
+SIDEBAR_STYLES = [("full", "Full"), ("icons", "Icons Only")]
 
 APP_COLUMNS = [("memory", "Memory"), ("cpu", "Processor"), ("drive-read-speed", "Drive Read"),
                ("drive-read-total", "Drive Read Total"), ("drive-write-speed", "Drive Write"),
@@ -35,14 +40,16 @@ PROCESS_COLUMNS = [("id", "Process ID"), ("user", "User")] + APP_COLUMNS + [
 
 class PreferencesDialog(Adw.PreferencesDialog):
     def __init__(self, settings, gpu_controllers: Sequence = (), theme=None,
-                 log_file=None, launcher=None, sidebar=None) -> None:
+                 log_file=None, launcher=None, sidebar=None, stats_dir=None) -> None:
         """``theme`` (ui.theme.Theme) only picks light or dark swatches;
-        ``log_file`` (a Path) enables *Open Log Folder*, which
-        ``launcher(folder)`` opens (default: Gtk.FileLauncher)."""
+        ``log_file`` (a Path) enables *Open Log Folder*, and ``stats_dir``
+        the statistics files' *Open Folder*, which ``launcher(folder)``
+        opens (default: Gtk.FileLauncher)."""
         super().__init__(title="Preferences", search_enabled=True)
         self.settings = settings
         self.theme = theme
         self.log_file = log_file
+        self.stats_dir = stats_dir
         self.launcher = launcher
         # ui.sidebar.StackSidebar: per-entry pages (none in tests that skip it).
         self.sidebar = sidebar
@@ -69,10 +76,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._switch(ui, "show-graph-grids", "Show Graph Grids")
         self._switch(ui, "show-graph-axes", "Show Graph Axes",
                      "Percentage and time labels with ticks on percentage graphs")
-        self._spin(ui, "graph-data-points", "Graph Data Points", 10, 600)
+        self._combo(ui, "graph-time-range", "Graph Time Range", GRAPH_TIME_RANGES,
+                    "How much history graphs show, whatever the refresh speed")
         self._switch(ui, "normalize-cpu-usage", "Normalize Processor Usage",
-                     "If enabled, the total usage of all cores will be divided by the "
-                     "amount of cores")
+                     "Apps and Processes show each one's share of the whole processor, "
+                     "so they add up to the total. Off: one fully busy core is 100 %")
 
         diagnostics = self._group(general, "Diagnostics",
                                   "A small log of Proccoli's messages and performance, "
@@ -89,6 +97,21 @@ class PreferencesDialog(Adw.PreferencesDialog):
             row.add_suffix(button)
             diagnostics.add(row)
             self.log_button = button
+
+        # Every reading on disk (M58).
+        stats = self._group(general, "Statistics Files",
+                            "Every reading, one CSV file per device, with times in UTC")
+        self._switch(stats, "stats-log", "Keep Statistics Files")
+        size = self._spin(stats, "stats-log-max-size", "Maximum Size per Device (KiB)",
+                          64, 1048576)
+        size.set_subtitle("One older file is kept too, so at most twice this per device")
+        if stats_dir is not None:
+            row = Adw.ActionRow(title="Folder", subtitle=str(stats_dir))
+            button = Gtk.Button(label="Open Folder", valign=Gtk.Align.CENTER)
+            button.connect("clicked", lambda *_: self.open_folder(Path(stats_dir)))
+            row.add_suffix(button)
+            stats.add(row)
+            self.stats_button = button
 
         self._sidebar_page()
 
@@ -296,6 +319,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _sidebar_page(self) -> None:
         page = self.sidebar_prefs_page = self._page("Sidebar", "sidebar-show-symbolic")
         everything = self._group(page, "All Entries")
+        self._combo(everything, "sidebar-style", "Style", SIDEBAR_STYLES,
+                    "Icons Only shows each entry's icon; hover for its name and usage")
         self._switch(everything, "sidebar-details", "Show Usage Details",
                      "If enabled, the usage along with other information will be displayed")
         self._switch(everything, "sidebar-description", "Show Device Descriptions",
@@ -326,7 +351,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
         return sub
 
     def open_log_folder(self) -> None:
-        folder = self.log_file.parent
+        self.open_folder(self.log_file.parent)
+
+    def open_folder(self, folder) -> None:
         folder.mkdir(parents=True, exist_ok=True)
         if self.launcher is not None:
             self.launcher(folder)

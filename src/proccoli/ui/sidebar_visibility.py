@@ -8,9 +8,12 @@ the main menu (the "burger") always stays at the window's top left:
 - sidebar hidden, or folded away on a narrow window: every page header
   shows them at its start instead.
 
-The sidebar is shown and hidden from the main menu's *Show Sidebar* check
-item or F9 (Milestone 52), both the stateful ``win.toggle-sidebar``
-action made here.
+F9 shows and hides the sidebar through the stateful ``win.toggle-sidebar``
+action made here (Milestone 52). The main menu offers three modes instead
+(Milestone 54): *Full*, *Icons Only* and *Hidden*, radio items of the
+stateful ``win.sidebar-mode`` action, also made here. The style (full or
+icons only, ``sidebar-style``) reaches the window through the injected
+``on_style`` callback, which narrows the sidebar (``sidebar_style.py``).
 
 ``SidebarVisibility`` keeps ``Adw.OverlaySplitView.show-sidebar`` in line
 with the user's choice (``sidebar-shown``) on wide windows. On narrow
@@ -21,11 +24,14 @@ and restored when the window widens again.
 
 from __future__ import annotations
 
+from typing import Callable, Optional
+
 from gi.repository import Gio, GLib
 
+from .sidebar_style import MODE_ACTION, STYLE_SETTING, SidebarStyle, choose, mode_of, parse_style
+
 SETTING = "sidebar-shown"
-ACTION = "toggle-sidebar"            # in the window's "win" group
-LABEL = "Show Sidebar"
+ACTION = "toggle-sidebar"            # in the window's "win" group; F9
 
 
 def header_controls_visible(show_sidebar: bool, collapsed: bool) -> bool:
@@ -35,26 +41,53 @@ def header_controls_visible(show_sidebar: bool, collapsed: bool) -> bool:
 
 
 class SidebarVisibility:
-    def __init__(self, split_view, settings) -> None:
+    def __init__(self, split_view, settings,
+                 on_style: Optional[Callable[[SidebarStyle], None]] = None) -> None:
         self.split = split_view
         self.settings = settings
-        # The menu item: checked while the sidebar is shown. Activating it
-        # toggles (GIO's default for a boolean action with no parameter
-        # goes through change-state, handled here).
+        self.on_style = on_style
+        # F9: a boolean action with no parameter, toggled on activation (GIO's
+        # default for such an action goes through change-state, handled here).
         self.action = Gio.SimpleAction.new_stateful(
             ACTION, None, GLib.Variant.new_boolean(split_view.get_show_sidebar()))
         self.action.connect("change-state", self._on_change_state)
+        # The main menu's Full / Icons Only / Hidden radio items.
+        self.mode_action = Gio.SimpleAction.new_stateful(
+            MODE_ACTION, GLib.VariantType.new("s"), GLib.Variant.new_string(self.mode().value))
+        self.mode_action.connect("change-state", self._on_mode_change)
         self._handlers = [
             split_view.connect("notify::collapsed", lambda *_: self._on_collapsed()),
             split_view.connect("notify::show-sidebar", lambda *_: self._on_shown()),
         ]
+        self._style_handler = settings.connect_changed(STYLE_SETTING,
+                                                       lambda *_: self._on_style())
         self._on_collapsed()
-        self._sync_action()
+        self._on_style()
 
     @property
     def preferred(self) -> bool:
         """The user's choice for wide windows."""
         return bool(self.settings.get(SETTING))
+
+    @property
+    def style(self) -> SidebarStyle:
+        return parse_style(self.settings.get(STYLE_SETTING))
+
+    def mode(self):
+        """What the menu marks now (``sidebar_style.Mode``)."""
+        return mode_of(self.split.get_show_sidebar(), self.style)
+
+    def _on_mode_change(self, _action, value: GLib.Variant) -> None:
+        shown, style = choose(value.get_string(), self.style)
+        if style != self.style:
+            self.settings.set(STYLE_SETTING, style.value)
+        self.split.set_show_sidebar(shown)
+        self._sync_action()
+
+    def _on_style(self) -> None:
+        if self.on_style is not None:
+            self.on_style(self.style)
+        self._sync_action()
 
     def _on_collapsed(self) -> None:
         if self.split.get_collapsed():
@@ -69,6 +102,9 @@ class SidebarVisibility:
         shown = self.split.get_show_sidebar()
         if self.action.get_state().get_boolean() != shown:
             self.action.set_state(GLib.Variant.new_boolean(shown))
+        mode = self.mode().value
+        if self.mode_action.get_state().get_string() != mode:
+            self.mode_action.set_state(GLib.Variant.new_string(mode))
 
     def _on_shown(self) -> None:
         self._sync_action()
@@ -89,3 +125,6 @@ class SidebarVisibility:
         for h in self._handlers:
             self.split.disconnect(h)
         self._handlers = []
+        if self._style_handler:
+            self.settings.disconnect(self._style_handler)
+            self._style_handler = 0

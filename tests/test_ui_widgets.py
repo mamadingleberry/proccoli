@@ -6,6 +6,8 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, os.path.dirname(__file__))
+from helpers import descendants  # noqa: E402
 
 import gi  # noqa: E402
 
@@ -172,7 +174,20 @@ class RowsTest(unittest.TestCase):
 
     def test_info_row_escapes_markup(self):
         row = InfoRow("Name", "Tom & Jerry <GPU>")
-        self.assertEqual(row.get_subtitle(), "Tom &amp; Jerry &lt;GPU&gt;")
+        self.assertEqual(row.get_value(), "Tom & Jerry <GPU>")
+        # What's on screen: the subtitle label shows the text as given.
+        shown = [w.get_text() for w in descendants(row)
+                 if isinstance(w, Gtk.Label) and w.get_text() != "Name"]
+        self.assertIn("Tom & Jerry <GPU>", shown)
+
+    def test_info_row_sets_the_subtitle_only_on_change(self):
+        row = InfoRow("Name", "a & b")
+        calls = []
+        row.connect("notify::subtitle", lambda *_: calls.append(1))
+        row.set_value("a & b")
+        self.assertEqual(calls, [])
+        row.set_value("c")
+        self.assertEqual(calls, [1])
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
@@ -215,6 +230,58 @@ class DemoPageTest(unittest.TestCase):
         self.assertTrue(page.usage.graph.show_grid)
         settings.set("base", "binary")
         self.assertIn("iB/s", page.io.start.info_label.get_label())
+
+
+@unittest.skipUnless(HAVE_DISPLAY, "no display")
+class LegendChartTest(unittest.TestCase):
+    """The reusable many-line chart (M59), on its own, outside any page."""
+
+    def make(self, n=4):
+        from proccoli.ui.widgets.legend_chart import LegendChart
+        from proccoli.ui.widgets.graph_box import GraphBox
+        history = History(30)
+        series = [history.define(f"s{i}", "%") for i in range(n)]
+        chart = LegendChart("Lines")
+        chart.set_lines(series, [f"Line {i}" for i in range(n)])
+        self.assertIs(chart.legend.get_ancestor(GraphBox), chart)    # inside the card
+        return chart, series
+
+    def test_lines_colours_values(self):
+        chart, series = self.make()
+        self.assertEqual(chart.graph.series, series)
+        self.assertFalse(chart.graph.fill)
+        self.assertEqual(len({chart.graph.color_for(i) for i in range(4)}), 4)
+        chart.set_values(["1 %", "2 %", "3 %", "4 %"])
+        self.assertEqual(chart.legend.items[2].value_label.get_label(), "3 %")
+        items = chart.legend.items
+        chart.set_lines(series, [f"Line {i}" for i in range(4)])          # unchanged: kept
+        self.assertIs(chart.legend.items[0], items[0])
+
+    def test_never_shows_nothing(self):
+        chart, _ = self.make()
+        legend, graph = chart.legend, chart.graph
+        legend.items[1].solo()
+        self.assertEqual(legend.shown(), [False, True, False, False])
+        legend.items[1].emit("clicked")                    # deselect the only one
+        self.assertEqual(legend.shown(), [True] * 4)
+        self.assertTrue(all(graph.series_shown(i) for i in range(4)))
+
+    def test_lines_without_data(self):
+        chart, _ = self.make(3)
+        legend, graph = chart.legend, chart.graph
+        legend.set_available(2, False)
+        self.assertFalse(legend.items[2].get_parent().get_visible())
+        self.assertFalse(graph.series_shown(2))
+        legend.items[0].emit("clicked")
+        legend.items[1].emit("clicked")                    # the last line with data
+        self.assertTrue(graph.series_shown(0) and graph.series_shown(1))
+        self.assertFalse(graph.series_shown(2))            # still nothing to draw
+
+    def test_standalone_legend_keeps_its_values(self):
+        chart, _ = self.make()
+        self.assertFalse(chart.fit_legend())               # not on screen: nothing to fit
+        self.assertFalse(chart.legend.compact)
+        self.assertGreater(chart.legend_height(0), 0)        # measurable for any page
 
 
 if __name__ == "__main__":

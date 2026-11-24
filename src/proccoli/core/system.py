@@ -134,7 +134,7 @@ class System:
             gi.require_version("GioUnix", "2.0")
             from gi.repository import GioUnix
             cls = GioUnix.DesktopAppInfo
-        except (ImportError, ValueError):
+        except (ImportError, ValueError, AttributeError):
             from gi.repository import Gio
             cls = Gio.DesktopAppInfo
         try:

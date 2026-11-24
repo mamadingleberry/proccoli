@@ -28,7 +28,7 @@ from ..theme import DEFAULT_ACCENT, default_theme_colors, theme_of  # noqa: E402
 
 class GraphStyle(str, Enum):
     NORMAL = "normal"   # page graphs
-    SMALL = "small"     # sidebar meters and per-thread CPU graphs
+    SMALL = "small"     # sidebar meters and Overview cards
 
 
 STYLE_METRICS = {
@@ -161,6 +161,12 @@ class Graph(Gtk.DrawingArea):
         # Palette slot of the first series; 1 skips the accent colour (for a
         # graph that sits next to another, like Write next to Read).
         self.color_offset = 0
+        # Many lines in one graph (the per-CPU chart, M55): no fill, which
+        # would muddy them; a distinct colour each (entry_colors makes as
+        # many as needed); lines the legend switched off.
+        self.fill = True
+        self.distinct = False
+        self.hidden: set[int] = set()
         height, self.radius, self.line_width = STYLE_METRICS[self.style]
         self.set_content_height(height)
         self.set_hexpand(True)
@@ -176,6 +182,32 @@ class Graph(Gtk.DrawingArea):
         self.colors = list(colors) if colors else []
         self.color_offset = color_offset
         self.queue_draw()
+
+    def set_fill(self, fill: bool) -> None:
+        """Shade the area under each line (on by default)."""
+        if fill != self.fill:
+            self.fill = fill
+            self.queue_draw()
+
+    def set_distinct_colors(self, distinct: bool) -> None:
+        """A different colour for every series, however many (palettes
+        have only 6–8 colours, which would repeat)."""
+        if distinct != self.distinct:
+            self.distinct = distinct
+            self.queue_draw()
+
+    def set_series_shown(self, index: int, shown: bool) -> None:
+        """Draw series ``index`` or leave it out (its legend item's toggle)."""
+        if shown == (index not in self.hidden):
+            return
+        if shown:
+            self.hidden.discard(index)
+        else:
+            self.hidden.add(index)
+        self.queue_draw()
+
+    def series_shown(self, index: int) -> bool:
+        return index not in self.hidden
 
     def set_aspect(self, ratio: Optional[float], minimum: int = 32,
                    maximum: int = 400) -> None:
@@ -240,6 +272,8 @@ class Graph(Gtk.DrawingArea):
             return self.colors[index]
         if self.entry_index is not None:
             return entry_rgb(self.entry_index, index, self)
+        if self.distinct:
+            return entry_rgb((self.entry_base or 0) + self.color_offset + index, 0, self)
         if self.entry_base is not None:
             return entry_rgb(self.entry_base + self.color_offset + index, 0, self)
         return series_rgb(index + self.color_offset, self)
@@ -370,16 +404,18 @@ class Graph(Gtk.DrawingArea):
         cr.set_line_width(self.line_width)
         cr.set_line_join(1)  # cairo.LINE_JOIN_ROUND
         for index, s in enumerate(self.series):
+            if index in self.hidden:
+                continue
             r, g, b = self.color_for(index)
             for run in graph_runs(list(s.values), s.capacity, width, height, y_max):
-                # Filled area under the line.
-                cr.move_to(run[0][0], height)
-                for x, y in run:
-                    cr.line_to(x, y)
-                cr.line_to(run[-1][0], height)
-                cr.close_path()
-                cr.set_source_rgba(r, g, b, 0.22)
-                cr.fill()
+                if self.fill:                    # shaded area under the line
+                    cr.move_to(run[0][0], height)
+                    for x, y in run:
+                        cr.line_to(x, y)
+                    cr.line_to(run[-1][0], height)
+                    cr.close_path()
+                    cr.set_source_rgba(r, g, b, 0.22)
+                    cr.fill()
                 # The line itself.
                 cr.move_to(*run[0])
                 for p in run[1:]:

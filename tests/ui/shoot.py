@@ -39,6 +39,8 @@ SCENES = {
     "wide-demo": (1024, 768, "demo", {}, False),
     "wide-overview": (1024, 768, "overview", {}, False),
     "wide-sidebar-hidden": (1024, 768, "demo", {"sidebar-shown": False}, False),
+    "wide-sidebar-icons": (1024, 768, "demo", {"sidebar-style": "icons"}, False),
+    "narrow-sidebar-icons": (700, 600, "demo", {"sidebar-style": "icons"}, True),
     "portrait-overview": (480, 768, "overview", {}, False),
     "wide-progress-meters": (1024, 768, "demo",
                              {"sidebar-meter-type": "progress-bar", "show-graph-grids": True},
@@ -71,6 +73,14 @@ REAL_SCENES = {
                                        "auth-at-launch": False}, False)
     for page in ("overview", "apps", "processes", "cpu", "memory", "drive", "net", "gpu")
 }
+# The Processor's total chart: the same area as real-cpu's per-CPU chart (M57).
+REAL_SCENES["real-cpu-total"] = (1024, 768, "cpu", {"auth-at-launch": False}, False)
+# The last GPU (on a hybrid laptop, the discrete one: NVIDIA's tabs, M55).
+REAL_SCENES["real-gpu-last-details"] = (1024, 768, "gpu", {"auth-at-launch": False,
+                                                           "_pick": "last",
+                                                           "gpu-view": "details"}, False)
+REAL_SCENES["real-gpu-last-overview"] = (1024, 768, "gpu", {"auth-at-launch": False,
+                                                            "_pick": "last"}, False)
 REAL_SCENES["real-overview-tables"] = (1024, 768, "overview",
                                        {"auth-at-launch": False, "_scroll": "end"}, False)
 REAL_SCENES["real-overview-portrait"] = (480, 768, "overview",
@@ -92,10 +102,18 @@ def snapshot(win: Gtk.Window, path: str, widget=None) -> bool:
     window, not just its content: the window draws the page background,
     which a dark style needs."""
     widget = widget or win
-    w, h = widget.get_width(), widget.get_height()
-    snap = Gtk.Snapshot()
-    Gtk.WidgetPaintable(widget=widget).snapshot(snap, w, h)
-    node = snap.to_node()
+    # Headless frames are slow: right after a page switch the widget may
+    # have nothing painted yet. Wait for it (up to 3 s) instead of failing.
+    node = None
+    for _attempt in range(12):
+        w, h = widget.get_width(), widget.get_height()
+        if w > 0 and h > 0:
+            snap = Gtk.Snapshot()
+            Gtk.WidgetPaintable(widget=widget).snapshot(snap, w, h)
+            node = snap.to_node()
+            if node is not None:
+                break
+        pump(0.25)
     if node is None:
         return False
     rect = Graphene.Rect()
@@ -108,9 +126,10 @@ def shoot(app: Adw.Application, name: str, scene, outdir: str, real: bool = Fals
     width, height, page, overrides, sidebar_open = scene
     overrides = dict(overrides)
     scroll_end = overrides.pop("_scroll", None) == "end"   # shoot the bottom of the page
+    pick_last = overrides.pop("_pick", None) == "last"     # e.g. a second GPU
     # Real processes need 1 s samples: at 250 ms most use under one clock tick.
     settings = Settings.for_tests({"refresh-speed": "normal" if real else "very-fast",
-                                   "graph-data-points": 40, **overrides})
+                                   "graph-time-range": "30-seconds", **overrides})
     # Demo scenes never touch the system; --real ones use the real services,
     # minus the privileged helper (nothing here should prompt).
     ctx = build_context(settings, demo=not real, helper_command=None)
@@ -120,7 +139,8 @@ def shoot(app: Adw.Application, name: str, scene, outdir: str, real: bool = Fals
     ticker = ctx.ticker
     win = MainWindow(app, ctx)
     win.set_default_size(width, height)
-    win.select_page(next(i for i in win.sidebar.order() if i.startswith(page)))
+    matches = [i for i in win.sidebar.order() if i.startswith(page)]
+    win.select_page(matches[-1] if pick_last else matches[0])
     win.present()
     ticker.start()
     pump(6.0)                       # let the demo draw a stretch of graph

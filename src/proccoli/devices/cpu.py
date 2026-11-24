@@ -11,6 +11,7 @@ from ..core.sysroot import SysRoot
 from ..core.units import format_duration, format_frequency, format_percent
 from .base import DeviceInfo, DeviceKind, Monitor, Snapshot
 from .manager import Discoverer
+from ..core.ticker import graph_points
 
 # -- parsing (pure, unit-tested) -------------------------------------------------------
 
@@ -134,10 +135,20 @@ class CpuDiscoverer(Discoverer):
                            PROCESSOR_ICON, props)]
 
     def create_monitor(self, info, sysroot, settings) -> Monitor:
-        return CpuMonitor(info, sysroot, settings.get("graph-data-points"))
+        return CpuMonitor(info, sysroot, graph_points(settings))
 
 
 # -- monitoring --------------------------------------------------------------------------------
+
+
+def busiest_thread(per_thread) -> Optional[tuple[int, float]]:
+    """``(index, usage)`` of the busiest logical CPU (the first on a tie),
+    or None before there's data. For the per-CPU chart's summary line."""
+    known = [(v, -i) for i, v in enumerate(per_thread) if v is not None]
+    if not known:
+        return None
+    value, neg = max(known)
+    return -neg, value
 
 
 @dataclass

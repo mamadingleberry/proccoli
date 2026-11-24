@@ -114,6 +114,32 @@ def aspect_height(width: float, ratio: float, minimum: int, maximum: int) -> int
     return int(min(max(width * ratio, minimum), maximum))
 
 
+# The least a graph keeps when something below it shares its area (M57):
+# room for a plot with 0 % and 100 % labels. Low on purpose, so the per-CPU
+# chart and its legend keep the total chart's area even with many CPUs in
+# a small window.
+MIN_GRAPH_IN_AREA = 32
+
+
+def graph_in_area(area: int, reserve: int, floor: int = MIN_GRAPH_IN_AREA) -> int:
+    """The graph's height when it shares ``area`` with ``reserve`` pixels of
+    something else (the per-CPU chart's legend): the area less the
+    reserve, but never under ``floor`` (then the area grows instead)."""
+    return max(floor, area - max(0, reserve))
+
+
+# The per-CPU chart's comfortable height: below it, the legend drops its
+# values (shown on hover instead) to leave the chart more of the area (M57).
+COMFORT_GRAPH = 96
+
+
+def use_compact_legend(area: int, full_legend: int, comfort: int = COMFORT_GRAPH) -> bool:
+    """Whether a legend with values (``full_legend`` pixels, gap included)
+    would leave the chart under ``comfort`` in ``area``. The area doesn't
+    depend on the legend, so the answer can't flip back and forth."""
+    return area - full_legend < comfort
+
+
 def needs_update(current: int, target: int) -> bool:
     return abs(current - target) >= HYSTERESIS
 

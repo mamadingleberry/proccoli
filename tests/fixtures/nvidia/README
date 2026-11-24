@@ -1,0 +1,15 @@
+NVIDIA tool output for tests/test_nvidia.py.
+
+- smi-rtx5060-laptop.csv: real `nvidia-smi --query-gpu=<SMI_FIELDS>
+  --format=csv,noheader,nounits -i 0000:02:00.0` (exactly `smi_argv`) from
+  an RTX 5060 Laptop GPU, driver 580, on Ubuntu 24.04.
+- settings-targets-wayland.txt: real `settings_targets_argv` output in a
+  GNOME Wayland session, same machine: the PCI attributes work there
+  (target `[gpu:0]`, no display name).
+- settings-readings-wayland.stderr: real `settings_argv` stderr (exit 1) in
+  that session: utilisation and clocks need NV-CONTROL (X11), so the query
+  fails and the backend falls back to nvidia-smi.
+- settings-targets.txt, settings-readings.txt: nvidia-settings output in
+  its normal and terse (-t) formats for a two-GPU X11 machine, written from
+  the real Wayland output above and NVIDIA's documented formats. Not
+  captured: no X11 session with NVIDIA's driver was available.

@@ -1,0 +1,21 @@
+
+  Attribute 'PCIDomain' ([gpu:0]): 0.
+    'PCIDomain' is an integer attribute.
+    'PCIDomain' is a read-only attribute.
+    'PCIDomain' can use the following target types: GPU.
+
+  Attribute 'PCIBus' ([gpu:0]): 2.
+    'PCIBus' is an integer attribute.
+    'PCIBus' is a read-only attribute.
+    'PCIBus' can use the following target types: GPU.
+
+  Attribute 'PCIDevice' ([gpu:0]): 0.
+    'PCIDevice' is an integer attribute.
+    'PCIDevice' is a read-only attribute.
+    'PCIDevice' can use the following target types: GPU.
+
+  Attribute 'PCIFunc' ([gpu:0]): 0.
+    'PCIFunc' is an integer attribute.
+    'PCIFunc' is a read-only attribute.
+    'PCIFunc' can use the following target types: GPU.
+

@@ -16,10 +16,11 @@ from typing import Optional
 
 from gi.repository import Adw, Gtk
 
-from ...core.units import (format_bytes, format_frequency, format_percent, format_power,
+from ...core.units import (device_facts, format_bytes, format_frequency, format_percent, format_power,
                            format_temperature)
 from ...gpu.backend import DetailServices, DetailView, GpuSummary
 from ...gpu.controller import DetailState, GpuController, GpuSnapshot
+from .. import compat
 from ..page import PageKind
 from ..widgets.double_graph_box import DoubleGraphBox
 from ..widgets.info_row import InfoRow
@@ -36,7 +37,7 @@ STATE_TEXT = {
                              "system-lock-screen-symbolic"),
     DetailState.STARTING: ("Starting…", None, None),
     DetailState.RUNNING: ("Starting…", None, None),      # running, view not built yet
-    DetailState.FAILED: ("Detailed Statistics Stopped", "Try Again", "dialog-warning-symbolic"),
+    DetailState.FAILED: ("Detailed Statistics Stopped", "Try Again", "dialog-error-symbolic"),
     DetailState.UNAVAILABLE: ("No Detailed Statistics", None, "video-display-symbolic"),
 }
 
@@ -53,7 +54,7 @@ class DetailHost(Gtk.Stack):
         self.name = name
         self.view: Optional[DetailView] = None
         self.status = Adw.StatusPage()
-        self.spinner = Adw.Spinner(width_request=32, height_request=32, visible=False)
+        self.spinner = compat.spinner(width_request=32, height_request=32, visible=False)
         self.button = Gtk.Button(halign=Gtk.Align.CENTER)
         self.button.add_css_class("pill")
         self.button.add_css_class("suggested-action")
@@ -177,7 +178,18 @@ class GpuPage(DevicePage):
         self.sensors.set_visible(False)
         props = dict(c.info.properties)
         props["Max Power Cap"] = ""
+        # What detection chose for this GPU, and why (M55).
+        props["Detailed Statistics"] = c.plan.detail_text()
         self.add_properties(props)
+
+    def sidebar_summary(self):
+        summary = super().sidebar_summary()
+        snap = self.monitor.latest
+        if snap is not None and snap.summary is not None:
+            s = snap.summary
+            summary.facts = device_facts(s.temperature_c, self.temperature_unit,
+                                         s.vram_used, s.vram_total, self.base)
+        return summary
 
     def update_labels(self, snap: GpuSnapshot) -> None:
         s: GpuSummary = snap.summary

@@ -228,6 +228,35 @@ class SidebarArrangeTest(unittest.TestCase):
         item.minimize_button.emit("clicked")
         self.assertTrue(item.details.get_visible())
 
+    def test_icons_only_shows_just_the_icon_with_hover_text(self):
+        # Milestone 54: the compact style, for every row (pinned ones too).
+        sidebar = self.make()
+        sidebar.set_compact(True)
+        for page_id, item in sidebar.items.items():
+            self.assertTrue(item.image.get_visible())
+            self.assertFalse(item.label.get_visible(), page_id)
+            self.assertFalse(item.details.get_visible(), page_id)
+            self.assertFalse(item.minimize_button.get_visible(), page_id)
+            self.assertEqual(item.get_tooltip_text().split("\n")[0], item.page.title)
+        self.assertIn("10", sidebar.items["sda"].get_tooltip_text())   # its usage line
+        added = FakeDevicePage("sdc", usage=30.0)
+        sidebar.add_item(added)                                # later rows follow
+        self.assertTrue(sidebar.items["sdc"].compact)
+        sidebar.set_compact(False)
+        item = sidebar.items["sda"]
+        self.assertTrue(item.label.get_visible())
+        self.assertTrue(item.details.get_visible())
+        self.assertTrue(item.minimize_button.get_visible())
+        self.assertIsNone(item.get_tooltip_text())
+
+    def test_icons_only_keeps_the_entries_own_choices(self):
+        sidebar = self.make()
+        sidebar.set_minimized("sda", True)
+        sidebar.set_compact(True)
+        sidebar.set_compact(False)
+        self.assertTrue(sidebar.items["sda"].minimized)        # still minimised
+        self.assertFalse(sidebar.items["sda"].details.get_visible())
+
     def test_row_menu(self):
         sidebar = self.make()
 
@@ -444,15 +473,27 @@ class WindowTest(unittest.TestCase):
         win = self.make(demo=False)
         self.assertEqual(win.sidebar.order(), ["overview", "apps", "processes", "cpu", "memory"])
 
-    def test_last_viewed_page_is_restored_and_saved(self):
-        win = self.make(**{"last-viewed-page": "memory"})
-        self.assertEqual(win.visible_page_id(), "memory")
-        win.sidebar.select("cpu")
-        self.assertEqual(self.settings.get("last-viewed-page"), "cpu")
-
-    def test_unknown_last_page_falls_back_to_first(self):
-        win = self.make(**{"last-viewed-page": "gpu-gone"})
+    def test_always_opens_on_the_overview(self):
+        # M55: whatever was shown when the app closed.
+        win = self.make()
         self.assertEqual(win.visible_page_id(), "overview")
+        win.sidebar.select("cpu")
+        again = self.make()
+        self.assertEqual(again.visible_page_id(), "overview")
+        self.assertEqual(again.sidebar.selected_id(), "overview")
+
+    def test_show_overview_from_any_page(self):
+        win = self.make()
+        win.select_page("memory")
+        win.show_overview()                      # what a second launch does
+        self.assertEqual(win.visible_page_id(), "overview")
+
+    def test_without_an_overview_the_first_entry(self):
+        win = self.make()
+        win.remove_page("overview")
+        win.select_page("memory")
+        win.show_overview()
+        self.assertEqual(win.visible_page_id(), win.sidebar.order()[0])
 
     def test_replace_page_in_place(self):
         win = self.make()

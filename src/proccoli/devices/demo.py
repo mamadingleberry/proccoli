@@ -12,6 +12,7 @@ from ..core.units import format_percent, format_rate
 from .base import DeviceInfo, DeviceKind, Monitor, Snapshot
 from ..core.sysroot import SysRoot
 from .manager import Discoverer
+from ..core.ticker import graph_points
 
 DEMO_ROOT = "/nonexistent/proccoli-demo"
 
@@ -57,7 +58,7 @@ class DemoDiscoverer(Discoverer):
         return [SineMonitor().info]
 
     def create_monitor(self, info, sysroot, settings):
-        return SineMonitor(history_points=settings.get("graph-data-points"))
+        return SineMonitor(history_points=graph_points(settings))
 
 
 class DemoGpuDiscoverer(Discoverer):
@@ -88,7 +89,7 @@ class DemoGpuDiscoverer(Discoverer):
         registry = GpuBackendRegistry((DemoIntelGpuTopBackend, demo_summary_backend()))
         return GpuController(info, gpu, registry,
                              GpuDeps(SysRoot(DEMO_ROOT), settings, self.system),
-                             settings.get("graph-data-points"))
+                             graph_points(settings))
 
 
 @functools.lru_cache(maxsize=None)   # a GObject class may be registered only once

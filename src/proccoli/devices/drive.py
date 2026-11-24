@@ -9,6 +9,7 @@ from ..core.sysroot import SysRoot
 from ..core.units import Base, format_bytes, format_percent, format_rate
 from .base import DeviceInfo, DeviceKind, Monitor, Snapshot
 from .manager import Discoverer
+from ..core.ticker import graph_points
 
 SECTOR = 512                       # /sys/block counts 512-byte sectors, always
 IGNORED = ("loop", "ram", "zram", "fd")
@@ -82,7 +83,7 @@ class DriveDiscoverer(Discoverer):
         return found
 
     def create_monitor(self, info, sysroot, settings) -> Monitor:
-        return DriveMonitor(info, sysroot, settings.get("graph-data-points"))
+        return DriveMonitor(info, sysroot, graph_points(settings))
 
 
 @dataclass

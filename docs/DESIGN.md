@@ -29,8 +29,8 @@ Diagrams use [Mermaid](https://mermaid.js.org/), which GitHub renders.
 
 **Non-goals (for now)**
 
-- NVIDIA and AMD detailed backends. The interfaces are designed for them, but
-  they are not built yet.
+- An AMD detailed backend. The interfaces are designed for it, but it isn't
+  built yet. (NVIDIA's arrived in M55, §7.4.)
 - NPU pages. Resources has them, but they are out of scope.
 - Copying Resources' code, icons or name. Proccoli re-implements the UX from
   scratch, because Resources is GPL and Proccoli is 0BSD (see §11, Licensing).
@@ -95,6 +95,7 @@ edits niceness, priority and CPU affinity.
 - *Devices:* virtual drives, virtual network interfaces
 
 It also stores the window size, sort columns and last viewed page.
+(Proccoli doesn't keep the last page: it always opens on the Overview.)
 
 **Privileged work** goes through helper executables in
 `/usr/libexec/resources/`:
@@ -137,7 +138,8 @@ swapped for a detailed one when a backend can provide it.
 | Decision | Choice | Why |
 |---|---|---|
 | Language | Python 3 (system interpreter) + PyGObject | Same stack as intel_gpu_top_gui, so code can be reused directly. No build step and nothing from pip. |
-| Toolkit | GTK ≥ 4.10, libadwaita ≥ 1.5 | `AdwOverlaySplitView`, `AdwBreakpoint`, `AdwToolbarView` (1.4) and `AdwDialog`, `AdwPreferencesDialog`, `AdwAboutDialog` (1.5). Ubuntu 24.04 ships 1.5. `AdwShortcutsDialog` (1.8) is used when present. |
+| Toolkit | GTK ≥ 4.10, libadwaita ≥ 1.5 | `AdwOverlaySplitView`, `AdwBreakpoint`, `AdwToolbarView` (1.4) and `AdwDialog`, `AdwPreferencesDialog`, `AdwAboutDialog` (1.5). Ubuntu 24.04 ships 1.5 (with GTK 4.14 and GLib 2.80). `AdwShortcutsDialog` (1.8) is used when present. |
+| Newer APIs | Only through `ui/compat.py` or a `hasattr` check | Ubuntu 24.04 is the floor and is tested on (M53). `compat` has `spinner` (`Adw.Spinner`, 1.6, else `Gtk.Spinner`), `ensure_font_dpi` (libadwaita 1.5's `sp` breakpoints need a font DPI) and `without_css_variables` (GTK < 4.16 can't read `:root` variables). `app.signal_adder` picks GLib's Unix signal function. `test_static.PlatformFloorTest` rejects unguarded newer libadwaita classes. |
 | UI definitions | Built in Python (not `.ui` files) | Simple to review and test, and avoids a GResource compile step. `.ui` files can be added later. |
 | Graph drawing | Cairo `Gtk.DrawingArea` | Ported from intel_gpu_top_gui's `GraphView` (crisp lines, adaptive axes). |
 | Settings | GSettings with an installed schema, plus an in-memory fallback | Mirrors Resources. The fallback makes running from a source checkout and testing easy. |
@@ -201,31 +203,35 @@ imported lazily, so the domain stays testable without a display.
 
 ```
 proccoli/
-├── README.md  DESIGN.md  PLAN.md  LICENSE  Makefile
+├── README.md  CLAUDE.md  LICENSE  Makefile
+├── docs/       DESIGN.md  PLAN.md
+├── .claude/skills/proccoli-change/SKILL.md   # the checklist for every change
 ├── src/proccoli/
 │   ├── __init__.py            # APP_ID, APP_NAME, version, icon names (the only place)
 │   ├── __main__.py  app.py    # Application: actions, dialogs; asks context.py for services
 │   ├── context.py             # the composition root (§4.2)
 │   ├── core/       system.py  sysroot.py  settings.py  ticker.py  history.py  units.py
 │   │               pciids.py  jsonstream.py  runner.py  privileged.py  palette.py
-│   │               styles.py  applog.py  trust.py  watchdog.py
+│   │               styles.py  applog.py  trust.py  watchdog.py  statslog.py
 │   ├── devices/    base.py  manager.py  cpu.py  memory.py  drive.py  network.py  nm.py
 │   │               battery.py  demo.py
-│   ├── gpu/        info.py  backend.py  registry.py  controller.py  fdinfo.py  generic_drm.py
+│   ├── gpu/        info.py  backend.py  registry.py  detect.py  controller.py  fdinfo.py
+│   │               generic_drm.py
 │   │               intel_gpu_top/  backend.py  history.py  views.py  graph.py  grid.py  clients.py
+│   │               nvidia/         query.py  backend.py  views.py
 │   ├── processes/  model.py  monitor.py  apps.py  actions.py  top.py
 │   ├── helper/     proccoli_helper.py    # installed as libexec/proccoli/proccoli-helper (root)
 │   └── ui/         window.py  window_state.py  sidebar.py  page.py  style.py  theme.py
 │                   layout.py  elevation.py  sidebar_order.py  sidebar_fields.py  axes.py
-│                   sidebar_visibility.py
+│                   sidebar_visibility.py  sidebar_style.py  compat.py  series_visibility.py
 │       ├── widgets/  graph.py  graph_box.py  double_graph_box.py  info_row.py  meter.py
-│       │             app_icon.py  top_table.py
+│       │             app_icon.py  top_table.py  legend.py  legend_chart.py
 │       ├── pages/    device.py  table.py  factory.py  cpu.py  memory.py  drive.py  network.py
-│       │             battery.py  gpu.py  apps.py  processes.py  demo.py  overview.py
+│       │             battery.py  gpu.py  apps.py  processes.py  demo.py  overview.py  error.py
 │       └── dialogs/  info.py  process_options.py  preferences.py  about.py  launch_auth.py
 ├── data/       .desktop  .metainfo.xml  .gschema.xml  .policy  icons/hicolor/...
 ├── packaging/  install.sh  build-deb.sh  make-logo.py  render-icons.py
-└── tests/      helpers.py (FakeRoot, FakeSystem, make_context)  fixtures/  test_*.py
+└── tests/      helpers.py (FakeRoot, FakeSystem, make_context, pump, resize_window)  fixtures/  test_*.py
                 ui/shoot.py (screenshots)  ui/perf.py (CPU use)  run-headless.sh
 ```
 
@@ -553,6 +559,14 @@ tested with fixtures):
 | Battery | `/sys/class/power_supply/*` with `type=Battery` | `capacity`, `power_now` or `current_now × voltage_now` | `energy_full_design`, `cycle_count`, `technology`, `manufacturer`, `model_name` |
 | GPU | see §7 | see §7 | see §7 |
 
+**A device that can't be set up (M55)** still appears. If its
+`Discoverer.create_monitor()` or the monitor's `start()` raises,
+`DeviceManager._build` logs it and keeps a `FailedMonitor` in its place:
+a monitor that records nothing and carries `message` (in words) and
+`details` (the traceback). Its page is an error page (§9.7);
+`DeviceManager.retry(id)` builds it again. A discoverer that fails as a
+whole is still only logged (there's no device to show).
+
 **Sidebar naming** mirrors Resources: the Processor's description is its
 model and Memory's its size, DDR type and speed; drives are
 labelled "Drive" with the model as the description, and network interfaces are "Ethernet Connection",
@@ -636,8 +650,12 @@ classDiagram
         +interval_ms: int
         +restart()
     }
-    class NvidiaSmiBackend {
-        <<future, DETAIL>>
+    class NvidiaBackend {
+        role = DETAIL
+        +tool: nvidia-settings|nvidia-smi
+        +source_note: str
+        +sample: NvidiaSample
+        +history: History
     }
     class AmdGpuTopBackend {
         <<future, DETAIL>>
@@ -668,7 +686,7 @@ classDiagram
     GpuBackend <|-- GenericDrmBackend
     GpuBackend <|-- DetailBackend
     DetailBackend <|-- IntelGpuTopBackend
-    DetailBackend <|-- NvidiaSmiBackend
+    DetailBackend <|-- NvidiaBackend
     DetailBackend <|-- AmdGpuTopBackend
     GpuBackend --> BackendRole
     GpuBackend o-- GpuDeps
@@ -845,12 +863,71 @@ sequenceDiagram
 |---|---|---|
 | `IntelGpuTopBackend` | DETAIL | `PREFERRED` when `vendor == INTEL`, the driver is `i915` or `xe`, and `intel_gpu_top` is installed. `needs_elevation` unless running as root, `perf_event_paranoid` ≤ 0, or the binary has file capabilities. |
 | `GenericDrmBackend` | SUMMARY | `FALLBACK` for any DRM card |
-| `NvidiaSmiBackend` (future) | DETAIL | `PREFERRED` when `vendor == NVIDIA` and `nvidia-smi` is present |
+| `NvidiaBackend` (M55) | DETAIL | `PREFERRED` when `vendor == NVIDIA`, the driver is `nvidia` (not `nouveau`) and `nvidia-settings` or `nvidia-smi` is installed. Never needs administrator rights. |
 | `AmdGpuTopBackend` (future) | DETAIL | `PREFERRED` when the driver is `amdgpu` and `amdgpu_top` is present |
 
 The registry picks the best SUMMARY class and the best DETAIL candidate
 separately. Adding a vendor means one DETAIL backend class with its `TABS`
 and views, plus a registration line. Nothing else changes.
+
+**Detection: which panel a GPU gets (M55).** `gpu/detect.py` makes the
+choice explicit. `plan_gpu(gpu, registry, deps)` asks every registered
+backend for its probe (`GpuBackendRegistry.probe_all`, unsupported ones
+included, since their reasons explain the choice) and returns a `GpuPlan`:
+the chosen summary and detail sources, `panel()` and `explain()`, one line
+per backend. `GpuController` makes the plan first and logs it at INFO, for
+example:
+
+```
+NVIDIA GPU 0000:02:00.0 (driver nvidia): overview + NVIDIA tabs
+  intel_gpu_top (detail) not usable: not an Intel GPU
+  nvidia (detail) chosen: nvidia-settings, then nvidia-smi
+  generic (summary) chosen: …
+```
+
+The GPU page shows `detail_text()` as its *Detailed Statistics* property.
+When no summary source can serve a GPU, the controller raises with the
+plan's explanation, and the GPU gets an error page (§9.7) instead of
+vanishing.
+
+```mermaid
+flowchart TD
+    D["discover_gpus(): /sys/class/drm/card*"] --> P["plan_gpu: probe every backend"]
+    P --> S{a summary source?}
+    S -->|no| E["RuntimeError(plan.explain()) → FailedMonitor → ErrorPage"]
+    S -->|yes| T{a detail source?}
+    T -->|no| O["GpuPage: Overview only"]
+    T -->|"Intel: intel_gpu_top"| I["Overview + Details + Processes"]
+    T -->|"NVIDIA: nvidia-settings / nvidia-smi"| N["Overview + Details"]
+```
+
+**NVIDIA (M55).** `gpu/nvidia/` polls NVIDIA's tools once per refresh,
+through `System.run_async` (never two polls at once; answers arriving
+after a stop are dropped by a generation counter):
+
+- **nvidia-settings first**, as asked: `settings_targets_argv` finds this
+  GPU's `[gpu:N]` target by PCI slot (`PCIDomain/Bus/Device/Func`), then
+  `settings_argv` reads utilisation (graphics, memory, video, PCIe),
+  temperature, clocks and memory in terse form each refresh.
+- **nvidia-smi when nvidia-settings can't**: not installed, the GPU not
+  listed, or no NV-CONTROL. NV-CONTROL is an X11 extension, so in a
+  Wayland session (Ubuntu's default) nvidia-settings lists the GPU but
+  can't read its utilisation or clocks; the query exits 1 with "No targets
+  match", which `NvidiaError.unreachable` marks. nvidia-smi reads the
+  driver directly: `smi_argv` asks one GPU (`-i` PCI slot) for
+  `SMI_FIELDS` as CSV (utilisation, encoder, decoder, memory, temperature,
+  power and limit, clocks, fan, P-state). `source_note` says which tool is
+  in use and why; the tool's own error text goes to the log.
+- **Failing:** if neither can read the GPU, or a running source has 3 bad
+  readings in a row, the backend emits `failed` with the reason, and the
+  Details tab shows it with *Try Again* (§7.2's FAILED state).
+- The readings (`NvidiaSample`) feed the Overview tab and the sidebar
+  through `to_summary()`, and the Details tab (`views.py`: a caption, then
+  graphs for utilisation, video engines, video memory, clocks, temperature,
+  power and fan, with legends; measures the tool doesn't report are
+  hidden). There's no per-process view: `nvidia-smi pmon` takes about a
+  second per sample. `GpuController.process_usage()` therefore uses the
+  detail source's figures only when it has some.
 
 ## 8. Processes and Apps
 
@@ -920,7 +997,11 @@ classDiagram
 ```
 
 - **Per-process data:**
-  - CPU: `/proc/PID/stat` deltas (normalised by the CPU count, if set)
+  - CPU: `/proc/PID/stat` deltas, divided by the CPU count when
+    *Normalize Processor Usage* is on (the default): each row is then a
+    share of the whole processor and the column adds up to the total; off,
+    one busy core is 100 %, as in `top`. Both are wanted (on 24 threads a
+    stuck single-threaded process reads 4.2 % or 100 %), so it stays (M58)
   - Memory: `/proc/PID/status` (`VmRSS`, `VmSwap`)
   - Disk I/O: `/proc/PID/io` (own processes only)
   - Cgroup: `/proc/PID/cgroup`, read once per process lifetime
@@ -1139,8 +1220,9 @@ classDiagram
   charts) gets a left gutter of y labels (0/25/50/75/100 %, labelled as
   far as they fit, always 0 and 100) with tick marks, and a bottom row of
   time labels with ticks: round steps (`nice_step`: 10 s, 1 min, …) back
-  from "now" at the right edge, one unit per axis. The span is graph data
-  points × refresh interval (`history_span_s`), followed live. Small
+  from "now" at the right edge, one unit per axis. The span is the
+  *Graph Time Range* (`graph-time-range`, `history_span_s`; M58), followed
+  live. Small
   graphs use a smaller font, and sidebar charts grow from 36 to 52 px to
   fit the labels. `show-graph-axes` (Preferences → *Show Graph Axes*, on
   by default) turns them off. Graphs of rates and temperatures have no
@@ -1175,10 +1257,21 @@ classDiagram
     can't flip back and forth either. `fit` returning True means "fit
     again once this is laid out".
   - *Overview grid* (M50): see §9.6.
-  - *Per-thread CPU graphs:* height-for-width (`Graph.set_aspect`, 0.6 of
-    the width, 48–240 px; also the minimum, since a scrolled page gets only
-    its minimum height); cells are at least 120 px wide, so the grid picks
-    fewer, larger columns.
+  - *Per-CPU chart (M55, M57):* with *Show Usages of Logical CPUs*, the
+    Processor page shows one page graph with a line per logical CPU. (It
+    replaced a grid of small per-thread graphs.) Its legend sits inside
+    the chart's card, and chart and legend together take **the same area
+    as the total chart** (since M59 it's a `LegendChart`, below):
+    `DevicePage.reserve(graph, measure)` counts the
+    legend's height as part of the graph's area, `fit` shares out areas,
+    and each graph gets its area less its reserve (`graph_in_area`, at
+    least `MIN_GRAPH_IN_AREA`, 32 px). Switching charts refits
+    (`CpuPage.fit_key` includes the visible chart and the legend's height).
+    When values in the legend would leave the chart under `COMFORT_GRAPH`
+    (96 px; `use_compact_legend`), the legend goes compact: swatch and
+    name, the value on hover. The area doesn't depend on the legend, so
+    the choice settles; the full legend's height is measured once per
+    width.
   - *GPU Details:* intel_gpu_top_gui's `GraphGrid` shares out the spare
     height and picks its column count from the width; spare height now
     stops at `graph_cap(column width)` (same limits), passing what a
@@ -1221,6 +1314,71 @@ classDiagram
     FittingPage <|-- OverviewPage
 ```
 
+- **Many lines in one graph (M55):** `Graph.set_fill(False)` draws lines
+  without the shaded area (16+ filled areas would be mud);
+  `set_distinct_colors(True)` gives every series its own colour
+  (`entry_colors`, the same generator as the sidebar's entry colours, so
+  however many CPUs there are, no two lines match); `set_series_shown(i,
+  on)` leaves a line out. **Left-click** a legend item hides or shows its
+  line; **right-click** (long press on touch) shows only that line, and
+  right-clicking it again shows every line (`ui/series_visibility.py`,
+  pure; M58). **A chart never shows nothing (M59):** every change ends in
+  `never_empty`, so deselecting the only line shown (or hiding the lines
+  one by one) brings every line back; lines without data
+  (`Legend.set_available`, e.g. a measure a tool doesn't report) never
+  count as shown.
+- **`LegendChart` (M59), the reusable many-line chart**
+  (`ui/widgets/legend_chart.py`): a `GraphBox` with lines only, a distinct
+  colour per line and the `Legend` inside its card. `set_lines(series,
+  names)` and `set_values(texts)` are all a user needs; it carries the
+  click rules above and the compact legend (`fit_legend`, below). On a
+  device page, `DevicePage.add_legend_chart(group, title, …)` fits it
+  like any page graph with the legend counted in its area (`reserve`), and
+  `DevicePage.fit` compacts legends after fitting. Standalone (the NVIDIA
+  Details tab) it's an ordinary card. Users: the Processor page's per-CPU
+  chart and NVIDIA's utilisation, video-engine and clock graphs.
+
+```mermaid
+classDiagram
+    direction LR
+    class GraphBox
+    class LegendChart {
+        +legend: Legend
+        +comfort: int
+        +set_lines(series, names)
+        +set_values(texts)
+        +legend_height(width) int
+        +fit_legend() bool
+    }
+    class Legend {
+        +items: list~LegendItem~
+        +available: list~bool~
+        +shown() list~bool~
+        +set_shown(shown)
+        +toggle(i)
+        +solo(i)
+        +set_available(i, on)
+        +set_compact(on)
+    }
+    class series_visibility {
+        <<module, pure>>
+        +never_empty(shown, available)
+        +toggle(shown, i, available)
+        +solo(shown, i, available)
+    }
+    class DevicePage {
+        +add_legend_chart(group, title) LegendChart
+        +reserve(graph, measure)
+        +fit_legends() bool
+    }
+    GraphBox <|-- LegendChart
+    LegendChart *-- Legend
+    Legend ..> series_visibility
+    DevicePage o-- "*" LegendChart
+``` `Legend` (`ui/widgets/legend.py`) is a FlowBox of
+  `LegendItem` toggles: a swatch drawn in `graph.color_for(i)` (so it
+  follows palette changes with the graph), the name and the current value;
+  switching one off hides its line. The NVIDIA Details tab reuses both.
 - **Meter:** the sidebar's usage display. By default a 36 px area chart
   across the row (as in Resources) of `SidebarSummary.series`: one
   percentage for Processor, Memory, GPUs, drives (busy time) and
@@ -1232,11 +1390,13 @@ classDiagram
 
 - Minimum size 360×240. The `AdwBreakpoint` at `max-width: 780sp` collapses
   the split view: the sidebar becomes an overlay.
-- **Hiding the sidebar, burger top left (M46, M52):** the sidebar can be
-  hidden at any width from the main menu's *Show Sidebar* check item or
-  F9, both the stateful `win.toggle-sidebar` action. (Until M52 a toggle
-  button beside the burger did this; it's gone.) The main menu ("burger")
-  always stays at the window's top left:
+- **Sidebar modes, burger top left (M46, M52, M54):** the sidebar is
+  *Full*, *Icons Only* or *Hidden*, at any width, picked from the main
+  menu's *Sidebar* section (radio items of the stateful `win.sidebar-mode`
+  action). F9 shows and hides it (`win.toggle-sidebar`), keeping the
+  style. (Until M52 a toggle button beside the burger did this, and until
+  M54 a *Show Sidebar* check item.) The main menu ("burger") always stays
+  at the window's top left:
   - *The corner (M47):* the app's logo (`app_logo_button`, 24 px, a flat
     button for `app.about`) sits in the top-left corner, with the burger
     right beside it: *logo, burger*, and nothing else, in both places
@@ -1248,13 +1408,29 @@ classDiagram
     (`start_controls`). They show exactly when
     `header_controls_visible(show_sidebar, collapsed)`, i.e. when the
     sidebar isn't beside the content. All burgers share one menu model.
-  - *The menu item (M52):* `SidebarVisibility.action` is a stateful
-    boolean action with no parameter, so GTK draws a check item, with F9
-    shown beside it. Its state follows `show-sidebar` (any change: menu,
+  - *F9 (M52):* `SidebarVisibility.action` is a stateful boolean action
+    with no parameter. Its state follows `show-sidebar` (any change: menu,
     F9, the overlay closing after a page is picked, the window
     narrowing); activating it toggles (GIO's default for such an action
-    goes through `change-state`, which sets `show-sidebar`). It sits in
-    the menu's first section, after *Go To*.
+    goes through `change-state`, which sets `show-sidebar`).
+  - *The modes (M54):* `SidebarVisibility.mode_action` (`sidebar-mode`,
+    a string parameter and state) backs the *Sidebar* section's three
+    radio items, after *Go To*. Its state is `mode_of(show-sidebar,
+    sidebar-style)` and follows both; picking a mode applies
+    `choose(mode, style)`: *Hidden* only hides, so the style survives
+    and F9 brings it back. Two settings rather than one three-way key
+    keep M46's rules (narrow windows never touch `sidebar-shown`) as
+    they were. `ui/sidebar_style.py` holds these rules, without a display.
+  - *Icons only (M54):* the style reaches the window through the
+    injected `on_style` callback. `MainWindow._apply_sidebar_style` calls
+    `StackSidebar.set_compact` (every row shows just its icon, centred,
+    with no minimise button; its tooltip is `compact_tooltip`: name,
+    description, usage line) and sets the split view's minimum and
+    maximum sidebar width to `rail_width(header minimum)`, so the logo and
+    burger still fit (about 100 px). *Full* restores the split view's own
+    widths. Each entry's own choices (minimised, hidden parts) are kept
+    for when it's full again. Right-click menus and dragging still work.
+    Preferences → Sidebar → *Style* sets the same key.
   - `SidebarVisibility(split_view, settings)` (`ui/sidebar_visibility.py`)
     applies the rules. On wide windows `show-sidebar` follows and saves
     `sidebar-shown`. On narrow ones the overlay starts closed, closes when
@@ -1272,15 +1448,15 @@ stateDiagram-v2
     state "Narrow, overlay open" as NO
     [*] --> WS: sidebar-shown = true
     [*] --> WH: sidebar-shown = false
-    WS --> WH: ≡ → Show Sidebar (uncheck) / F9 (saves false)
-    WH --> WS: ≡ → Show Sidebar (check) / F9 (saves true)
+    WS --> WH: ≡ → Sidebar → Hidden / F9 (saves false)
+    WH --> WS: ≡ → Sidebar → Full or Icons Only / F9 (saves true)
     WS --> NC: window narrows
     WH --> NC: window narrows
-    NC --> NO: ≡ → Show Sidebar / F9
+    NC --> NO: ≡ → Sidebar → Full or Icons Only / F9
     NO --> NC: pick a page / F9 / click outside
     NC --> WS: widens, sidebar-shown = true
     NC --> WH: widens, sidebar-shown = false
-    note right of WS: logo + burger in the sidebar header; Show Sidebar checked
+    note right of WS: logo + burger in the sidebar header; full entries or icons only (sidebar-style)
     note right of WH: logo + burger in every page header
 ```
 
@@ -1290,28 +1466,45 @@ classDiagram
     class SidebarVisibility {
         +split: OverlaySplitView
         +settings
+        +on_style(SidebarStyle)
         +action: Gio.SimpleAction ("toggle-sidebar", state b)
+        +mode_action: Gio.SimpleAction ("sidebar-mode", state s)
         +preferred: bool
+        +style: SidebarStyle
+        +mode() Mode
         +toggle()
         +page_selected()
         +shutdown()
         -_on_collapsed()
         -_on_shown() : saves; syncs action state
         -_on_change_state(value) : sets show-sidebar
+        -_on_mode_change(value) : choose(); sets style, show-sidebar
+    }
+    class sidebar_style {
+        <<module, pure>>
+        +SidebarStyle: FULL, ICONS
+        +Mode: FULL, ICONS, HIDDEN
+        +mode_of(shown, style) Mode
+        +choose(mode, style) (shown, style)
+        +rail_width(header) int
+        +compact_tooltip(title, description, usage) str
     }
     class MainWindow {
         +menu_model: primary_menu(goto)
-        +add_action(sidebar_visibility.action)
+        +add_action(sidebar_visibility.action, .mode_action)
+        +_apply_sidebar_style(style) : set_compact, sidebar widths
         F9 → win.toggle-sidebar
     }
     class primary_menu {
         Go To ›
-        Show Sidebar ✓ (win.toggle-sidebar)
+        Sidebar: ◉ Full ○ Icons Only ○ Hidden (win.sidebar-mode)
         Show All Details… / Preferences / Shortcuts / About
     }
-    MainWindow --> SidebarVisibility
+    MainWindow --> SidebarVisibility : on_style = _apply_sidebar_style
     MainWindow --> primary_menu
-    primary_menu ..> SidebarVisibility : item targets its action
+    primary_menu ..> SidebarVisibility : items target mode_action
+    SidebarVisibility ..> sidebar_style
+    MainWindow ..> StackSidebar : set_compact
 ```
 - **Go To (M48):** the main menu's first item is a *Go To* submenu listing
   every pane in the sidebar's display order, so panes can be switched
@@ -1414,6 +1607,7 @@ classDiagram
         +set_minimized(id, on)
         +reset_order()
         +set_field_shown(id, field, on)
+        +set_compact(on)
         +row_menu(id) Gio.Menu
         +row_actions(id) Gio.ActionGroup
         +assign_colors()
@@ -1430,6 +1624,7 @@ classDiagram
         +minimized: bool
         +set_minimized(on)
         +set_hidden_fields(fields)
+        +set_compact(on) : icon only + tooltip
         +shows(field) bool
         +minimize_button
         +details: icon-aligned box
@@ -1447,7 +1642,10 @@ classDiagram
   Adwaita's icon for their type (solid state, hard disk, removable, optical,
   memory card, virtual), network interfaces theirs (wired, wireless, VPN)
   and batteries `battery-symbolic`.
-- The last viewed page and the window size and maximised state are saved.
+- The window size and maximised state are saved. The page isn't: every
+  launch opens on the Overview (`MainWindow.show_overview()`, also called
+  by `Application.do_activate` when Proccoli is launched again while
+  open; M55).
 - Keyboard: `Ctrl+F` search (table pages), `Ctrl+,` Preferences, `Ctrl+?`
   shortcuts, `Ctrl+Q` quit, `Delete` end process, `Ctrl+Delete` kill
   process, `Ctrl+I` information.
@@ -1667,7 +1865,7 @@ for every entry that has a sidebar chart, in the sidebar's order and
 colours: the entry's icon, name and usage on top; its detail and
 description below; then a chart of the same series as its sidebar chart.
 Clicking a card opens that page. Placeholder pages (no summary at all) get
-no card. On a first start (no `last-viewed-page`) it's the page shown.
+no card. It's always the page shown at launch (M55).
 
 - **Layout: an N × M grid that tries to fill the page** (M50, M51). Before, chart
   height followed card width (0.4 ×, at most 240 px), which left most of a
@@ -1719,11 +1917,17 @@ flowchart TD
     G -->|"yes, or chrome width only estimated; first time"| H[fit again after layout]
     G -->|no| I[done]
 ```
+- **Readings line (M57):** under the detail line, a card shows
+  `SidebarSummary.facts`: the processor's temperature, a GPU's
+  temperature and memory ("Temperature 39 °C · Memory 598.7 MB / 8.5 GB",
+  `core.units.device_facts`, in the user's temperature unit and unit
+  base). Readings a device doesn't have are left out (an Intel iGPU has
+  neither, so no line). The line appears with the first data, so
+  `fit_key` counts cards showing one and the grid refits.
 - **Data:** a card calls `page.sidebar_summary()` and follows the page's
   `summary-changed`, exactly like a sidebar row. `SidebarSummary.text()`
   builds the usage line for both. Charts redraw only while mapped; axes
-  and time span follow `show-graph-axes`, `graph-data-points` and
-  `refresh-speed`.
+  and time span follow `show-graph-axes` and `graph-time-range`.
 - **Decoupled from the sidebar (DI):** `OverviewPage(settings,
   navigate)` never touches the sidebar. `StackSidebar` emits
   `entries-changed` whenever its charted entries, their order or their
@@ -1767,6 +1971,7 @@ classDiagram
         +signal summary-changed()
     }
     class SidebarSummary {
+        +facts: list~str~
         +text() str
         +has_chart() bool
     }
@@ -1859,6 +2064,44 @@ classDiagram
     TopTables --> ProcessMonitor : updated
 ```
 
+### 9.7 Error pages (M55)
+
+A device Proccoli can't read keeps its sidebar entry; its page says what
+went wrong instead of the device silently missing.
+
+- **When:** `DeviceManager` couldn't build or start the device's monitor
+  (it keeps a `FailedMonitor` with the message and traceback, §6), or the
+  page factory's builder raised (`PageFactory.create` logs it and returns
+  the error page instead).
+- **What it shows:** `ErrorPage` (`ui/pages/error.py`): an `Adw.StatusPage`
+  with the error icon, "*Name* Isn't Available" and the message; a
+  *Technical Details* expander (monospace, selectable, *Copy Details*);
+  *Try Again*. It has no sidebar summary, so the entry has no chart.
+- **Try Again** emits `retry`. `MainWindow._on_retry` calls
+  `DeviceManager.retry(id)` for a failed device (which emits
+  `device-removed` and `device-added`, with an error page again if it
+  still fails) and keeps the page selected; for a page that failed to
+  build, it builds the page again and swaps it in place.
+- The GPU page's vendor tabs show their own FAILED state (§7.2) with the
+  same error icon and *Try Again*.
+
+```mermaid
+sequenceDiagram
+    participant DM as DeviceManager
+    participant F as PageFactory
+    participant W as MainWindow
+    participant E as ErrorPage
+    DM->>DM: create_monitor() or start() raises
+    DM-->>W: device-added(FailedMonitor)
+    W->>F: create(monitor)
+    F-->>W: ErrorPage(message, traceback)
+    Note over E: user clicks Try Again
+    E-->>W: retry
+    W->>DM: retry(id)
+    DM-->>W: device-removed, device-added(monitor or FailedMonitor)
+    W->>W: select_page(id)
+```
+
 ## 10. Runtime flow
 
 ### 10.1 Start-up
@@ -1884,7 +2127,7 @@ sequenceDiagram
     DM-->>W: device-added(monitor) × N
     W->>W: page = ctx.pages.create(monitor) (GPU: GpuPage with the detail TABS)
     W->>W: add PageContainer + StackSidebarItem
-    W->>W: restore last-viewed page
+    W->>W: show_overview()
     A->>T: start(refresh speed)
 ```
 
@@ -1924,15 +2167,24 @@ every 5 s.
   Resources' keys: window size and maximised state, temperature unit, unit
   base, refresh speed, virtual drives and network interfaces, sidebar
   details, description and meter type, network bits, every `apps-show-*` and
-  `processes-show-*` column, logical CPUs, graph grids, graph data points,
-  sort column and order, last viewed page, normalize CPU usage, detailed
-  priority. Proccoli adds:
+  `processes-show-*` column, logical CPUs, graph grids, sort column and
+  order, normalize CPU usage, detailed priority. Proccoli adds:
+  - `graph-time-range` (M58, replacing Resources' *graph data points*):
+    how much time graphs show (30 s, 1, 2, 5 or 10 minutes; default 1
+    minute). `core.ticker.graph_points(settings)` turns it into a number
+    of samples at the current refresh speed, so changing the speed no
+    longer changes the time a graph covers; `DeviceManager` resizes every
+    history when either changes
+  - `stats-log` (on) and `stats-log-max-size` (KiB, default 4096): the
+    statistics files (below)
   - `color-scheme`: the style: `system` (follow the desktop), `light`,
     `dark`, `sand`, `sky`, `twilight` or `midnight`
   - `palette`: one of the eight colour palettes (§9.3), `system` by default
   - `auth-at-launch`: offer to authenticate at start-up (§9.4), on by default
   - `sidebar-shown`: whether the sidebar shows on wide windows (§9.2), on
     by default
+  - `sidebar-style`: `full` (default) or `icons` (icons only, M54); with
+    `sidebar-shown` it gives the menu's three modes (§9.2)
   - `overview-top-by`: what ranks the Overview's busiest apps and
     processes, `cpu` (default) or `memory` (§9.6)
   - `sidebar-order`, `sidebar-minimized` and `sidebar-hidden-fields`: the
@@ -1949,9 +2201,12 @@ every 5 s.
 - **Diagnostics log** (`core/applog.py`): standard practice on Linux, a
   rotating file at `$XDG_STATE_HOME/proccoli/proccoli.log`
   (`~/.local/state/proccoli/`). `FileLog` attaches a `RotatingFileHandler`
-  to the `proccoli` logger: `log-level` (off, error, warning, info (default),
-  debug) and `log-max-size` (KiB, default 1024, 64–65536); one older file
-  is kept, so it never takes more than twice the size on disk (tested).
+  to the `proccoli` logger: `log-level` (off, error, warning, info, debug;
+  **debug, i.e. everything, by default** since M55) and `log-max-size`
+  (KiB, default 1024, 64–65536); one older file is kept, so it never takes
+  more than twice the size on disk (tested). Times are **UTC**, ISO 8601
+  to the millisecond (`UtcFormatter`: `2026-11-23T21:41:25.154Z`), so logs
+  from machines in different time zones line up.
   The terminal keeps its own level (`--debug`). `PerformanceLog` (in the
   context, connected to the ticker first, so it times whole refreshes)
   writes every `log-performance-interval` minutes (default 10, 0 off):
@@ -1960,6 +2215,37 @@ every 5 s.
   sets all three and opens the log folder. `Application(log_file=...)`
   and `PreferencesDialog(launcher=...)` are injectable, so tests never
   write to the real home. Log files are private (0600, folder 0700).
+- **Statistics files** (`core/statslog.py`, M58): every reading Proccoli
+  shows, kept on disk. (To be replaced by a SQLite history with summaries
+  and an export command: §13.2, an idea not built yet.) `StatsLog(devices, settings, directory, wall_clock)`
+  follows each monitor's `updated` signal and writes one row per refresh
+  and device to `$XDG_STATE_HOME/proccoli/stats/<device>.csv`:
+
+  ```
+  time_utc,usage_percent,swap_percent,used_bytes,total_bytes,swap_used_bytes,swap_total_bytes
+  2026-11-24T05:05:15.244Z,18.588,0,6141931520,33042542592,0,8589930496
+  ```
+
+  - **Standards:** RFC 4180 CSV (UTF-8, `\r\n`, one header row);
+    ISO 8601 UTC times with milliseconds (`core.units.iso_utc`, shared
+    with the log); SI units spelled out in the column names
+    (`column_name`: `%` → `percent`, `B/s` → `bytes_per_second`, `°C` →
+    `celsius`); an empty field for no reading; plain decimals.
+  - **What:** `Snapshot.stats_values()` / `stats_units()`, by default the
+    graphed readings (`history_values`); Memory adds used/total bytes of
+    memory and swap, GPUs their memory bytes and memory clock.
+  - **Size:** `RotatingCsv` caps each file at `stats-log-max-size` KiB and
+    keeps one older file (`.csv.1`), so a device never takes more than
+    twice that. When a device's columns change (its per-CPU readings
+    appear), a new file starts, so every file has one valid header; a
+    file from an earlier run is continued when its header matches.
+  - **Privacy:** files 0600, folder 0700. **Cost:** rows are buffered (10
+    per file) and written on quit; at 1 s, 24 CPUs make ~140 bytes a
+    second, so 4 MiB is about 8 hours.
+  - **Wiring:** `Application(stats_dir=...)` starts it after the context
+    (never in `--demo`); Preferences → General → *Statistics Files* has
+    the switch, the size and *Open Folder*. The clock and folder are
+    injected, so tests write to a temporary folder at fixed times.
 - **Stall watchdog** (`core/watchdog.py`, M44): a frozen window logs
   nothing, because the main loop that would write is the thing that's
   stuck. `Application` starts a `StallWatchdog`: the main loop beats every
@@ -2097,3 +2383,229 @@ flowchart TD
 | 3 | Should intel_gpu_top_gui keep living as its own app, or become a thin wrapper around Proccoli's `gpu.intel_gpu_top` package? | Copy the modules in first (Milestone 9); decide about sharing later |
 | 4 | Battery page: Resources has one, but it isn't in the requested sidebar list | Build it last (Milestone 14), skip it on desktops |
 | 5 | Switch from periodic rescans to GUdev for hotplug? | Rescans; revisit if the CPU cost shows up in profiling |
+
+## 13. Ideas
+
+Designed but not built. PLAN.md's *Ideas* section has the steps; each
+becomes the next milestone when picked up.
+
+### 13.1 Lightweight mode (minimal memory)
+
+*Was the planned Milestone 56. PLAN.md, Idea 1, has the steps and the
+measurements behind them.*
+
+**Aim:** the basic figures (every device's usage, the process list) with
+as little memory as possible. Measured on Ubuntu 24.04, Proccoli's private
+memory is about 100 MB against 15–17 MB for an empty libadwaita window,
+and its Python heap is only about 12 MB of that. The rest is GTK's: every
+page's widget tree (all built at start) and what drawing them leaves
+behind. So the mode builds and draws less, rather than tuning Python data.
+
+```mermaid
+classDiagram
+    direction LR
+    class Profile {
+        <<core.profile, frozen dataclass>>
+        +lazy_pages: bool
+        +page_drop_s: float|None
+        +sidebar_charts: bool
+        +overview_charts: bool
+        +overview_tables: bool
+        +extra_graphs: bool
+        +max_time_range: str|None
+        +axes: bool
+        +themes: bool
+        +app_icons: bool
+        +gpu_details: bool
+        +pci_on_demand: bool
+        +log_level: str|None
+        +full()$ Profile
+        +lightweight()$ Profile
+    }
+    class AppContext {
+        +profile: Profile
+    }
+    class LazyPage {
+        <<ResourcePage>>
+        sidebar summary from the monitor
+        builds the real page on first map
+        drops it page_drop_s after unmap
+    }
+    class Monitor {
+        +sidebar_summary() SidebarSummary
+    }
+    AppContext *-- Profile
+    LazyPage o-- Monitor
+    LazyPage ..> PageFactory : builds the real page
+```
+
+- **One choice, read once:** the `lightweight` setting (or
+  `--lightweight`) picks `Profile.lightweight()` in `build_context`.
+  Everything else reads `ctx.profile`, never the setting, so tests build
+  either profile directly. Changing it applies at the next start
+  (Preferences offers *Restart Now*): the profile decides what the
+  composition root builds, and rebuilding a running window is more
+  teardown risk than it's worth.
+- **Lazy pages:** `LazyPage` stands in for a device page. Its sidebar entry
+  and summary come from the monitor (`Monitor.sidebar_summary()`, moved
+  out of the pages), so the sidebar never needs the real page. The real
+  page is built on first map and dropped `page_drop_s` (60 s) after the
+  user leaves it; the Overview stays built.
+- **Draw less:** sidebar entries show usage text only; the Overview is a
+  compact list (name, usage) without charts or busiest tables; each device
+  page keeps one graph (its main usage, at most a 1-minute range, no axes) and shows its
+  other figures as text rows; no per-CPU chart.
+- **Look:** Follow System and the System palette only; no `ThemeCss`
+  provider; the Appearance rows are insensitive with a note.
+- **No icons** in Apps and Processes (`ctx.app_icons = None`, no icon
+  column).
+- **No GPU detail sources** (`GpuController(start_details=False)`): no
+  intel_gpu_top stream or NVIDIA polling; the Details tabs say how to turn
+  them on. Detection still runs, so every GPU keeps its Overview tab.
+- **pci.ids on demand:** `PciIds.on_demand` scans the file for the IDs
+  asked for and keeps only those (about 3.6 MB of Python objects saved).
+- **Logging:** warning level by default, no performance lines; the
+  watchdog stays (one thread, a timestamp).
+- **Kept as is:** device discovery and monitors, error pages, Apps and
+  Processes tables and their actions, the sidebar modes.
+- **Measuring:** `tests/ui/mem.py` reports private memory after start,
+  after visiting every page and after 10 minutes, for both profiles; the
+  target is at least 40 % less in lightweight mode, with no growth. The
+  GTK renderer (cairo instead of GL) is measured on a real desktop and
+  adopted only if it pays.
+
+### 13.2 Metrics history in a SQLite database
+
+*PLAN.md, Idea 2, has the steps and the measurements.* When built, it
+replaces the statistics files (§11, M58): Proccoli no longer writes metric
+files on its own; files appear only when the user exports.
+
+**Why SQLite** (Python's `sqlite3`, nothing to install), measured on the
+development laptop (61 readings per refresh):
+
+| | Disk at full detail | Private memory | Reading 10 min of 3 devices |
+|---|---|---|---|
+| CSV files (M58) | 452 B/s | ~1 MiB (`csv`) | parse the file tails |
+| SQLite, table per device, scaled integers | **239 B/s** | ~0.9 MiB (512 KiB cache; the library is shared) | **6 ms**, indexed |
+
+It can also summarise old data in place, which files can't.
+
+```mermaid
+classDiagram
+    direction LR
+    class HistoryStore {
+        <<core.history_store>>
+        +HistoryStore(devices, settings, path, wall_clock)
+        +record(device_id, snapshot)
+        +commit()  every 10 s
+        +housekeep()  every 10 min
+        +query(device_id, since, until, level) rows
+        +session_start: int
+        +shutdown()
+    }
+    class Exporter {
+        +export_session(folder, progress)
+        per-device CSV + export.json
+    }
+    class Backfiller {
+        on graph-time-range / start-up
+        +fill(monitor) on idle
+    }
+    HistoryStore ..> DeviceManager : follows updated
+    Exporter ..> HistoryStore : query this session
+    Backfiller ..> HistoryStore : query the range
+    Backfiller ..> History : backfill(rows)
+```
+
+**Schema** (`$XDG_STATE_HOME/proccoli/history.sqlite3`, 0600; WAL,
+`auto_vacuum=INCREMENTAL`, 512 KiB cache):
+
+```sql
+CREATE TABLE device  (id TEXT PRIMARY KEY, tbl TEXT, name TEXT, kind TEXT);
+CREATE TABLE session (start INTEGER PRIMARY KEY, end INTEGER);    -- UTC seconds
+-- per device: detail, then the two summary levels
+CREATE TABLE "cpu"   (time INTEGER PRIMARY KEY, usage INTEGER, temperature INTEGER,
+                      cpu0 INTEGER, …);                           -- fixed-point integers
+CREATE TABLE "cpu_m" (time INTEGER PRIMARY KEY, n INTEGER,
+                      usage_avg INTEGER, usage_min INTEGER, usage_max INTEGER, …);
+CREATE TABLE "cpu_h" (…same as cpu_m…);
+```
+
+Readings are stored as integers in fixed units (hundredths of a percent
+and of a degree, milliwatts, kHz, bytes): SQLite stores small integers in
+1–2 bytes and zero in none, which is most of the saving. A reading that
+appears later (a GPU's details starting) is `ALTER TABLE … ADD COLUMN`.
+
+**Retention** (rolled up every 10 minutes, so it holds for a Proccoli that
+never quits):
+
+```mermaid
+flowchart LR
+    R["every refresh"] --> D["detail: 24 h<br/>~20 MiB"]
+    D -->|"each finished minute:<br/>avg / min / max"| M["minutes: 30 days<br/>~25 MiB"]
+    M -->|"each finished hour:<br/>avg / min / max"| H["hours: until the cap<br/>~7.5 MiB a year"]
+    H -->|"over history-max-size (512 MiB)"| X["oldest hours dropped first"]
+```
+
+Typical steady state: about 52 MiB after a year, 120 MiB after ten.
+Worst case (64 logical CPUs, busy, 0.25 s refresh): about 260 MiB after a
+year, 420 MiB after ten, still under the 512 MiB default cap, which stays
+a safety net (the oldest hours go first, then minutes; detail never below
+an hour). Without levels, a year at full detail would be 7 GiB.
+
+**Reading it back:**
+- *Graphs:* on a wider *Graph Time Range* or at start-up, `Backfiller`
+  queries each device's range (minute averages beyond the detail level),
+  converts UTC to the monitor's monotonic clock, resamples to the refresh
+  interval and marks gaps where Proccoli wasn't running; on idle, one
+  device at a time.
+- *Export* (main menu → *Export Statistics…*): for the running session
+  (`time >= session.start`), into a folder the user picks
+  (`Gtk.FileDialog`, portal-friendly): one RFC 4180 CSV per device
+  (`time_utc` ISO 8601 UTC, `<reading>_<unit>` columns in real units),
+  `<device>-minutes.csv` for any part older than the detail level, and
+  `export.json` (version, session start and end, devices, columns and
+  units). Off the main loop; never overwrites without asking.
+
+**Settings:** `history` (on), `history-max-size` (MiB, 512),
+`history-detail-hours` (24). `stats-log*` go; existing `stats/*.csv`
+are imported once and removed. Nothing in `--demo`.
+
+### 13.3 Intel Details graphs on the shared chart code
+
+*PLAN.md, Idea 3.* The Intel *Details* tab still draws with the classes
+ported from intel_gpu_top_gui (Milestone 9): `GraphView`, `GraphSection`,
+`LegendItem`, `Swatch`, `AxisGroup`, and copies of `nice_ceiling`,
+`snap_to_device` and the rounded-rectangle helper. Everything else uses
+the shared family: `Graph`, `GraphBox`, `Legend`, `LegendChart`,
+`ui/axes.py` and the window's `Theme`. Folding the tab into that family:
+
+```mermaid
+flowchart LR
+    subgraph Now["Intel Details tab today"]
+        GV[GraphView] --- GS[GraphSection]
+        GS --- LI["LegendItem / Swatch"]
+        GV --- AG[AxisGroup]
+        GS --- GG[GraphGrid]
+    end
+    subgraph After["After Idea 3"]
+        LC["LegendChart per group<br/>(Graph + Legend in one card)"] --- GG2["GraphGrid<br/>(columns; graph_cap, legend in the area)"]
+        G2["Graph + set_hover()<br/>(crosshair for every graph)"] --- AX["ui/axes.py<br/>(+ shared gutter width)"]
+        LC --- G2
+    end
+    Now -->|"move hover and the shared gutter into Graph;<br/>delete the ported classes"| After
+```
+
+- **Gained by every graph:** the Intel tab's hover crosshair
+  (`Graph.set_hover`) and a shared y-axis gutter, so plots in a column
+  line up.
+- **Gained by the Intel tab:** palettes and distinct colours from the
+  `Theme`, the shared axes, the legend's right-click solo, never-empty
+  and compact rules, and the *Graph Time Range* (open question in PLAN:
+  its own *History Length* goes; its *Update Interval*, intel_gpu_top's
+  sampling rate, stays).
+- **Kept in the Intel views:** `GraphGrid`'s column choice, per-GT
+  groups, the compact layout, and the header (pause, export, clear).
+- **Enforced afterwards:** `test_static` checks that no module outside
+  `ui/` defines its own graph drawing area.
+

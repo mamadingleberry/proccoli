@@ -68,5 +68,24 @@ class UnitsTest(unittest.TestCase):
         ])
 
 
+class FactsTest(unittest.TestCase):
+    """The Overview cards' readings line (M57)."""
+
+    def test_used_total_each_with_its_unit(self):
+        from proccoli.core.units import Base, format_used_total
+        self.assertEqual(format_used_total(571 * 2**20, 8151 * 2**20), "598.7 MB / 8.5 GB")
+        self.assertEqual(format_used_total(571 * 2**20, 8151 * 2**20, Base.BINARY),
+                         "571.0 MiB / 8.0 GiB")
+
+    def test_facts(self):
+        from proccoli.core.units import Base, TemperatureUnit, device_facts
+        self.assertEqual(device_facts(48.0), ["Temperature 48 °C"])
+        self.assertEqual(device_facts(39.0, TemperatureUnit.FAHRENHEIT, 571 * 2**20,
+                                      8151 * 2**20, Base.DECIMAL),
+                         ["Temperature 102 °F", "Memory 598.7 MB / 8.5 GB"])
+        self.assertEqual(device_facts(None, memory_used=1, memory_total=None), [])
+        self.assertEqual(device_facts(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

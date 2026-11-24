@@ -196,8 +196,10 @@ class ManagerTest(unittest.TestCase):
     def test_graph_points_setting_resizes_histories(self):
         settings, manager, _, _ = self.make()
         manager.start()
-        settings.set("graph-data-points", 30)
-        self.assertEqual(manager.monitor("a").history.max_points, 30)
+        settings.set("graph-time-range", "30-seconds")        # 31 points at 1 s
+        self.assertEqual(manager.monitor("a").history.max_points, 31)
+        settings.set("refresh-speed", "very-fast")              # same 30 s, 4 a second
+        self.assertEqual(manager.monitor("a").history.max_points, 121)
 
     def test_broken_discoverer_does_not_stop_others(self):
         _, manager, d, events = self.make()
@@ -211,6 +213,72 @@ class ManagerTest(unittest.TestCase):
         with self.assertLogs("proccoli.devices.manager"):
             manager.start()
         self.assertEqual(events, [("+", "a")])
+
+    # -- devices that fail (M55): an error page instead of a missing entry ----
+
+    def test_a_monitor_that_cant_be_built_becomes_a_failed_monitor(self):
+        from proccoli.devices.base import FailedMonitor
+        _, manager, d, events = self.make()
+        d.create_monitor = lambda info, sysroot, settings: (_ for _ in ()).throw(
+            RuntimeError("no summary source can serve 0000:02:00.0"))
+        with self.assertLogs("proccoli.devices.manager"):
+            manager.start()
+        monitor = manager.monitor("a")
+        self.assertIsInstance(monitor, FailedMonitor)
+        self.assertEqual(events, [("+", "a")])               # still listed
+        self.assertIn("no summary source", monitor.message)
+        self.assertIn("RuntimeError", monitor.details)        # the traceback
+        monitor.refresh(1.0)                                   # records nothing, no error
+        self.assertIsNone(monitor.latest)
+
+    def test_a_monitor_that_cant_start_becomes_a_failed_monitor(self):
+        from proccoli.devices.base import FailedMonitor
+        _, manager, d, events = self.make()
+        stopped = []
+
+        def create(info, sysroot, settings):
+            class Bad(Monitor):
+                def sample(self, now):
+                    return None
+
+                def start(self):
+                    raise OSError("permission denied")
+
+                def stop(self):
+                    stopped.append(True)
+            return Bad(info)
+        d.create_monitor = create
+        with self.assertLogs("proccoli.devices.manager"):
+            manager.start()
+        self.assertIsInstance(manager.monitor("a"), FailedMonitor)
+        self.assertIn("start reading", manager.monitor("a").message)
+        self.assertEqual(stopped, [True])                      # half-started work cleaned up
+
+    def test_retry_builds_the_monitor_again(self):
+        from proccoli.devices.base import FailedMonitor
+        _, manager, d, events = self.make()
+        real = d.create_monitor
+        d.create_monitor = lambda *a: (_ for _ in ()).throw(OSError("busy"))
+        with self.assertLogs("proccoli.devices.manager"):
+            manager.start()
+        d.create_monitor = real                                # fixed (e.g. tool installed)
+        self.assertTrue(manager.retry("a"))
+        self.assertNotIsInstance(manager.monitor("a"), FailedMonitor)
+        self.assertEqual(events, [("+", "a"), ("-", "a"), ("+", "a")])
+        self.assertFalse(manager.retry("a"))                   # only failed devices
+        self.assertFalse(manager.retry("nope"))
+
+
+
+
+class BusiestThreadTest(unittest.TestCase):
+    def test_busiest(self):
+        from proccoli.devices.cpu import busiest_thread
+        self.assertEqual(busiest_thread([10.0, 55.0, 30.0]), (1, 55.0))
+        self.assertEqual(busiest_thread([None, 5.0, None]), (1, 5.0))
+        self.assertEqual(busiest_thread([20.0, 20.0]), (0, 20.0))      # first on a tie
+        self.assertIsNone(busiest_thread([]))
+        self.assertIsNone(busiest_thread([None, None]))
 
 
 if __name__ == "__main__":

@@ -55,6 +55,14 @@ class Snapshot:
     def history_units(self) -> Mapping[str, str]:
         return {"usage": "%"}
 
+    # What the statistics files record (core/statslog.py, M58): the graphed
+    # readings, plus absolute figures a snapshot only graphs as percentages.
+    def stats_values(self) -> dict[str, Optional[float]]:
+        return self.history_values()
+
+    def stats_units(self) -> Mapping[str, str]:
+        return self.history_units()
+
 
 class Monitor(GObject.Object):
     """Base class for everything that samples a device on each tick.
@@ -104,3 +112,19 @@ class Monitor(GObject.Object):
 
     def stop(self) -> None:
         """Counterpart of ``start()``."""
+
+
+class FailedMonitor(Monitor):
+    """Stands in for a device whose monitor couldn't be built or started
+    (Milestone 55). The device keeps its sidebar entry, and its page is an
+    error page showing ``message`` (what went wrong, in words) and
+    ``details`` (the technical part, e.g. a traceback), with *Try Again*
+    (``DeviceManager.retry``). It records nothing."""
+
+    def __init__(self, info: DeviceInfo, message: str, details: str = "") -> None:
+        super().__init__(info, 2)
+        self.message = message
+        self.details = details
+
+    def sample(self, now: float) -> Optional[Snapshot]:
+        return None

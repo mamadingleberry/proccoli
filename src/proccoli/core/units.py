@@ -56,6 +56,38 @@ def format_bytes(n: Optional[float], base: Base = Base.DECIMAL) -> str:
     return f"{_number(v, p)} {p}B"
 
 
+def iso_utc(epoch_s: float) -> str:
+    """ISO 8601 in UTC, to the millisecond: ``2026-11-23T21:41:25.154Z``
+    (the diagnostics log and the statistics files, M55 and M58)."""
+    import time
+    whole = int(epoch_s)
+    ms = int(round((epoch_s - whole) * 1000))
+    if ms == 1000:
+        whole, ms = whole + 1, 0
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(whole)) + f".{ms:03d}Z"
+
+
+def format_used_total(used: Optional[float], total: Optional[float],
+                      base: Base = Base.DECIMAL) -> str:
+    """"598.7 MB / 8.5 GB": each with its own unit."""
+    return f"{format_bytes(used, base)} / {format_bytes(total, base)}"
+
+
+def device_facts(temperature_c: Optional[float] = None,
+                 unit: TemperatureUnit = TemperatureUnit.CELSIUS,
+                 memory_used: Optional[float] = None, memory_total: Optional[float] = None,
+                 base: Base = Base.DECIMAL) -> list[str]:
+    """The current readings an Overview card shows under its name (M57):
+    "Temperature 48 °C", "Memory 598.7 MB / 8.5 GB". A reading the device
+    doesn't have is left out."""
+    facts = []
+    if temperature_c is not None:
+        facts.append(f"Temperature {format_temperature(temperature_c, unit)}")
+    if memory_used is not None and memory_total:
+        facts.append(f"Memory {format_used_total(memory_used, memory_total, base)}")
+    return facts
+
+
 def format_bytes_fixed(n: float, base: Base = Base.DECIMAL, decimals: int = 1) -> str:
     """Bytes with a fixed number of decimals ("16.0 GB"), for labels whose
     format is fixed."""

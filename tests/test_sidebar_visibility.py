@@ -1,5 +1,6 @@
 """Hiding the sidebar at any width; the burger stays top left (Milestone 46);
-the sidebar toggle is a main-menu item (Milestone 52)."""
+the sidebar's Full / Icons Only / Hidden modes in the main menu (Milestones
+52 and 54)."""
 
 import os
 import sys
@@ -15,7 +16,9 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, GObject, Gtk  # noqa: E402
 
 from proccoli.core.settings import Settings  # noqa: E402
-from proccoli.ui.sidebar_visibility import (ACTION, LABEL, SETTING,  # noqa: E402
+from proccoli.ui.sidebar_style import (MODE_ACTION, MODE_LABELS, SECTION_LABEL,  # noqa: E402
+                                       STYLE_SETTING, Mode, SidebarStyle)
+from proccoli.ui.sidebar_visibility import (ACTION, SETTING,  # noqa: E402
                                             SidebarVisibility, header_controls_visible)
 
 HAVE_DISPLAY = os.environ.get("PROCCOLI_UI_TESTS") == "1" and Gtk.init_check()
@@ -53,7 +56,8 @@ class ControllerTest(unittest.TestCase):
     def make(self, **settings):
         self.settings = Settings.for_tests(settings)
         self.split = FakeSplit()
-        self.vis = SidebarVisibility(self.split, self.settings)
+        self.styles = []                                     # what on_style was told
+        self.vis = SidebarVisibility(self.split, self.settings, on_style=self.styles.append)
         self.addCleanup(self.vis.shutdown)
 
     def test_wide_window_follows_and_saves_the_users_choice(self):
@@ -124,6 +128,67 @@ class ControllerTest(unittest.TestCase):
         self.vis.shutdown()
         self.split.set_show_sidebar(False)
         self.assertTrue(self.settings.get(SETTING))
+        self.settings.set(STYLE_SETTING, "icons")
+        self.assertEqual(self.styles, [SidebarStyle.FULL])     # only the first, at start
+
+    # -- Full / Icons Only / Hidden (M54) ---------------------------------------------
+
+    def mode(self):
+        return self.vis.mode_action.get_state().get_string()
+
+    def pick(self, mode):
+        self.vis.mode_action.activate(GLib.Variant.new_string(mode.value))
+
+    def test_the_style_is_applied_at_start(self):
+        self.make(**{STYLE_SETTING: "icons"})
+        self.assertEqual(self.styles, [SidebarStyle.ICONS])
+        self.assertEqual(self.mode(), "icons")
+
+    def test_mode_action_is_a_radio_group(self):
+        self.make()
+        self.assertEqual(self.vis.mode_action.get_name(), MODE_ACTION)
+        self.assertEqual(self.vis.mode_action.get_parameter_type().dup_string(), "s")
+        self.assertEqual(self.mode(), "full")
+
+    def test_picking_icons_only_shows_and_saves_the_style(self):
+        self.make(**{SETTING: False})
+        self.assertEqual(self.mode(), "hidden")
+        self.pick(Mode.ICONS)
+        self.assertTrue(self.split.show_sidebar)
+        self.assertTrue(self.settings.get(SETTING))
+        self.assertEqual(self.settings.get(STYLE_SETTING), "icons")
+        self.assertEqual(self.styles[-1], SidebarStyle.ICONS)
+        self.assertEqual(self.mode(), "icons")
+        self.pick(Mode.FULL)
+        self.assertEqual(self.settings.get(STYLE_SETTING), "full")
+        self.assertEqual(self.styles[-1], SidebarStyle.FULL)
+
+    def test_hidden_keeps_the_style_and_f9_brings_it_back(self):
+        self.make(**{STYLE_SETTING: "icons"})
+        self.pick(Mode.HIDDEN)
+        self.assertFalse(self.split.show_sidebar)
+        self.assertFalse(self.settings.get(SETTING))
+        self.assertEqual(self.settings.get(STYLE_SETTING), "icons")   # kept
+        self.assertEqual(self.mode(), "hidden")
+        self.vis.action.activate(None)                        # F9
+        self.assertTrue(self.split.show_sidebar)
+        self.assertEqual(self.mode(), "icons")
+
+    def test_mode_follows_changes_from_elsewhere(self):
+        self.make()
+        self.settings.set(STYLE_SETTING, "icons")              # Preferences → Sidebar
+        self.assertEqual(self.mode(), "icons")
+        self.assertEqual(self.styles[-1], SidebarStyle.ICONS)
+        self.split.set_show_sidebar(False)                    # e.g. a swipe
+        self.assertEqual(self.mode(), "hidden")
+
+    def test_narrow_overlay_marks_hidden_until_opened(self):
+        self.make(**{STYLE_SETTING: "icons"})
+        self.split.set_collapsed(True)
+        self.assertEqual(self.mode(), "hidden")
+        self.pick(Mode.ICONS)                                  # opens the overlay
+        self.assertTrue(self.split.show_sidebar)
+        self.assertEqual(self.mode(), "icons")
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
@@ -179,15 +244,19 @@ class WindowTest(unittest.TestCase):
             child = child.get_next_sibling()
         return out
 
-    def menu_item(self, win):
-        """(label, action) of the main menu's Show Sidebar item."""
+    def sidebar_section(self, win):
+        """(section index, its label, [(item label, action, target)]) of the
+        main menu's Sidebar section."""
+        s = GLib.VariantType("s")
         for i in range(win.menu_model.get_n_items()):
+            title = win.menu_model.get_item_attribute_value(i, "label", s)
+            if title is None or title.get_string() != SECTION_LABEL:
+                continue
             section = win.menu_model.get_item_link(i, Gio.MENU_LINK_SECTION)
-            for j in range(section.get_n_items()):
-                label = section.get_item_attribute_value(j, "label", GLib.VariantType("s"))
-                action = section.get_item_attribute_value(j, "action", GLib.VariantType("s"))
-                if label and label.get_string() == LABEL:
-                    return label.get_string(), action.get_string(), (i, j)
+            items = [tuple(section.get_item_attribute_value(j, attr, s).get_string()
+                           for attr in ("label", "action", "target"))
+                     for j in range(section.get_n_items())]
+            return i, title.get_string(), items
         return None
 
     def test_logo_then_burger_in_the_sidebar_header(self):
@@ -202,26 +271,28 @@ class WindowTest(unittest.TestCase):
         for header in headers:
             self.assertEqual(self.sidebar_buttons(header), [])
 
-    def test_show_sidebar_is_a_main_menu_item_after_go_to(self):
+    def test_sidebar_modes_follow_go_to_in_the_main_menu(self):
         win = self.make()
-        label, action, (section, index) = self.menu_item(win)
-        self.assertEqual(action, f"win.{ACTION}")
-        self.assertEqual((section, index), (0, 1))          # Go To, then Show Sidebar
-        self.assertTrue(win.get_action_state(ACTION).get_boolean())     # checked
+        index, _title, items = self.sidebar_section(win)
+        self.assertEqual(index, 1)                            # Go To, then Sidebar
+        self.assertEqual(items, [(MODE_LABELS[m], f"win.{MODE_ACTION}", m.value)
+                                 for m in Mode])
+        self.assertEqual(win.get_action_state(MODE_ACTION).get_string(), "full")
         win.split_view.set_show_sidebar(False)
-        self.assertFalse(win.get_action_state(ACTION).get_boolean())
+        self.assertEqual(win.get_action_state(MODE_ACTION).get_string(), "hidden")
 
     def test_hiding_from_the_menu_moves_the_burger_into_the_page_headers(self):
         win = self.make()
         container = win.containers[win.visible_page_id()]
         self.assertFalse(container.start_controls.get_visible())
-        win.activate_action(f"win.{ACTION}", None)            # ≡ → Show Sidebar (uncheck)
+        win.activate_action(f"win.{MODE_ACTION}",
+                            GLib.Variant.new_string("hidden"))   # ≡ → Sidebar → Hidden
         self.assertFalse(win.split_view.get_show_sidebar())
         self.assertTrue(container.start_controls.get_visible())
         self.assert_corner(container.logo_button, container.menu_button, win)
         self.assertIs(container.menu_button.get_menu_model(), win.menu_model)
         self.assertFalse(self.settings.get(SETTING))
-        win.activate_action(f"win.{ACTION}", None)            # and back
+        win.activate_action(f"win.{MODE_ACTION}", GLib.Variant.new_string("full"))
         self.assertTrue(win.split_view.get_show_sidebar())
         self.assertFalse(container.start_controls.get_visible())
 
@@ -238,6 +309,40 @@ class WindowTest(unittest.TestCase):
         self.assertFalse(win.split_view.get_show_sidebar())
         for container in win.containers.values():
             self.assertTrue(container.start_controls.get_visible())
+
+    def test_icons_only_narrows_the_sidebar_to_its_header(self):
+        from test_ui_shell import pump
+        win = self.make()
+        full = (win.split_view.get_min_sidebar_width(), win.split_view.get_max_sidebar_width())
+        self.at(win.logo_button, win)
+        win.activate_action(f"win.{MODE_ACTION}", GLib.Variant.new_string("icons"))
+        self.assertEqual(self.settings.get(STYLE_SETTING), "icons")
+        width = win.split_view.get_max_sidebar_width()
+        self.assertEqual(win.split_view.get_min_sidebar_width(), width)
+        self.assertLess(width, full[0])
+        pump(lambda: win.sidebar.get_width() <= width + 1, timeout=3)
+        # The corner still holds the logo and the burger, side by side.
+        self.assert_corner(win.logo_button, win.menu_button, win)
+        lx, _ = self.at(win.logo_button, win)
+        bx, _ = self.at(win.menu_button, win)
+        self.assertLessEqual(bx + win.menu_button.get_width(), width + 1)
+        # Every row is just its icon, with hover text.
+        for item in win.sidebar.items.values():
+            self.assertTrue(item.compact)
+            self.assertFalse(item.label.get_visible())
+            self.assertFalse(item.details.get_visible())
+            self.assertTrue(item.get_tooltip_text().startswith(item.page.title))
+        win.activate_action(f"win.{MODE_ACTION}", GLib.Variant.new_string("full"))
+        self.assertEqual((win.split_view.get_min_sidebar_width(),
+                          win.split_view.get_max_sidebar_width()), full)
+        for item in win.sidebar.items.values():
+            self.assertTrue(item.label.get_visible())
+            self.assertIsNone(item.get_tooltip_text())
+
+    def test_starts_as_icons_only_when_left_so(self):
+        win = self.make(**{STYLE_SETTING: "icons"})
+        self.assertTrue(win.sidebar.compact)
+        self.assertTrue(all(i.compact for i in win.sidebar.items.values()))
 
     def test_removed_page_stops_following(self):
         win = self.make()

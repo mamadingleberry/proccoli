@@ -34,6 +34,11 @@ class GraphPane(Gtk.Box):
         self.append(labels)
         self._update_accessible()
 
+    def set_footer(self, widget: Gtk.Widget) -> None:
+        """Put ``widget`` right under the graph, inside the card (the
+        per-CPU legend, M57)."""
+        self.insert_child_after(widget, self.graph)
+
     def set_title(self, title: str) -> None:
         self.title_label.set_label(title)
         self._update_accessible()

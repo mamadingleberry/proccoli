@@ -73,9 +73,9 @@ def time_ticks(span_s: float, plot_width: float,
 
 
 def history_span_s(settings) -> float:
-    """Seconds a full graph shows: graph data points × the refresh interval."""
-    from ..core.ticker import interval_for
-    return settings.get("graph-data-points") * interval_for(settings.get("refresh-speed")) / 1000
+    """Seconds a full graph shows: the *Graph Time Range* (M58)."""
+    from ..core.ticker import time_range_s
+    return float(time_range_s(settings.get("graph-time-range")))
 
 
 def is_percent_graph(units: list[str], max_value: Optional[float]) -> bool:

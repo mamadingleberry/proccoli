@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from helpers import FIXTURES, LAPTOP, FakeRoot, FakeSystem, make_context  # noqa: E402
+from helpers import FIXTURES, LAPTOP, FakeRoot, FakeSystem, make_context, resize_or_skip  # noqa: E402
 
 import gi  # noqa: E402
 
@@ -81,7 +81,17 @@ class LaptopPagesTest(unittest.TestCase):
         page = self.pages["cpu"]
         self.assertEqual(page.title, "Processor")
         self.assertEqual(page.description, "12th Gen Intel(R) Core(TM) i5-12450H")
-        self.assertEqual(len(page.cells), 12)             # one per logical CPU
+        # One chart, a line and a legend item per logical CPU (M55).
+        self.assertEqual(len(page.threads.graph.series), 12)
+        self.assertEqual([i.name for i in page.legend.items], [f"CPU {i}" for i in range(12)])
+        self.assertFalse(page.threads.graph.fill)
+        page.update_labels(page.monitor.latest)           # normally on each tick
+        colours = {page.threads.graph.color_for(i) for i in range(12)}
+        self.assertEqual(len(colours), 12)                 # every line its own colour
+        # Unchanging fixture files: no busiest CPU yet, but the count shows.
+        self.assertEqual(page.threads.pane.info_label.get_label(), "12 logical CPUs")
+        from proccoli.core.units import NO_DATA
+        self.assertEqual({i.value_label.get_label() for i in page.legend.items}, {NO_DATA})
         self.assertTrue(page.sensors.get_visible())        # coretemp present
         self.assertEqual(page.property_rows["Physical Cores"].get_value(), "8")
         self.settings.set("show-logical-cpus", True)
@@ -89,6 +99,17 @@ class LaptopPagesTest(unittest.TestCase):
         self.assertTrue(page.logical_switch.get_active())
         self.settings.set("temperature-unit", "fahrenheit")
         self.assertTrue(page.temperature.pane.info_label.get_label().endswith("°F"))
+
+    def test_processor_and_gpu_cards_get_their_readings(self):
+        # M57: the Overview cards' readings line comes from the summary.
+        cpu = self.pages["cpu"].sidebar_summary()
+        self.assertEqual(len(cpu.facts), 1)
+        self.assertRegex(cpu.facts[0], r"^Temperature \d+ °C$")       # coretemp
+        self.settings.set("temperature-unit", "kelvin")
+        self.assertRegex(self.pages["cpu"].sidebar_summary().facts[0], r" K$")
+        # This laptop's Intel iGPU reports neither temperature nor memory.
+        self.assertEqual(self.pages["gpu-0000:00:02.0"].sidebar_summary().facts, [])
+        self.assertEqual(self.pages["memory"].sidebar_summary().facts, [])
 
     def test_memory_page_shows_udev_properties_without_a_password(self):
         page = self.pages["memory"]
@@ -250,7 +271,7 @@ class GraphsFillThePageTest(unittest.TestCase):
         return win, win.page(page_id)
 
     def resize(self, win, w, h):
-        win.set_default_size(w, h)
+        resize_or_skip(self, win, w, h)
         pump(timeout=1.5)
 
     def test_page_graphs_share_the_height(self):
@@ -271,6 +292,8 @@ class GraphsFillThePageTest(unittest.TestCase):
         self.assertTrue(g.has_axes())                            # on by default
         self.assertEqual(g.time_span_s, 60.0)
         self.settings.set("refresh-speed", "slow")
+        self.assertEqual(g.time_span_s, 60.0)          # M58: the time range holds
+        self.settings.set("graph-time-range", "2-minutes")
         self.assertEqual(g.time_span_s, 120.0)
         self.settings.set("show-graph-axes", False)
         self.assertFalse(g.has_axes())
@@ -287,17 +310,104 @@ class GraphsFillThePageTest(unittest.TestCase):
         self.assertEqual(page.box.get_width(), page.scroller.get_width() - margins)
         self.assertGreaterEqual(page.clamp.get_maximum_size(), 1600)   # was 800
 
-    def test_per_thread_graphs_grow_with_their_width(self):
-        from proccoli.ui.pages.cpu import THREAD_CELL_MIN_WIDTH
+    def test_per_cpu_chart_fills_the_page_like_the_others(self):
         win, page = self.window("cpu", **{"show-logical-cpus": True})
         page.update_labels(page.monitor.latest)
         pump(timeout=1.0)
-        cell = page.cells[0]
-        self.assertGreaterEqual(cell.get_width(), THREAD_CELL_MIN_WIDTH)
-        wide = cell.graph.get_height()
-        self.assertAlmostEqual(wide, cell.graph.get_width() * 0.6, delta=2)
-        self.resize(win, 820, 768)
-        self.assertLessEqual(cell.graph.get_height(), wide)
+        graph = page.threads.graph
+        self.assertTrue(graph.get_mapped())
+        # Sized like any page graph, sharing its area with the legend (M57).
+        from proccoli.ui.layout import MIN_GRAPH_IN_AREA
+        self.assertGreaterEqual(graph.get_height(), MIN_GRAPH_IN_AREA)
+        self.assertGreater(page.legend.get_height(), 0)
+        # The legend sits below the chart and spreads over several columns.
+        items = page.legend.items
+        self.assertGreater(items[1].compute_bounds(page.box)[1].get_x(),
+                           items[0].compute_bounds(page.box)[1].get_x())
+
+    def test_per_cpu_chart_and_legend_take_the_total_charts_area(self):
+        # M57: switching between the total and the per-CPU chart keeps the
+        # area; the legend is part of it, inside the chart's card.
+        from proccoli.ui.widgets.graph_box import GraphBox
+        win, page = self.window("cpu")
+        page.update_labels(page.monitor.latest)
+        self.assertIs(page.legend.get_ancestor(GraphBox), page.threads)
+
+        def settled():
+            return pump(lambda: not page._fit_source
+                        and page.fit_key() == page._fitted_for, timeout=3)
+        settled()
+        total_area = page.total.get_height()
+        total_graph = page.total.graph.get_content_height()
+        self.settings.set("show-logical-cpus", True)
+        pump(lambda: page.threads.get_height() > 0, timeout=3)    # headless frames are slow
+        settled()
+        pump(lambda: abs(page.threads.get_height() - total_area) <= 3, timeout=3)
+        self.assertAlmostEqual(page.threads.get_height(), total_area, delta=3)
+        legend = page.legend.get_height()
+        self.assertGreater(legend, 0)
+        self.assertAlmostEqual(page.threads.graph.get_content_height(),
+                               total_graph - legend - page.threads.pane.get_spacing(),
+                               delta=3)
+        self.settings.set("show-logical-cpus", False)
+        pump(lambda: page.total.get_height() > 0, timeout=3)
+        settled()
+        pump(lambda: abs(page.total.get_height() - total_area) <= 3, timeout=3)
+        self.assertAlmostEqual(page.total.get_height(), total_area, delta=3)
+
+    def test_legend_drops_values_when_the_chart_would_be_cramped(self):
+        # M57: values move to the hover text so the chart keeps its room.
+        win, page = self.window("cpu", **{"show-logical-cpus": True})
+        page.update_labels(page.monitor.latest)
+        pump(lambda: page.threads.graph.get_mapped() and page.threads.graph.get_width() > 0,
+             timeout=3)
+        item = page.legend.items[0]
+        page.threads.comfort = 0                          # plenty of room: values shown
+        page.threads.fit_legend()
+        self.assertFalse(page.legend.compact)
+        self.assertTrue(item.value_label.get_visible())
+        self.assertEqual(item.get_tooltip_text().split("\n")[0], "CPU 0")
+        self.assertFalse(page.threads.fit_legend())             # settled: no flip-flop
+        page.threads.comfort = 10_000                     # the chart would be cramped
+        self.assertTrue(page.threads.fit_legend())
+        self.assertTrue(page.legend.compact)
+        self.assertFalse(item.value_label.get_visible())
+        self.assertTrue(item.get_tooltip_text().startswith("CPU 0: "))
+        self.assertFalse(page.threads.fit_legend())
+
+    def test_right_click_shows_only_that_core(self):
+        # M58: left-click hides or shows a core; right-click shows only it.
+        win, page = self.window("cpu", **{"show-logical-cpus": True})
+        graph, legend = page.threads.graph, page.legend
+        n = len(legend.items)
+        legend.items[3].solo()                            # what a right-click does
+        self.assertEqual([graph.series_shown(i) for i in range(n)],
+                         [i == 3 for i in range(n)])
+        self.assertEqual(legend.shown(), [i == 3 for i in range(n)])
+        legend.items[3].solo()                            # again: every core
+        self.assertTrue(all(graph.series_shown(i) for i in range(n)))
+        legend.items[5].emit("clicked")                   # a left-click toggles
+        self.assertFalse(graph.series_shown(5))
+        # M59: one core selected, then deselected: every core again.
+        legend.items[3].solo()
+        legend.items[3].emit("clicked")
+        self.assertTrue(all(graph.series_shown(i) for i in range(n)))
+        self.assertEqual(legend.shown(), [True] * n)
+        # Hiding them one by one: the last one brings them all back.
+        for i in range(n):
+            legend.items[i].emit("clicked")
+        self.assertEqual(legend.shown(), [True] * n)
+        self.assertIn("Right-click", legend.items[0].get_tooltip_text())
+
+    def test_legend_toggles_hide_their_line(self):
+        win, page = self.window("cpu", **{"show-logical-cpus": True})
+        item = page.legend.items[3]
+        self.assertTrue(item.get_active())
+        item.set_active(False)
+        self.assertFalse(page.threads.graph.series_shown(3))
+        self.assertTrue(page.threads.graph.series_shown(2))
+        item.set_active(True)
+        self.assertTrue(page.threads.graph.series_shown(3))
 
     def test_portrait_window_caps_graphs_by_width(self):
         # Milestone 36: a portrait monitor makes the window tall and narrow;
@@ -341,11 +451,11 @@ class GraphsFillThePageTest(unittest.TestCase):
         grid = page.hosts["details"].view.widget.grid
         self.assertTrue(pump(lambda: grid.get_height() > 0, timeout=3))   # ~1 frame/s
         tall = grid.get_height()
-        win.set_default_size(1024, 500)
+        resize_or_skip(self, win, 1024, 500)
         self.assertTrue(pump(lambda: 0 < grid.get_height() < tall, timeout=3))
         # Portrait (Milestone 36): one tall column, graphs capped by width.
         from proccoli.gpu.intel_gpu_top.grid import graph_cap
-        win.set_default_size(700, 1800)
+        resize_or_skip(self, win, 700, 1800)
         pump(timeout=2.0)
         for section in grid.sections:
             if section.get_visible():

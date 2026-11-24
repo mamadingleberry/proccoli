@@ -11,7 +11,7 @@ import logging
 
 from gi.repository import GLib
 
-from ...core.ticker import interval_for
+from ...core.ticker import history_points, interval_for
 from ...core.trust import find_trusted
 from ..backend import (Capability, DetailBackend, GpuBackend, GpuDeps, GpuProcessUsage,
                        GpuSummary, Probe, SupportLevel, TabSpec)
@@ -46,12 +46,6 @@ def _engine_class(name: str) -> str:
     """"Render/3D/0" -> "Render/3D" (multi-instance engines)."""
     parts = name.split("/")
     return "/".join(parts[:-1]) if parts[-1].isdigit() else name
-
-
-def history_points(history_s: int, interval_ms: int) -> int:
-    """Samples needed to cover ``history_s`` at ``interval_ms`` (as in
-    intel_gpu_top_gui)."""
-    return max(2, int(history_s * 1000 / interval_ms) + 1)
 
 
 class IntelGpuTopBackend(DetailBackend):

@@ -9,6 +9,7 @@ from ..core.sysroot import SysRoot
 from ..core.units import format_percent, format_power
 from .base import DeviceInfo, DeviceKind, Monitor, Snapshot
 from .manager import Discoverer
+from ..core.ticker import graph_points
 
 BASE = "/sys/class/power_supply"
 
@@ -74,7 +75,7 @@ class BatteryDiscoverer(Discoverer):
         return found
 
     def create_monitor(self, info, sysroot, settings) -> Monitor:
-        return BatteryMonitor(info, sysroot, settings.get("graph-data-points"))
+        return BatteryMonitor(info, sysroot, graph_points(settings))
 
 
 @dataclass

@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 from helpers import FakeRoot  # noqa: E402
 
-from proccoli.core.applog import (BACKUPS, FileLog, PerformanceLog,  # noqa: E402
+from proccoli.core.applog import (BACKUPS, FileLog, PerformanceLog, UtcFormatter,  # noqa: E402
                                  disk_budget, log_path, read_own_stats)
 from proccoli.core.settings import Settings  # noqa: E402
 from proccoli.core.ticker import Ticker  # noqa: E402
@@ -24,6 +24,49 @@ class PathTest(unittest.TestCase):
         self.assertEqual(log_path({"XDG_STATE_HOME": "/s"}), Path("/s/proccoli/proccoli.log"))
         self.assertEqual(log_path({}, home=Path("/h")),
                          Path("/h/.local/state/proccoli/proccoli.log"))
+
+
+class UtcTest(unittest.TestCase):
+    def record(self, created):
+        rec = logging.LogRecord("proccoli", logging.INFO, __file__, 1, "msg %s", ("x",), None)
+        rec.created, rec.msecs = created, (created % 1) * 1000
+        return rec
+
+    def test_iso_utc_with_milliseconds(self):
+        # 2026-11-23 21:41:25.154 UTC, whatever this machine's time zone.
+        line = UtcFormatter().format(self.record(1795470085.154))
+        self.assertTrue(line.startswith("2026-11-23T21:41:25.154Z INFO proccoli: msg x"), line)
+
+    def test_independent_of_the_local_zone(self):
+        import os
+        import time as _time
+        old = os.environ.get("TZ")
+        self.addCleanup(lambda: (os.environ.pop("TZ", None) if old is None
+                                 else os.environ.__setitem__("TZ", old), _time.tzset()))
+        stamps = []
+        for zone in ("UTC", "America/New_York", "Asia/Kolkata"):
+            os.environ["TZ"] = zone
+            _time.tzset()
+            stamps.append(UtcFormatter().format(self.record(0.5)))
+        self.assertEqual(len(set(stamps)), 1)
+        self.assertTrue(stamps[0].startswith("1970-01-01T00:00:00.500Z"))
+
+
+class DefaultLevelTest(unittest.TestCase):
+    def test_everything_by_default(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        settings = Settings.for_tests()
+        self.assertEqual(settings.get("log-level"), "debug")
+        logger = logging.getLogger("proccoli.test-default")
+        logger.propagate = False
+        log = FileLog(settings, Path(tmp.name) / "p.log", logger)
+        self.addCleanup(log.shutdown)
+        self.assertEqual(log.level, logging.DEBUG)
+        logger.debug("the smallest detail")
+        text = (Path(tmp.name) / "p.log").read_text()
+        self.assertIn("the smallest detail", text)
+        self.assertRegex(text, r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z DEBUG ")
 
 
 class FileLogTest(unittest.TestCase):

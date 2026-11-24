@@ -11,10 +11,12 @@ from gi.repository import Adw, Gio, GLib, Gtk
 from .. import APP_NAME, MEMORY_ICON, PROCESSOR_ICON
 from .page import (PageContainer, PageKind, PlaceholderPage, ResourcePage, app_logo_button,
                    main_menu_button)
+from .compat import ensure_font_dpi
 from .navigation import (GOTO_ACTION, GOTO_LABEL, NavigationHistory, fill_goto_menu,
                          mouse_direction)
 from .sidebar import StackSidebar
-from .sidebar_visibility import ACTION as SIDEBAR_ACTION, LABEL as SIDEBAR_LABEL, SidebarVisibility
+from .sidebar_style import MODE_ACTION, MODE_LABELS, SECTION_LABEL, Mode, SidebarStyle, rail_width
+from .sidebar_visibility import ACTION as SIDEBAR_ACTION, SidebarVisibility
 from .window_state import restore_window_state, save_window_state
 
 COLLAPSE_CONDITION = "max-width: 780sp"   # same breakpoint as Resources
@@ -36,14 +38,21 @@ def placeholder_reason(demo: bool) -> str:
 
 def primary_menu(goto: Optional[Gio.Menu] = None) -> Gio.Menu:
     """The main menu. ``goto``: the *Go To* submenu (§9.2), filled by the
-    window as panes come and go. *Show Sidebar* follows it."""
+    window as panes come and go. Then the *Sidebar* section: *Full*, *Icons
+    Only* and *Hidden* (M54)."""
     menu = Gio.Menu()
-    nav = Gio.Menu()
     if goto is not None:
+        nav = Gio.Menu()
         nav.append_submenu(GOTO_LABEL, goto)
-    # A check item: the action is stateful (sidebar_visibility, M52).
-    nav.append(SIDEBAR_LABEL, f"win.{SIDEBAR_ACTION}")
-    menu.append_section(None, nav)
+        menu.append_section(None, nav)
+    # Radio items: one stateful action, a target per mode (sidebar_visibility).
+    modes = Gio.Menu()
+    for mode in Mode:
+        item = Gio.MenuItem.new(MODE_LABELS[mode], None)
+        item.set_action_and_target_value(f"win.{MODE_ACTION}",
+                                         GLib.Variant.new_string(mode.value))
+        modes.append_item(item)
+    menu.append_section(SECTION_LABEL, modes)
     section = Gio.Menu()
     # The actions live on the application (proccoli.app.Application).
     section.append("Show All Details…", "win.authenticate")
@@ -119,11 +128,16 @@ class MainWindow(Adw.ApplicationWindow):
         self.toast_overlay = Adw.ToastOverlay(child=self.split_view)
         self.set_content(self.toast_overlay)
 
+        ensure_font_dpi(self.get_settings())          # else 780sp never matches on 1.5
         breakpoint_ = Adw.Breakpoint.new(Adw.BreakpointCondition.parse(COLLAPSE_CONDITION))
         breakpoint_.add_setter(self.split_view, "collapsed", True)
         self.add_breakpoint(breakpoint_)
-        self.sidebar_visibility = SidebarVisibility(self.split_view, settings)
-        self.add_action(self.sidebar_visibility.action)       # menu item and F9
+        self._full_widths = (self.split_view.get_min_sidebar_width(),
+                             self.split_view.get_max_sidebar_width())
+        self.sidebar_visibility = SidebarVisibility(self.split_view, settings,
+                                                    on_style=self._apply_sidebar_style)
+        self.add_action(self.sidebar_visibility.action)       # F9
+        self.add_action(self.sidebar_visibility.mode_action)  # Full / Icons Only / Hidden
         if app is not None:
             app.set_accels_for_action(f"win.{SIDEBAR_ACTION}", ["F9"])
 
@@ -180,8 +194,7 @@ class MainWindow(Adw.ApplicationWindow):
                 self.add_page(PlaceholderPage(page_id, kind, title, icon,
                                               placeholder_reason(bool(ctx.demo))))
 
-        if not self.select_page(settings.get("last-viewed-page")):
-            self.select_page(self.sidebar.order()[0])
+        self.show_overview()
 
         # Optional authentication (DESIGN.md §9.4): offered once, after the
         # window is up; the menu entry brings it back.
@@ -202,6 +215,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.containers[page.page_id] = container
         self.stack.add_named(container, page.page_id)
         self.sidebar.add_item(page)
+        self._wire_error_page(page)
 
     def remove_page(self, page_id: str) -> None:
         """Remove a page (e.g. an unplugged drive). If it was showing, show
@@ -229,6 +243,7 @@ class MainWindow(Adw.ApplicationWindow):
         if old is not page:
             old.shutdown()
         self.sidebar.replace_page(page)
+        self._wire_error_page(page)
 
     def select_page(self, page_id: Optional[str]) -> bool:
         if not page_id or page_id not in self.containers:
@@ -282,9 +297,30 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_device_added(self, _devices, monitor) -> None:
         page = self.pages.create(monitor)
-        if page.page_id in self.containers:      # replaces a placeholder
+        was_visible = self.visible_page_id() == page.page_id
+        if page.page_id in self.containers:      # replaces a placeholder (or an error page)
             self.remove_page(page.page_id)
         self.add_page(page)
+        if was_visible:
+            self.select_page(page.page_id)        # a retried device stays on screen
+
+    def _on_retry(self, page) -> None:
+        """An error page's *Try Again* (M55): set the device up again, or,
+        if only its page failed, build the page again."""
+        from ..devices.base import FailedMonitor
+        if isinstance(page.monitor, FailedMonitor):
+            if self.ctx.devices is not None:
+                shown = self.visible_page_id() == page.page_id
+                self.ctx.devices.retry(page.page_id)   # device-removed, device-added
+                if shown:
+                    self.select_page(page.page_id)     # stay on it, fixed or not
+            return
+        self.replace_page(self.pages.create(page.monitor))
+
+    def _wire_error_page(self, page: ResourcePage) -> None:
+        from .pages.error import ErrorPage
+        if isinstance(page, ErrorPage):
+            page.track(page, page.connect("retry", self._on_retry))
 
     def _add_process_pages(self) -> None:
         """Apps and Processes pages."""
@@ -299,13 +335,34 @@ class MainWindow(Adw.ApplicationWindow):
 
     # -- events -------------------------------------------------------------------
 
+    def _apply_sidebar_style(self, style: SidebarStyle) -> None:
+        """Icons only: every row just its icon, the sidebar as narrow as its
+        header (logo and burger) allows. Full: the split view's own widths."""
+        compact = style == SidebarStyle.ICONS
+        self.sidebar.set_compact(compact)
+        if compact:
+            # The minimum: logo, burger and padding (the natural width adds
+            # room for a title the sidebar header never shows).
+            header = self.sidebar_header.measure(Gtk.Orientation.HORIZONTAL, -1)[0]
+            width = rail_width(header)
+            self.split_view.set_min_sidebar_width(width)
+            self.split_view.set_max_sidebar_width(width)
+        else:
+            self.split_view.set_min_sidebar_width(self._full_widths[0])
+            self.split_view.set_max_sidebar_width(self._full_widths[1])
+
+    def show_overview(self) -> None:
+        """Every launch opens on the Overview (M55), whatever was shown last
+        time; the first entry if there's somehow none."""
+        if not self.select_page(PageKind.OVERVIEW.value):
+            self.select_page(self.sidebar.order()[0])
+
     def _on_page_selected(self, _sidebar, _page_id) -> None:
         self.sidebar_visibility.page_selected()
 
     def _on_visible_page(self, *_a) -> None:
         page_id = self.visible_page_id()
         if page_id:
-            self.settings.set("last-viewed-page", page_id)
             self.goto_action.set_state(GLib.Variant("s", page_id))
             if not self._navigating:
                 self.history.visit(page_id)

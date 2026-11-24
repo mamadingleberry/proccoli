@@ -341,7 +341,7 @@ class RegistryAndControllerTest(unittest.TestCase):
 
     def test_standard_registry_prefers_detail(self):
         reg = standard_registry()
-        self.assertEqual([c.id for c in reg.classes()], ["intel_gpu_top", "generic"])
+        self.assertEqual([c.id for c in reg.classes()], ["intel_gpu_top", "nvidia", "generic"])
         ids = [c.id for c, _ in reg.candidates(
             INTEL, deps(programs={"intel_gpu_top": "/usr/bin/intel_gpu_top"}))]
         self.assertEqual(ids, ["intel_gpu_top", "generic"])

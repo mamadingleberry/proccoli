@@ -55,6 +55,9 @@ class SidebarSummary:
     # Graph meter scale: 100 for percentages, None to scale to the data
     # (network speeds, which have no percentage and no progress bar).
     max_value: Optional[float] = 100.0
+    # Current readings for the Overview card (M57): processor temperature;
+    # GPU temperature and memory ("Memory 598.7 MB / 8.5 GB").
+    facts: list[str] = field(default_factory=list)
 
     def text(self) -> str:
         """One line: usage, then detail ("42 % · 3.1 of 16.0 GB")."""
@@ -267,7 +270,8 @@ def main_menu_button(menu_model) -> Gtk.MenuButton:
 class PageContainer(Adw.Bin):
     """Header bar (title, page buttons and, when the sidebar isn't beside
     the content, the logo and the main menu at the start) around a page.
-    The sidebar is shown again from the main menu (*Show Sidebar*, M52)."""
+    The sidebar is shown again from the main menu (*Sidebar* → *Full* or
+    *Icons Only*, M54) or F9."""
 
     def __init__(self, page: ResourcePage,
                  split_view: Optional[Adw.OverlaySplitView] = None,

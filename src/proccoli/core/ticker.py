@@ -25,6 +25,34 @@ def interval_for(speed: str) -> int:
     return REFRESH_INTERVALS_MS.get(speed, REFRESH_INTERVALS_MS["normal"])
 
 
+# Graph time-range nicks (settings schema) -> seconds (M58). Graphs show
+# this much time whatever the refresh speed; the number of points follows.
+TIME_RANGES_S = {
+    "30-seconds": 30,
+    "1-minute": 60,
+    "2-minutes": 120,
+    "5-minutes": 300,
+    "10-minutes": 600,
+}
+
+
+def time_range_s(nick: str) -> int:
+    return TIME_RANGES_S.get(nick, TIME_RANGES_S["1-minute"])
+
+
+def history_points(span_s: float, interval_ms: int) -> int:
+    """Samples needed to cover ``span_s`` seconds at ``interval_ms``: one
+    per interval, plus the one at the start."""
+    return max(2, int(span_s * 1000 / interval_ms) + 1)
+
+
+def graph_points(settings) -> int:
+    """How many samples a graph keeps: its time range at the refresh speed
+    (1 minute at 1 s: 61; at 0.25 s: 241)."""
+    return history_points(time_range_s(settings.get("graph-time-range")),
+                          interval_for(settings.get("refresh-speed")))
+
+
 class Ticker(GObject.Object):
     """Emits ``tick(now)`` every ``interval_ms`` while running.
 

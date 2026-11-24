@@ -62,7 +62,8 @@ class LayeringTest(unittest.TestCase):
     DOMAIN = ("core/", "devices/", "gpu/", "processes/", "context.py")
     # Views shipped with the Intel backend (imported lazily by create_views).
     UI_IN_DOMAIN = {"gpu/intel_gpu_top/views.py", "gpu/intel_gpu_top/graph.py",
-                    "gpu/intel_gpu_top/grid.py", "gpu/intel_gpu_top/clients.py"}
+                    "gpu/intel_gpu_top/grid.py", "gpu/intel_gpu_top/clients.py",
+                    "gpu/nvidia/views.py"}
 
     def test_domain_modules_import_no_gtk_at_module_level(self):
         offenders = []
@@ -108,8 +109,9 @@ class SettingsKeysTest(unittest.TestCase):
                  if c.setting}
         keys |= {f"{p}-sort-by" for p in ("apps", "processes")}
         keys |= {f"{p}-sort-by-ascending" for p in ("apps", "processes")}
+        from proccoli.ui.sidebar_style import STYLE_SETTING
         from proccoli.ui.sidebar_visibility import SETTING
-        keys.add(SETTING)
+        keys |= {SETTING, STYLE_SETTING}
         return keys
 
     def test_used_keys_exist(self):
@@ -182,6 +184,49 @@ class TestSuiteTest(unittest.TestCase):
                     self.assertNotIn(node.name, seen, f"{name}: class {node.name} twice")
                     seen.add(node.name)
 
+
+
+class PlatformFloorTest(unittest.TestCase):
+    """Ubuntu 24.04 ships libadwaita 1.5: newer classes are used only behind
+    a ``hasattr`` check (or through ``ui/compat.py``). An unguarded
+    ``Adw.Spinner`` once crashed every GPU page there."""
+
+    # Class -> the libadwaita version that added it (all newer than 1.5).
+    NEWER = {
+        "Spinner": "1.6", "SpinnerPaintable": "1.6", "ButtonRow": "1.6",
+        "BottomSheet": "1.6", "MultiLayoutView": "1.6", "Layout": "1.6",
+        "LayoutSlot": "1.6", "AccentColor": "1.6",
+        "ToggleGroup": "1.7", "Toggle": "1.7", "WrapBox": "1.7", "WrapLayout": "1.7",
+        "InlineViewSwitcher": "1.7",
+        "ShortcutsDialog": "1.8", "ShortcutsSection": "1.8", "ShortcutsItem": "1.8",
+        "ShortcutLabel": "1.8",
+        "Sidebar": "1.9", "SidebarItem": "1.9", "SidebarSection": "1.9",
+        "ViewSwitcherSidebar": "1.9",
+    }
+
+    def test_newer_libadwaita_classes_are_guarded(self):
+        self.assertEqual(self.offenders(modules()), [])
+
+    def offenders(self, files):
+        offenders = []
+        for rel, text in files:
+            guarded = {self.NEWER[name] for name in
+                       re.findall(r'hasattr\(\s*adw\s*,\s*"(\w+)"\s*\)', text, re.I)
+                       if name in self.NEWER}
+            for n, line in enumerate(text.splitlines(), 1):
+                for name in re.findall(r"\bAdw\.(\w+)", line.split("#", 1)[0]):
+                    # A guard for any class of the same release covers its siblings
+                    # (ShortcutsSection behind hasattr(Adw, "ShortcutsDialog")).
+                    if name in self.NEWER and self.NEWER[name] not in guarded:
+                        offenders.append(f"{rel}:{n}: Adw.{name} needs libadwaita "
+                                         f"{self.NEWER[name]}")
+        return offenders
+
+    def test_the_check_catches_an_unguarded_spinner(self):
+        self.assertEqual(self.offenders([("x.py", "w = Adw.Spinner()\n")]),
+                         ["x.py:1: Adw.Spinner needs libadwaita 1.6"])
+        self.assertEqual(self.offenders([("x.py", 'if hasattr(Adw, "ShortcutsDialog"):\n'
+                                                  '    Adw.ShortcutsItem()\n')]), [])
 
 
 class UserTextTest(unittest.TestCase):

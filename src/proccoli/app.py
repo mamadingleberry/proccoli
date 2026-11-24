@@ -21,15 +21,18 @@ log = logging.getLogger(__name__)
 
 class Application(Adw.Application):
     def __init__(self, args: argparse.Namespace, context_factory=None,
-                 log_file=None) -> None:
+                 log_file=None, stats_dir=None) -> None:
         """``context_factory(settings, demo)`` builds the AppContext; tests
         can pass their own (default: ``proccoli.context.build_context``).
-        ``log_file`` is the diagnostics log (default: ``applog.log_path()``)."""
+        ``log_file`` is the diagnostics log (default: ``applog.log_path()``),
+        ``stats_dir`` the statistics files' folder (``statslog.stats_dir()``)."""
         super().__init__(application_id=APP_ID,
                          flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self.args = args
         self.context_factory = context_factory
         self.log_file = log_file
+        self.stats_dir = stats_dir
+        self.stats_log = None
         self.ctx = None  # created in do_startup
 
         for name, callback, accels in (
@@ -52,6 +55,8 @@ class Application(Adw.Application):
         from .core.settings import Settings
         from .ui.style import add_source_icons, install_css
 
+        from .ui.compat import ensure_font_dpi
+        ensure_font_dpi(Gtk.Settings.get_default())   # sp breakpoints on libadwaita 1.5
         install_css()
         add_source_icons()
         Gtk.Window.set_default_icon_name(APP_ID)
@@ -73,8 +78,15 @@ class Application(Adw.Application):
         from .ui.style import ThemeCss
         self.theme_css = ThemeCss(self.ctx.theme)
         self.ctx.start()
+        # Every reading, on disk (M58); never the demo's made-up ones.
+        if not self.args.demo and self.ctx.devices is not None:
+            from .core.statslog import StatsLog, stats_dir
+            self.stats_log = StatsLog(self.ctx.devices, settings,
+                                      self.stats_dir or stats_dir())
 
     def do_shutdown(self) -> None:
+        if self.stats_log is not None:
+            self.stats_log.shutdown()             # writes out buffered rows
         if self.ctx is not None:
             self.ctx.stop()
             self.theme_css.shutdown()
@@ -103,7 +115,9 @@ class Application(Adw.Application):
         window = self.get_active_window()
         self._present(PreferencesDialog(self.ctx.settings, gpus, self.ctx.theme,
                                         log_file=self.file_log.path,
-                                        sidebar=getattr(window, "sidebar", None)))
+                                        sidebar=getattr(window, "sidebar", None),
+                                        stats_dir=(self.stats_log.directory
+                                                   if self.stats_log else None)))
 
     def show_shortcuts(self) -> None:
         from .ui.dialogs.about import shortcuts_dialog
@@ -118,20 +132,35 @@ class Application(Adw.Application):
 
         win = self.get_active_window()
         if win is None:
-            win = MainWindow(self, self.ctx)
+            win = MainWindow(self, self.ctx)        # opens on the Overview
+        else:
+            win.show_overview()                     # launched again: same rule
         win.present()
         self.ctx.ticker.start()
 
 
+def signal_adder(glib_unix, glib):
+    """The best "call this on a Unix signal" function the system has:
+    ``GLibUnix.signal_add`` (GLib >= 2.82), ``GLibUnix.signal_add_full``
+    (GLib 2.80, Ubuntu 24.04: it has GLibUnix but not ``signal_add``), or
+    the deprecated ``GLib.unix_signal_add`` on older systems. All take
+    ``(priority, signum, handler)``. ``glib_unix`` is None when GLibUnix
+    can't be imported."""
+    for module, name in ((glib_unix, "signal_add"), (glib_unix, "signal_add_full"),
+                         (glib, "unix_signal_add")):
+        if module is not None and hasattr(module, name):
+            return getattr(module, name)
+    raise RuntimeError("GLib has no Unix signal function")
+
+
 def on_sigint(callback) -> None:
-    """Call ``callback`` on Ctrl+C in the terminal (GLib >= 2.80 moved this
-    into GLibUnix; older systems only have the deprecated GLib function)."""
+    """Call ``callback`` on Ctrl+C in the terminal."""
     try:
         gi.require_version("GLibUnix", "2.0")
         from gi.repository import GLibUnix
-        GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, callback)
     except (ImportError, ValueError):
-        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, callback)
+        GLibUnix = None
+    signal_adder(GLibUnix, GLib)(GLib.PRIORITY_DEFAULT, signal.SIGINT, callback)
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:

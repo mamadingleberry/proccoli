@@ -30,6 +30,21 @@
     <control>keyboard</control>
   </supports>
   <releases>
+    <release version="0.2.0" date="2026-11-23">
+      <description>
+        <p>Runs on Ubuntu 24.04, adds NVIDIA statistics and keeps a record of every reading.</p>
+        <ul>
+          <li>Fixed: Proccoli wouldn't start on Ubuntu 24.04</li>
+          <li>NVIDIA graphics: live usage and a Details tab, from nvidia-settings or nvidia-smi</li>
+          <li>A device that can't be read shows an error page with Try Again</li>
+          <li>The sidebar can show icons only</li>
+          <li>Processor: one chart with a line per core and a legend; click to hide a core, right-click to show only it</li>
+          <li>The Overview opens at every start and shows temperatures and graphics memory</li>
+          <li>Graphs show a chosen time range, whatever the refresh speed</li>
+          <li>Every reading is saved to files, with UTC times; the log uses UTC too</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-11-23">
       <description><p>First prototype.</p></description>
     </release>

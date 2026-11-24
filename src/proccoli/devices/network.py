@@ -11,6 +11,7 @@ from ..core.sysroot import SysRoot
 from ..core.units import format_rate
 from .base import DeviceInfo, DeviceKind, Monitor, Snapshot
 from .manager import Discoverer
+from ..core.ticker import graph_points
 
 
 class NetType(Enum):
@@ -96,7 +97,7 @@ class NetworkDiscoverer(Discoverer):
         return found
 
     def create_monitor(self, info, sysroot, settings) -> Monitor:
-        return NetworkMonitor(info, sysroot, settings.get("graph-data-points"),
+        return NetworkMonitor(info, sysroot, graph_points(settings),
                               connection_name=self.connection_name)
 
 

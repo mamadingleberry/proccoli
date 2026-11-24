@@ -1,0 +1,5 @@
+graphics=23, memory=7, video=4, PCIe=1
+48
+1335,5001
+1214
+8188

@@ -22,6 +22,13 @@
     <value nick="fast" value="3"/>
     <value nick="very-fast" value="4"/>
   </enum>
+  <enum id="io.github.mamadingleberry.Proccoli.GraphTimeRange">
+    <value nick="30-seconds" value="30"/>
+    <value nick="1-minute" value="60"/>
+    <value nick="2-minutes" value="120"/>
+    <value nick="5-minutes" value="300"/>
+    <value nick="10-minutes" value="600"/>
+  </enum>
   <enum id="io.github.mamadingleberry.Proccoli.ColorScheme">
     <value nick="system" value="0"/>
     <value nick="light" value="1"/>
@@ -48,6 +55,10 @@
     <value nick="info" value="3"/>
     <value nick="debug" value="4"/>
   </enum>
+  <enum id="io.github.mamadingleberry.Proccoli.SidebarStyle">
+    <value nick="full" value="0"/>
+    <value nick="icons" value="1"/>
+  </enum>
   <enum id="io.github.mamadingleberry.Proccoli.MeterType">
     <value nick="progress-bar" value="0"/>
     <value nick="graph" value="1"/>
@@ -66,10 +77,6 @@
     <key name="is-maximized" type="b">
       <default>false</default>
       <summary>Window is maximized</summary>
-    </key>
-    <key name="last-viewed-page" type="s">
-      <default>''</default>
-      <summary>ID of the page shown when the app was closed</summary>
     </key>
 
     <!-- General: units -->
@@ -95,10 +102,10 @@
       <default>false</default>
       <summary>Show graph grids</summary>
     </key>
-    <key name="graph-data-points" type="u">
-      <range min="10" max="600"/>
-      <default>60</default>
-      <summary>Number of data points shown in graphs</summary>
+    <key name="graph-time-range" enum="io.github.mamadingleberry.Proccoli.GraphTimeRange">
+      <default>'1-minute'</default>
+      <summary>How much time graphs show</summary>
+      <description>Graphs keep this much history whatever the refresh speed; the number of data points follows.</description>
     </key>
     <key name="sidebar-details" type="b">
       <default>true</default>
@@ -128,8 +135,18 @@
       <description>Page ID to hidden parts: name, description, usage, chart.</description>
     </key>
     <key name="log-level" enum="io.github.mamadingleberry.Proccoli.LogLevel">
-      <default>'info'</default>
-      <summary>What the diagnostics log records</summary>
+      <default>'debug'</default>
+      <summary>What the diagnostics log records (debug: everything)</summary>
+    </key>
+    <key name="stats-log" type="b">
+      <default>true</default>
+      <summary>Keep files of every reading</summary>
+      <description>One CSV file per device in ~/.local/state/proccoli/stats, with UTC times.</description>
+    </key>
+    <key name="stats-log-max-size" type="u">
+      <range min="64" max="1048576"/>
+      <default>4096</default>
+      <summary>Size of each device's statistics file in KiB (one older file is kept too)</summary>
     </key>
     <key name="log-max-size" type="u">
       <range min="64" max="65536"/>
@@ -148,7 +165,12 @@
     <key name="sidebar-shown" type="b">
       <default>true</default>
       <summary>Show the sidebar on wide windows</summary>
-      <description>Hidden with the sidebar button or F9. Narrow windows always start with the sidebar folded away.</description>
+      <description>Hidden from the main menu or with F9. Narrow windows always start with the sidebar folded away.</description>
+    </key>
+    <key name="sidebar-style" enum="io.github.mamadingleberry.Proccoli.SidebarStyle">
+      <default>'full'</default>
+      <summary>Sidebar style: full entries, or icons only</summary>
+      <description>Icons only shows each entry's icon; hovering shows its name and usage. Hiding the sidebar keeps the style.</description>
     </key>
     <key name="overview-top-by" enum="io.github.mamadingleberry.Proccoli.TopMetric">
       <default>'cpu'</default>
@@ -170,7 +192,8 @@
     </key>
     <key name="normalize-cpu-usage" type="b">
       <default>true</default>
-      <summary>Divide the total usage of all cores by the number of cores</summary>
+      <summary>Show each app's and process's share of the whole processor</summary>
+      <description>On: a process's usage is divided by the number of logical CPUs, so the Apps and Processes columns add up to the total. Off: one fully busy core is 100 %, as in top.</description>
     </key>
     <key name="show-logical-cpus" type="b">
       <default>false</default>

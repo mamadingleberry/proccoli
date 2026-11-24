@@ -51,10 +51,12 @@ class TimeTicksTest(unittest.TestCase):
                          ["0 s", "45 s", "1 min", "1.5 min", "10 min", "1.5 h"])
 
     def test_span_follows_settings(self):
-        s = Settings.for_tests({"graph-data-points": 60, "refresh-speed": "normal"})
+        s = Settings.for_tests({"graph-time-range": "1-minute", "refresh-speed": "normal"})
         self.assertEqual(history_span_s(s), 60.0)
         s.set("refresh-speed", "very-fast")
-        self.assertLess(history_span_s(s), 60.0)
+        self.assertEqual(history_span_s(s), 60.0)        # M58: the time range holds
+        s.set("graph-time-range", "10-minutes")
+        self.assertEqual(history_span_s(s), 600.0)
 
 
 class WhichGraphsTest(unittest.TestCase):

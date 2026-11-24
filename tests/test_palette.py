@@ -160,7 +160,34 @@ class ThemeColoursTest(unittest.TestCase):
         self.assertIn("#2a7bde", self.theme.accent_css())
 
 
+def css_has_colour(css: str, hex_colour: str) -> bool:
+    """GTK prints a loaded provider back in its own form: GTK 4.14 (Ubuntu
+    24.04) drops ``:root`` custom properties it can't parse and writes
+    ``@define-color`` as ``rgb(r,g,b)``; newer GTK keeps the hex."""
+    r, g, b = (int(hex_colour[i:i + 2], 16) for i in (1, 3, 5))
+    return hex_colour in css or f"rgb({r},{g},{b})" in css
+
+
 class ThemeCssTest(unittest.TestCase):
+    def test_colour_match_accepts_both_forms(self):
+        self.assertTrue(css_has_colour("a: #3465a4;", "#3465a4"))
+        self.assertTrue(css_has_colour("@define-color x rgb(52,101,164);", "#3465a4"))
+        self.assertFalse(css_has_colour("rgb(52,101,165)", "#3465a4"))
+
+    def test_variables_only_where_gtk_reads_them(self):
+        import gi
+        gi.require_version("Gtk", "4.0")
+        from proccoli.ui.style import ThemeCss
+        from proccoli.ui.theme import Theme
+        settings = Settings.for_tests({"palette": "tango"})
+        theme = Theme(settings, FakeStyleManager())
+        self.addCleanup(theme.shutdown)
+        old = ThemeCss(theme, display=None, css_variables=False)   # GTK 4.14
+        self.addCleanup(old.shutdown)
+        self.assertIn(":root", theme.css())                       # what newer GTK gets
+        self.assertNotIn(":root", old.provider.to_string())
+        self.assertTrue(css_has_colour(old.provider.to_string(), "#3465a4"))
+
     def test_provider_follows_the_palette(self):
         import gi
         gi.require_version("Gtk", "4.0")
@@ -172,10 +199,10 @@ class ThemeCssTest(unittest.TestCase):
         self.addCleanup(theme.shutdown)
         self.assertNotIn("accent", css.provider.to_string())          # System
         settings.set("palette", "tango")
-        self.assertIn("#3465a4", css.provider.to_string())
+        self.assertTrue(css_has_colour(css.provider.to_string(), "#3465a4"))
         css.shutdown()
         settings.set("palette", "nord")
-        self.assertNotIn("#5e81ac", css.provider.to_string())          # no longer followed
+        self.assertFalse(css_has_colour(css.provider.to_string(), "#5e81ac"))  # no longer followed
 
 
 if __name__ == "__main__":

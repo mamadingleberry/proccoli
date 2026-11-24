@@ -6,7 +6,9 @@ Descriptions* and *Sidebar Meter Type*. Overview, Apps and Processes stay
 at the top;
 the user can reorder the rest (row menu or drag and drop) and minimise
 them to icon and name (``sidebar-order``, ``sidebar-minimized``; the order
-rules are in ``sidebar_order.py``).
+rules are in ``sidebar_order.py``). In the icons-only style (``set_compact``,
+``sidebar_style.py``) every row shows just its icon, with its name,
+description and usage as hover text.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from gi.repository import Gdk, Gio, GLib, GObject, Gtk, Pango
 
 from . import sidebar_order
 from .sidebar_fields import FIELD_LABELS, Field, hidden, set_shown, visible
+from .sidebar_style import compact_tooltip
 from .axes import history_span_s
 from .page import PageKind, ResourcePage, SidebarSummary
 from .widgets.meter import Meter, MeterType
@@ -38,13 +41,14 @@ class StackSidebarItem(Gtk.ListBoxRow):
         self._summary_handler = 0
         self.show_details = True
         self.show_description = True
+        self.compact = False             # icons only (sidebar-style)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         for side in ("top", "bottom"):
             getattr(box, f"set_margin_{side}")(6)
         # The icon sits left of the name; everything else lines up under the
         # name, as in Resources.
-        top = Gtk.Box(spacing=ICON_SPACING)
+        self.top = top = Gtk.Box(spacing=ICON_SPACING)
         self.image = Gtk.Image(pixel_size=ICON_SIZE)
         self.label = Gtk.Label(xalign=0, hexpand=True,
                                ellipsize=Pango.EllipsizeMode.END)
@@ -88,7 +92,7 @@ class StackSidebarItem(Gtk.ListBoxRow):
         if self.page is not None and self._summary_handler:
             self.page.disconnect(self._summary_handler)
         self.page = page
-        self.minimize_button.set_visible(self.movable)
+        self.minimize_button.set_visible(self.movable and not self.compact)
         self.label.set_label(page.title)
         self.image.set_from_icon_name(page.icon_name)
         self.detail_label.set_label(page.description)
@@ -119,8 +123,17 @@ class StackSidebarItem(Gtk.ListBoxRow):
         self.update()
 
     def shows(self, field: Field) -> bool:
+        if self.compact:
+            return False                 # only the icon; the rest is hover text
         return visible(field, self.hidden_fields, show_details=self.show_details,
                        show_description=self.show_description, minimized=self.minimized)
+
+    def set_compact(self, compact: bool) -> None:
+        """Icons only: the icon, centred, with the rest as hover text."""
+        self.compact = compact
+        self.top.set_halign(Gtk.Align.CENTER if compact else Gtk.Align.FILL)
+        self.minimize_button.set_visible(self.movable and not compact)
+        self.update()
 
     def set_style(self, show_details: bool, show_description: bool,
                   meter_type: str) -> None:
@@ -144,9 +157,13 @@ class StackSidebarItem(Gtk.ListBoxRow):
                                     or (graph_mode and bool(summary.series))))
         self.details.set_visible(self.detail_label.get_visible()
                                  or self.usage_label.get_visible() or self.meter.get_visible())
+        text = summary.text() if has_summary else None
+        tooltip = (compact_tooltip(self.page.title, self.page.description, text)
+                   if self.compact else None)
+        if self.get_tooltip_text() != tooltip:
+            self.set_tooltip_text(tooltip)
         if not has_summary:
             return
-        text = summary.text()
         self.usage_label.set_label(text)
         self.update_property([Gtk.AccessibleProperty.DESCRIPTION], [text])
         self.meter.set_fraction(None if summary.usage is None else summary.usage / 100)
@@ -180,6 +197,7 @@ class StackSidebar(Gtk.ScrolledWindow):
         self._minimized: set[str] = set()
         self._hidden_fields: dict[str, list[str]] = {}
         self.colors: dict[str, int] = {}      # page ID -> entry colour index
+        self.compact = False                  # icons only (sidebar_style.py)
         self._install_actions()
 
         self.list_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
@@ -190,7 +208,7 @@ class StackSidebar(Gtk.ScrolledWindow):
 
         if settings is not None:
             for key in ("sidebar-details", "sidebar-description", "sidebar-meter-type",
-                        "show-graph-axes", "graph-data-points", "refresh-speed"):
+                        "show-graph-axes", "graph-time-range", "refresh-speed"):
                 settings.connect_changed(key, lambda *_: self._apply_style())
             settings.connect_changed("sidebar-order", lambda *_: self._rearrange())
             settings.connect_changed("sidebar-minimized", lambda *_: self._apply_minimized())
@@ -203,6 +221,7 @@ class StackSidebar(Gtk.ScrolledWindow):
             raise ValueError(f"duplicate page {page.page_id!r}")
         item = StackSidebarItem(page)
         self.items[page.page_id] = item
+        item.set_compact(self.compact)
         self._style(item)
         self._wire_row(item)
         self._rearrange(sort=False)
@@ -222,6 +241,12 @@ class StackSidebar(Gtk.ScrolledWindow):
         self.items[page.page_id].set_page(page)
         self._rearrange()
         self.assign_colors()
+
+    def set_compact(self, compact: bool) -> None:
+        """Icons only (True) or full entries, for every row."""
+        self.compact = compact
+        for item in self.items.values():
+            item.set_compact(compact)
 
     def default_order(self) -> list[str]:
         """The built-in order (by kind, then name), ignoring the user's."""

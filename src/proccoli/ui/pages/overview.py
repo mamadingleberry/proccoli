@@ -68,6 +68,11 @@ class OverviewCard(Gtk.Box):
         self.detail_label = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
         self.detail_label.add_css_class("caption")
         self.detail_label.add_css_class("dim-label")
+        # Current readings: temperature, GPU memory used / total (M57).
+        self.facts_label = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END,
+                                     visible=False)
+        self.facts_label.add_css_class("caption")
+        self.facts_label.add_css_class("numeric")
         self.graph = Graph(GraphStyle.NORMAL)
         self.graph.set_content_height(CARD_START_CHART)   # the page fits it
         self.empty_label = Gtk.Label(label="No data", vexpand=True,
@@ -75,6 +80,7 @@ class OverviewCard(Gtk.Box):
         self.empty_label.add_css_class("dim-label")
         inner.append(header)
         inner.append(self.detail_label)
+        inner.append(self.facts_label)
         inner.append(self.graph)
         inner.append(self.empty_label)
         self.append(inner)
@@ -119,6 +125,10 @@ class OverviewCard(Gtk.Box):
         self.usage_label.set_label(usage)
         self.detail_label.set_label(detail)
         self.detail_label.set_visible(bool(detail))
+        facts = " · ".join(summary.facts) if summary is not None else ""
+        if self.facts_label.get_label() != facts:
+            self.facts_label.set_label(facts)
+        self.facts_label.set_visible(bool(facts))
         text = summary.text() if summary is not None else ""
         self.update_property([Gtk.AccessibleProperty.LABEL],
                              [f"{self.page.title}: {text}" if text else self.page.title])
@@ -293,7 +303,7 @@ class OverviewPage(FittingPage):
         self.empty.add_css_class("dim-label")
         self.box.append(self.empty)
         if settings is not None:
-            for key in ("show-graph-axes", "graph-data-points", "refresh-speed"):
+            for key in ("show-graph-axes", "graph-time-range", "refresh-speed"):
                 self.track(settings, settings.connect_changed(key, lambda *_: self._restyle()))
         # Without a process monitor (demo mode, tests) there are no tables.
         self.tops: Optional[TopTables] = None
@@ -350,7 +360,10 @@ class OverviewPage(FittingPage):
     def fit_key(self) -> tuple:
         # The tables grow from "Waiting for data…" to ten rows, and the
         # cards come and go: either changes the space to share.
-        return (*self.viewport_size(), len(self.cards), self._tables_height())
+        # A card's readings line appears with its first data (M57): the
+        # cards' chrome changes, so fit again then too.
+        return (*self.viewport_size(), len(self.cards), self._tables_height(),
+                sum(c.facts_label.get_visible() for c in self.cards.values()))
 
     def _tables_height(self) -> int:
         if self.tops is None or not self.tops.get_visible():

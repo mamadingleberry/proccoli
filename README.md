@@ -8,7 +8,7 @@ Proccoli is a system monitor for the Linux desktop. It shows what your
 processor, memory, graphics card, drives, network and battery are doing,
 and which apps and processes are using them. It looks and works like
 **Resources**, the system monitor that ships with Ubuntu, and adds detailed
-statistics for Intel graphics.
+statistics for Intel and NVIDIA graphics.
 
 ## What it shows
 
@@ -17,18 +17,19 @@ live chart:
 
 | Entry | What you'll find |
 |---|---|
-| **Overview** | A live chart for every device at a glance, and the ten busiest apps and processes. Click a chart or row to open its page. |
+| **Overview** | A live chart for every device at a glance, with the processor's temperature and each graphics card's temperature and memory (used / total), and the ten busiest apps and processes. Click a chart or row to open its page. Proccoli always opens here. |
 | **Apps** | The apps you're running, with the processor, memory, drive and graphics use of all their processes combined |
 | **Processes** | Every process on the system, with columns you can choose |
-| **Processor** | Total usage (or one chart per core), speed, temperature and processor details |
+| **Processor** | Total usage, or one chart with a line per core and a legend in the same space (in the legend, click a core to hide or show its line, or right-click it to show only that core, and right-click again for all; deselecting the last core shown brings them all back; in a small window, hover over a core for its usage); speed, temperature and processor details |
 | **Memory** | Memory and swap usage, and the memory modules' type and speed (e.g. "16.0 GB DDR4 @ 2667 MT/s") |
-| **GPU** (one per graphics card) | Usage, video engines, video memory, speed, power and temperature. On Intel graphics, *Details* and *Processes* tabs add per-engine statistics and per-app graphics use. |
+| **GPU** (one per graphics card) | Usage, video engines, video memory, speed, power and temperature. On Intel graphics, *Details* and *Processes* tabs add per-engine statistics and per-app graphics use. On NVIDIA graphics, a *Details* tab adds utilisation, video engines, memory, clocks, temperature, power and fan from NVIDIA's own tools. |
 | **Drives** (one per drive) | How busy the drive is, read and write speeds, and totals |
 | **Network** (one per connection) | Download and upload speeds, and totals |
 | **Battery** (if you have one) | Charge, power draw and battery health |
 
 Drives and network connections come and go as you plug them in or
-remove them.
+remove them. If Proccoli can't read a device, its entry stays in the
+sidebar and its page says what went wrong, with *Try Again*.
 
 ## Requirements
 
@@ -42,6 +43,9 @@ remove them.
   ```
 - **Optional:**
   - `intel-gpu-tools`: the detailed statistics for Intel graphics
+  - NVIDIA's driver with `nvidia-settings` and/or `nvidia-smi` (from the
+    driver's `nvidia-utils` package): the detailed statistics for NVIDIA
+    graphics
   - `pkexec` (package `pkexec` or `policykit-1`): actions that need
     administrator rights
   - `dmidecode`: memory module details on systems that don't report them
@@ -54,7 +58,7 @@ From the project folder, build a package and install it:
 
 ```sh
 packaging/build-deb.sh
-sudo apt install ./dist/proccoli_0.1.0_all.deb
+sudo apt install ./dist/proccoli_0.2.0_all.deb
 ```
 
 Proccoli then appears in your app grid. To install without a package
@@ -74,7 +78,9 @@ and activity.
 - **Sidebar:**
   - The top-left corner always holds the Proccoli logo (click it for
     *About*) and the main menu (≡).
-  - Hide or show the sidebar with ≡ → *Show Sidebar*, or press F9.
+  - Choose how the sidebar looks from ≡ → *Sidebar*: *Full*, *Icons
+    Only* (a slim strip of icons; hover over one to see its name and
+    usage) or *Hidden*. F9 hides it and shows it again as it was.
     Proccoli remembers your choice.
   - Without the sidebar, switch panes from the main menu: ≡ → *Go To*.
   - Go back and forward through the panes you've visited with your mouse's
@@ -92,9 +98,13 @@ and activity.
   - Click a column header to sort by it, and type Ctrl+F to search.
 - **Graphics details:** on an Intel GPU, open the *Details* tab for
   per-engine charts, frequency, power and memory bandwidth, and the
-  *Processes* tab for each app's graphics use.
+  *Processes* tab for each app's graphics use. On an NVIDIA GPU, the
+  *Details* tab shows what NVIDIA's tools report; its first line says
+  which tool is in use. The GPU page's *Detailed Statistics* property says
+  what Proccoli found for that card, or why there's nothing more.
 - **Narrow and portrait windows:** the sidebar folds away and opens over
-  the page with ≡ → *Show Sidebar* (or F9). Charts rearrange to fit tall screens.
+  the page with ≡ → *Sidebar* → *Full* or *Icons Only* (or F9). Charts
+  rearrange to fit tall screens.
   On the Overview, the charts form a grid that fills as much of the
   window as it can without any chart becoming taller than it is wide.
   When they'd get too small, the busiest apps and processes move
@@ -142,12 +152,18 @@ Open with Ctrl+, or from the main menu.
   - *Appearance:* style (Follow System, Light, Dark, Sand, Sky, Twilight,
     Midnight) and colour palette for the charts.
   - *Units:* data units, network speeds in bits, temperature unit.
-  - *User Interface:* refresh speed, chart grids and axes, how much
-    history charts show, normalised processor usage.
+  - *User Interface:* refresh speed, chart grids and axes, *Graph Time
+    Range* (how much time charts show: 30 seconds to 10 minutes, whatever
+    the refresh speed), and *Normalize Processor Usage*: on, each app's or
+    process's processor use is its share of the whole processor (the
+    column adds up to the total); off, one fully busy core is 100 %, as in
+    `top`.
   - *Diagnostics:* the log's detail level and size, with a button to
     open its folder.
-- **Sidebar:** the chart style, and for each entry, what it shows and
-  where it sits.
+  - *Statistics Files:* keep files of every reading (on by default), and
+    their size.
+- **Sidebar:** full entries or icons only, the chart style, and for each
+  entry, what it shows and where it sits.
 - **Apps** and **Processes:** which columns to show.
 - **Devices:** whether to list virtual drives and network connections.
 - **GPU:** detailed statistics on or off per graphics card, and their
@@ -158,13 +174,33 @@ Open with Ctrl+, or from the main menu.
 - **Settings:** in your desktop's settings store (dconf), under
   `/io/github/mamadingleberry/Proccoli/`. To reset everything:
   `dconf reset -f /io/github/mamadingleberry/Proccoli/`
+- **Statistics files:** `~/.local/state/proccoli/stats/`, one file per
+  device (`cpu.csv`, `memory.csv`, `gpu-….csv`, …), readable only by you.
+  Every reading Proccoli shows, once per refresh: a CSV file (opens in any
+  spreadsheet) whose first column is the time in UTC (for example
+  `2026-11-24T05:05:15.244Z`) and whose other columns name the reading
+  and its unit (`usage_percent`, `temperature_celsius`,
+  `read_bytes_per_second`, `used_bytes`). Each file is capped at 4 MiB
+  by default (about 8 hours of a 24-core processor at one reading a
+  second), plus one older file. Turn them off or change the size in
+  Preferences → General → *Statistics Files*.
 - **Diagnostics log:** `~/.local/state/proccoli/proccoli.log`, readable
-  only by you. It's capped at 1 MiB by default, plus one older file. Set
-  the size or turn it off in Preferences → General → *Diagnostics*.
+  only by you. By default it records everything (*Everything (Debug)*),
+  with times in UTC (for example `2026-11-23T21:41:25.154Z`). It's capped
+  at 1 MiB by default, plus one older file. Set the level or size, or turn
+  it off, in Preferences → General → *Diagnostics*.
 
 ## Troubleshooting
 
 - **No Details tab on an Intel GPU:** install `intel-gpu-tools`.
+- **NVIDIA details come from nvidia-smi, not nvidia-settings:**
+  `nvidia-settings` can only read usage in an X11 session. In a Wayland
+  session (Ubuntu's default) Proccoli uses `nvidia-smi` instead, and the
+  *Details* tab says so. The open `nouveau` driver isn't supported by
+  NVIDIA's tools.
+- **A page says a device "isn't available":** Proccoli couldn't read it.
+  The page says why; *Technical Details* has more (*Copy Details* copies
+  it for a bug report), and *Try Again* tries once more.
 - **"Show Detailed Statistics" or process actions do nothing:** make sure
   Proccoli is installed (not only run from the folder) and that `pkexec`
   is installed.

@@ -45,18 +45,20 @@ if HAVE_DISPLAY:
     class FakePage(ScrollingPage):
         """A device-like page with a settable summary."""
 
-        def __init__(self, page_id, title="Device", usage=10.0, summary=True):
+        def __init__(self, page_id, title="Device", usage=10.0, summary=True, facts=()):
             super().__init__(page_id, PageKind.DRIVE, title, "drive-harddisk-symbolic",
                              description=f"{page_id} model")
             self.history = History(30)
             self.series = [self.history.define("usage", "%")]
             self.usage = usage
             self.summary = summary
+            self.facts = list(facts)
 
         def sidebar_summary(self):
             if not self.summary:
                 return None
-            return SidebarSummary(self.usage, detail="1 of 2 GB", series=self.series)
+            return SidebarSummary(self.usage, detail="1 of 2 GB", series=self.series,
+                                  facts=list(self.facts))
 
         def set_usage(self, usage):
             self.usage = usage
@@ -136,6 +138,8 @@ class OverviewPageTest(unittest.TestCase):
         self.settings.set("show-graph-axes", False)
         self.assertFalse(graph.show_axes)
         self.settings.set("refresh-speed", "slow")
+        self.assertEqual(graph.time_span_s, 60.0)      # M58: the time range holds
+        self.settings.set("graph-time-range", "2-minutes")
         self.assertEqual(graph.time_span_s, 120.0)
 
     def test_overview_is_a_pinned_uncharted_page(self):
@@ -264,7 +268,8 @@ class GridFillsThePageTest(unittest.TestCase):
         page = win.get_child() if isinstance(win.get_child(), OverviewPage) \
             else win.page("overview")
         before = page.viewport_size()
-        win.set_default_size(width, height)
+        from helpers import resize_or_skip
+        resize_or_skip(self, win, width, height)
         self.assertTrue(pump(lambda: page.viewport_size() != before, timeout=5.0))
         self.settle(page)
 
@@ -398,6 +403,28 @@ class GridFillsThePageTest(unittest.TestCase):
         self.assertFills(page, with_tables=False)
         adj = page.scroller.get_vadjustment()
         self.assertGreater(adj.get_upper(), adj.get_page_size() + 50)   # tables scroll in
+
+
+@unittest.skipUnless(HAVE_DISPLAY, "no display")
+class CardFactsTest(unittest.TestCase):
+    """M57: processor and GPU cards show their current readings."""
+
+    def test_readings_line(self):
+        page = FakePage("gpu", "GPU", facts=["Temperature 39 °C",
+                                              "Memory 598.7 MB / 8.5 GB"])
+        card = OverviewCard(page, 0, None)
+        self.assertTrue(card.facts_label.get_visible())
+        self.assertEqual(card.facts_label.get_label(),
+                         "Temperature 39 °C · Memory 598.7 MB / 8.5 GB")
+        page.facts = []                                    # e.g. no sensor
+        card.update()
+        self.assertFalse(card.facts_label.get_visible())
+        card.shutdown()
+
+    def test_no_line_without_readings(self):
+        card = OverviewCard(FakePage("sda"), 0, None)
+        self.assertFalse(card.facts_label.get_visible())
+        card.shutdown()
 
 
 if __name__ == "__main__":

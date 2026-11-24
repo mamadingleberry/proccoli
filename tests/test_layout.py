@@ -177,5 +177,31 @@ class PlanGridTest(unittest.TestCase):
         self.assertEqual(self.plan(12, 4000, 300, max_columns=6).columns, 6)
 
 
+class GraphInAreaTest(unittest.TestCase):
+    """A graph sharing its area with a legend (M57)."""
+
+    def test_area_less_reserve(self):
+        from proccoli.ui.layout import graph_in_area
+        self.assertEqual(graph_in_area(400, 90), 310)
+        self.assertEqual(graph_in_area(400, 0), 400)
+        self.assertEqual(graph_in_area(400, -5), 400)
+
+    def test_floor(self):
+        from proccoli.ui.layout import MIN_GRAPH_IN_AREA, graph_in_area
+        self.assertEqual(graph_in_area(120, 100), MIN_GRAPH_IN_AREA)
+        self.assertEqual(graph_in_area(120, 100, floor=10), 20)
+
+
+class CompactLegendTest(unittest.TestCase):
+    """The per-CPU legend drops its values when the chart would be cramped (M57)."""
+
+    def test_rule(self):
+        from proccoli.ui.layout import COMFORT_GRAPH, use_compact_legend
+        self.assertFalse(use_compact_legend(400, 120))
+        self.assertTrue(use_compact_legend(220, 140))
+        self.assertTrue(use_compact_legend(COMFORT_GRAPH + 99, 100))
+        self.assertFalse(use_compact_legend(COMFORT_GRAPH + 100, 100))
+
+
 if __name__ == "__main__":
     unittest.main()

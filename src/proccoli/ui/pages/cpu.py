@@ -1,66 +1,39 @@
-"""Processor page: total or per-thread usage, temperature, properties."""
+"""Processor page: total usage or one chart of every logical CPU (with a
+legend), temperature, properties."""
 
 from __future__ import annotations
 
 from gi.repository import Adw, Gtk
 
-from ...core.units import format_duration, format_frequency, format_percent, format_temperature
-from ...devices.cpu import CpuMonitor, CpuSnapshot
+from ...core.units import (device_facts, format_duration, format_frequency, format_percent,
+                           format_temperature)
+from ...devices.cpu import CpuMonitor, CpuSnapshot, busiest_thread
 from ..page import PageKind
-from ..widgets.graph import Graph, GraphStyle
 from .device import DevicePage
-
-
-THREAD_GRAPH_ASPECT = 0.6     # height / width of a per-thread graph
-THREAD_CELL_MIN_WIDTH = 120   # the grid fits as many as this allows per line
-
-
-class ThreadCell(Gtk.Box):
-    """A small graph for one logical CPU, for the per-thread grid."""
-
-    def __init__(self, name: str, series) -> None:
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True,
-                         width_request=THREAD_CELL_MIN_WIDTH)
-        self.graph = Graph(GraphStyle.SMALL, max_value=100.0)
-        # Grows with the grid's column width (DESIGN.md §9.1).
-        self.graph.set_aspect(THREAD_GRAPH_ASPECT, minimum=48, maximum=240)
-        self.graph.set_series([series])
-        header = Gtk.Box(spacing=6)
-        self.name_label = Gtk.Label(label=name, xalign=0, hexpand=True)
-        self.name_label.add_css_class("caption-heading")
-        self.value_label = Gtk.Label(xalign=1)
-        self.value_label.add_css_class("caption")
-        self.value_label.add_css_class("numeric")
-        header.append(self.name_label)
-        header.append(self.value_label)
-        self.append(self.graph)
-        self.append(header)
 
 
 class CpuPage(DevicePage):
     def __init__(self, monitor: CpuMonitor, settings) -> None:
         super().__init__(monitor, settings, PageKind.CPU)
-        self.cells: list[ThreadCell] = []
+        self.thread_names: list[str] = []
 
         options = self.add_group("Options")
         self.logical_switch = Adw.SwitchRow(title="Show Usages of Logical CPUs")
         options.add(self.logical_switch)
         settings.bind("show-logical-cpus", self.logical_switch, "active")
 
-        # Total usage, or one small graph per logical CPU.
+        # Total usage, or one chart with a line per logical CPU and a legend
+        # (M55; it replaced a grid of small graphs).
         self.usage_stack = Gtk.Stack(vhomogeneous=False, interpolate_size=True)
         total_group = Adw.PreferencesGroup(title="Usage")
         self.total = self.graph_box(total_group, "Total Usage", [("usage", "%")])
         self.usage_stack.add_named(total_group, "total")
-        logical = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        title = Gtk.Label(label="Usage", xalign=0)
-        title.add_css_class("heading")
-        self.flow = Gtk.FlowBox(homogeneous=True, min_children_per_line=2,
-                                max_children_per_line=8, column_spacing=12,
-                                row_spacing=12, selection_mode=Gtk.SelectionMode.NONE)
-        logical.append(title)
-        logical.append(self.flow)
-        self.usage_stack.add_named(logical, "logical")
+        logical_group = Adw.PreferencesGroup(title="Usage")
+        # A reusable LegendChart (M59): one line per CPU, the legend in its
+        # card, chart and legend fitted into the total chart's area (M57).
+        self.threads = self.add_legend_chart(logical_group, "Usage per Logical CPU")
+        self.legend = self.threads.legend
+        self.usage_stack.add_named(logical_group, "logical")
         self.box.append(self.usage_stack)
         self.track(settings, settings.connect_changed(
             "show-logical-cpus", lambda _k, v: self._show_logical(v)))
@@ -73,28 +46,46 @@ class CpuPage(DevicePage):
         self.sensors.set_visible(monitor.temperature_path is not None)
 
         self.add_properties({**monitor.info.properties, "Uptime": ""})
+        self._ensure_threads()
 
     def _show_logical(self, show: bool) -> None:
         self.usage_stack.set_visible_child_name("logical" if show else "total")
+        self.refit()                    # the other chart takes the same area
 
-    def _ensure_cells(self) -> None:
-        names = self.monitor.thread_names()
-        if len(self.cells) == len(names):
+    def fit_key(self) -> tuple:
+        # Which chart shows (the legend's height is in the base's key).
+        return (*super().fit_key(), self.usage_stack.get_visible_child_name())
+
+    def _ensure_threads(self) -> None:
+        """One line and one legend item per logical CPU (known after the
+        first sample)."""
+        count = len(self.monitor.thread_names())
+        if count == len(self.thread_names):
             return
-        for i in range(len(self.cells), len(names)):
-            cell = ThreadCell(f"CPU {i}", self.monitor.history.define(f"cpu{i}", "%"))
-            self.add_graph(cell.graph)
-            self.cells.append(cell)
-            self.flow.append(cell)
+        self.thread_names = [f"CPU {i}" for i in range(count)]
+        self.threads.set_lines([self.monitor.history.define(f"cpu{i}", "%")
+                                for i in range(count)], self.thread_names)
+
+    def sidebar_summary(self):
+        summary = super().sidebar_summary()
+        snap = self.monitor.latest
+        if snap is not None:
+            summary.facts = device_facts(snap.temperature_c, self.temperature_unit)
+        return summary
 
     def update_labels(self, snap: CpuSnapshot) -> None:
-        self._ensure_cells()
+        self._ensure_threads()
         info = format_percent(snap.usage)
         if snap.frequency_hz:
             info += f" · {format_frequency(snap.frequency_hz)}"
         self.total.set_info(info)
-        for cell, value in zip(self.cells, snap.per_thread):
-            cell.value_label.set_label(format_percent(value))
+        self.threads.set_values([format_percent(v) for v in snap.per_thread])
+        info = f"{len(self.thread_names)} logical CPUs"
+        busiest = busiest_thread(snap.per_thread)
+        if busiest is not None:
+            index, value = busiest
+            info += f" · busiest: CPU {index}, {format_percent(value)}"
+        self.threads.set_info(info)
         if snap.temperature_c is not None:
             self.temperature.set_info(format_temperature(snap.temperature_c,
                                                          self.temperature_unit))

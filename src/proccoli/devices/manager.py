@@ -4,17 +4,23 @@ Each device type contributes a ``Discoverer``. Types that can appear and
 disappear at runtime (drives, network interfaces) set ``rescan = True`` and
 are re-discovered every few seconds, or immediately when one of their
 ``settings_keys`` changes (e.g. *Show Virtual Drives*).
+
+A device whose monitor can't be built or started still appears, as a
+``FailedMonitor``: its page explains the error and offers *Try Again*
+(``retry``), instead of the device silently missing (Milestone 55).
 """
 
 from __future__ import annotations
 
 import logging
+import traceback
 from typing import Optional
 
 from gi.repository import GObject
 
 from ..core.sysroot import SysRoot
-from .base import DeviceInfo, DeviceKind, Monitor
+from .base import DeviceInfo, DeviceKind, FailedMonitor, Monitor
+from ..core.ticker import graph_points
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +55,10 @@ class DeviceManager(GObject.Object):
         self._last_rescan: Optional[float] = None
         self._ticker_handler = 0
         self.started = False
-        settings.connect_changed("graph-data-points", self._on_points_changed)
+        # Graphs keep their time range: the number of points follows both
+        # the range and the refresh speed (M58).
+        for key in ("graph-time-range", "refresh-speed"):
+            settings.connect_changed(key, lambda *_: self._on_points_changed())
 
     def register(self, discoverer: Discoverer) -> None:
         self.discoverers.append(discoverer)
@@ -113,16 +122,45 @@ class DeviceManager(GObject.Object):
                 self._add(discoverer, info)
 
     def _add(self, discoverer: Discoverer, info: DeviceInfo) -> None:
-        try:
-            monitor = discoverer.create_monitor(info, self.sysroot, self.settings)
-        except Exception:  # noqa: BLE001
-            log.exception("creating the monitor for %s failed", info.id)
-            return
+        monitor = self._build(discoverer, info)
         self._monitors[info.id] = monitor
         self._owner[info.id] = discoverer
-        monitor.start()
-        log.debug("device added: %s", info.id)
+        log.debug("device added: %s%s", info.id,
+                  " (failed)" if isinstance(monitor, FailedMonitor) else "")
         self.emit("device-added", monitor)
+
+    def _build(self, discoverer: Discoverer, info: DeviceInfo) -> Monitor:
+        """The device's monitor, started; a ``FailedMonitor`` if either step
+        raised (one broken device must not stop the rest)."""
+        try:
+            monitor = discoverer.create_monitor(info, self.sysroot, self.settings)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("creating the monitor for %s failed", info.id)
+            return FailedMonitor(info, f"Proccoli couldn't set up this device: {exc}",
+                                 traceback.format_exc())
+        try:
+            monitor.start()
+        except Exception as exc:  # noqa: BLE001
+            log.exception("starting the monitor for %s failed", info.id)
+            try:
+                monitor.stop()
+            except Exception:  # noqa: BLE001
+                log.debug("stopping %s after a failed start also failed", info.id)
+            return FailedMonitor(info, f"Proccoli couldn't start reading this device: {exc}",
+                                 traceback.format_exc())
+        return monitor
+
+    def retry(self, device_id: str) -> bool:
+        """Build a failed device's monitor again (its page's *Try Again*).
+        Emits ``device-removed`` then ``device-added``; True if it was a
+        failed device that is still known."""
+        monitor = self._monitors.get(device_id)
+        discoverer = self._owner.get(device_id)
+        if not isinstance(monitor, FailedMonitor) or discoverer is None:
+            return False
+        self._remove(device_id)
+        self._add(discoverer, monitor.info)
+        return True
 
     def _remove(self, device_id: str) -> None:
         monitor = self._monitors.pop(device_id)
@@ -131,6 +169,7 @@ class DeviceManager(GObject.Object):
         log.debug("device removed: %s", device_id)
         self.emit("device-removed", device_id)
 
-    def _on_points_changed(self, _key, points: int) -> None:
+    def _on_points_changed(self) -> None:
+        points = graph_points(self.settings)
         for m in self._monitors.values():
             m.set_history_points(points)

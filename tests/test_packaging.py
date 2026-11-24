@@ -216,7 +216,14 @@ class IconsTest(unittest.TestCase):
         svg = GdkPixbuf.Pixbuf.new_from_file_at_size(
             data(f"icons/hicolor/scalable/apps/{APP_ID}.svg"), 64, 64)
         png = GdkPixbuf.Pixbuf.new_from_file(data(f"icons/hicolor/64x64/apps/{APP_ID}.png"))
-        self.assertEqual(svg.get_pixels(), png.get_pixels())   # re-rendered after edits
+        # Re-rendered after edits. librsvg versions round a few channels
+        # differently (Ubuntu 24.04's is off by one here and there), so allow
+        # tiny differences; a forgotten re-render changes far more.
+        a, b = svg.get_pixels(), png.get_pixels()
+        self.assertEqual(len(a), len(b))
+        diffs = [abs(x - y) for x, y in zip(a, b) if x != y]
+        self.assertLessEqual(max(diffs, default=0), 2)
+        self.assertLess(len(diffs), len(a) // 200)
 
     def test_png_sizes(self):
         import gi

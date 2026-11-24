@@ -1,9 +1,11 @@
 """The diagnostics log (DESIGN.md §11): a size-capped file for debugging.
 
 - ``FileLog`` keeps a rotating log file of Proccoli's own messages, set up
-  from the preferences: ``log-level`` (off, error, warning, info, debug)
-  and ``log-max-size`` (KiB). One previous file is kept, so the log never
-  takes more than twice that on disk.
+  from the preferences: ``log-level`` (off, error, warning, info, debug;
+  debug, i.e. everything, by default) and ``log-max-size`` (KiB). One
+  previous file is kept, so the log never takes more than twice that on
+  disk. Times are UTC, in ISO 8601 (``2026-11-23T21:41:25.154Z``), so logs
+  from different machines and time zones line up (M55).
 - ``PerformanceLog`` writes how Proccoli itself is doing every
   ``log-performance-interval`` minutes: its CPU use, memory, threads, and
   how long its slowest refresh took.
@@ -27,6 +29,21 @@ BACKUPS = 1                 # previous files kept
 LEVELS = {"off": None, "error": logging.ERROR, "warning": logging.WARNING,
           "info": logging.INFO, "debug": logging.DEBUG}
 FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+DEFAULT_LEVEL = logging.DEBUG    # the schema's default too: record everything
+
+
+class UtcFormatter(logging.Formatter):
+    """``FORMAT`` with UTC times in ISO 8601, to the millisecond:
+    ``2026-11-23T21:41:25.154Z``."""
+
+    converter = time.gmtime
+
+    def __init__(self, fmt: str = FORMAT) -> None:
+        super().__init__(fmt)
+
+    def formatTime(self, record, datefmt=None) -> str:   # noqa: N802 (logging's name)
+        from .units import iso_utc
+        return iso_utc(record.created)
 
 
 def log_path(env: Mapping[str, str] = os.environ, home: Optional[Path] = None) -> Path:
@@ -66,7 +83,7 @@ class FileLog:
 
     @property
     def level(self) -> Optional[int]:
-        return LEVELS.get(self.settings.get("log-level"), logging.WARNING)
+        return LEVELS.get(self.settings.get("log-level"), DEFAULT_LEVEL)
 
     def apply(self) -> None:
         self._close()
@@ -82,7 +99,7 @@ class FileLog:
             logging.getLogger(__name__).warning("can't write the log %s: %s", self.path, exc)
             return
         handler.setLevel(level)
-        handler.setFormatter(logging.Formatter(FORMAT))
+        handler.setFormatter(UtcFormatter())
         self.handler = handler
         self.logger.addHandler(handler)
         # Let records at the file's level through, even if the console

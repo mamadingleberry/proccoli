@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from gi.repository import Gdk, Gtk
+
+from .compat import has_css_variables, without_css_variables
 
 CSS = """
 /* The Intel Details tab: intel_gpu_top_gui's look. */
 .graph-section { padding: 12px 6px 6px 6px; }
 .legend-item { padding: 2px 8px; min-height: 0; }
+/* The per-CPU legend (M57): no slot padding, so it takes little of the
+   chart's area. */
+flowbox.graph-legend > flowboxchild { padding: 0; margin: 0; }
 .legend-off { opacity: 0.45; }
 .device-caption { padding: 0 12px; }
 .compact .graph-section { padding: 4px 0 0 0; }
@@ -49,8 +56,11 @@ class ThemeCss:
     """Keeps a CSS provider loaded with ``theme.accent_css()`` (the
     palette's accent colour), following the theme's changes."""
 
-    def __init__(self, theme, display=None) -> None:
+    def __init__(self, theme, display=None, css_variables: Optional[bool] = None) -> None:
         self.theme = theme
+        # GTK 4.14 (Ubuntu 24.04) can't read :root variables: leave them out
+        # there (compat.has_css_variables); injectable for tests.
+        self.css_variables = has_css_variables() if css_variables is None else css_variables
         self.provider = Gtk.CssProvider()
         self.display = display or Gdk.Display.get_default()
         if self.display is not None:
@@ -62,6 +72,8 @@ class ThemeCss:
 
     def reload(self) -> None:
         css = self.theme.css()
+        if not self.css_variables:
+            css = without_css_variables(css)
         if hasattr(self.provider, "load_from_string"):   # GTK >= 4.12
             self.provider.load_from_string(css)
         else:

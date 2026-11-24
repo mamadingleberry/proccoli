@@ -108,5 +108,26 @@ class TickerTest(unittest.TestCase):
         self.assertEqual(interval_for("bogus"), 1000)
 
 
+class TimeRangeTest(unittest.TestCase):
+    """Graphs keep a time range, not a number of points (M58)."""
+
+    def test_points_follow_range_and_refresh(self):
+        from proccoli.core.settings import Settings
+        from proccoli.core.ticker import TIME_RANGES_S, graph_points, history_points
+        self.assertEqual(history_points(60, 1000), 61)
+        self.assertEqual(history_points(60, 250), 241)
+        self.assertEqual(history_points(600, 4000), 151)
+        self.assertEqual(history_points(0, 1000), 2)
+        s = Settings.for_tests()
+        self.assertEqual(graph_points(s), 61)                    # 1 minute at 1 s
+        for nick, seconds in TIME_RANGES_S.items():
+            s.set("graph-time-range", nick)                      # every nick is in the schema
+            self.assertEqual(graph_points(s), seconds + 1)
+
+    def test_unknown_nick_is_one_minute(self):
+        from proccoli.core.ticker import time_range_s
+        self.assertEqual(time_range_s("forever"), 60)
+
+
 if __name__ == "__main__":
     unittest.main()

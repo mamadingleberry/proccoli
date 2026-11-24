@@ -135,8 +135,9 @@ class PreferencesTest(unittest.TestCase):
 
     def test_every_switch_works_both_ways(self):
         switches = {k: r for k, r in self.dialog.rows.items() if isinstance(r, Adw.SwitchRow)}
-        # General 7, Apps columns, Processes 1 + columns, Devices 2, GPU 1.
-        self.assertEqual(len(switches), 7 + len(APP_COLUMNS) + 1 + len(PROCESS_COLUMNS) + 2 + 1)
+        # General 8 (with Keep Statistics Files, M58), Apps columns,
+        # Processes 1 + columns, Devices 2, GPU 1.
+        self.assertEqual(len(switches), 8 + len(APP_COLUMNS) + 1 + len(PROCESS_COLUMNS) + 2 + 1)
         for key, row in switches.items():
             before = self.settings.get(key)
             self.assertEqual(row.get_active(), before, key)
@@ -186,7 +187,7 @@ class PreferencesTest(unittest.TestCase):
 
     def test_diagnostics(self):
         rows = self.dialog.rows
-        self.assertEqual(rows["log-level"].get_selected(), 3)          # Information
+        self.assertEqual(rows["log-level"].get_selected(), 4)          # Everything (Debug), M55
         rows["log-level"].set_selected(0)
         self.assertEqual(self.settings.get("log-level"), "off")
         rows["log-max-size"].set_value(2048)
@@ -203,6 +204,25 @@ class PreferencesTest(unittest.TestCase):
         self.assertEqual(opened, [Path(tmp.name) / "x"])
         self.assertTrue(opened[0].is_dir())
 
+    def test_statistics_files(self):
+        # M58: on by default, size per device, and the folder opens.
+        rows = self.dialog.rows
+        self.assertTrue(rows["stats-log"].get_active())
+        rows["stats-log"].set_active(False)
+        self.assertFalse(self.settings.get("stats-log"))
+        rows["stats-log-max-size"].set_value(8192)
+        self.assertEqual(self.settings.get("stats-log-max-size"), 8192)
+        self.assertFalse(hasattr(self.dialog, "stats_button"))         # no folder given
+        import tempfile
+        from pathlib import Path
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        opened = []
+        dialog = PreferencesDialog(self.settings, stats_dir=Path(tmp.name) / "stats",
+                                   launcher=opened.append)
+        dialog.stats_button.emit("clicked")
+        self.assertEqual(opened, [Path(tmp.name) / "stats"])
+
     def test_combos_and_spin(self):
         rows = self.dialog.rows
         rows["refresh-speed"].set_selected(4)
@@ -211,10 +231,10 @@ class PreferencesTest(unittest.TestCase):
         self.assertEqual(rows["temperature-unit"].get_selected(), 2)
         rows["intel-gpu-top-interval"].set_selected(0)
         self.assertEqual(self.settings.get("intel-gpu-top-interval"), "")
-        rows["graph-data-points"].set_value(120)
-        self.assertEqual(self.settings.get("graph-data-points"), 120)
-        self.settings.set("graph-data-points", 300)
-        self.assertEqual(rows["graph-data-points"].get_value(), 300)
+        rows["graph-time-range"].set_selected(3)                    # 5 Minutes
+        self.assertEqual(self.settings.get("graph-time-range"), "5-minutes")
+        self.settings.set("graph-time-range", "30-seconds")
+        self.assertEqual(rows["graph-time-range"].get_selected(), 0)
 
     def test_closing_disconnects(self):
         self.dialog.emit("closed")
@@ -267,6 +287,14 @@ class SidebarPreferencesTest(unittest.TestCase):
         self.assertIn("sidebar-details", self.dialog.rows)                   # global switches
         self.assertIn("sidebar-meter-type", self.dialog.rows)
         self.assertEqual(PreferencesDialog(self.settings).entry_rows, {})    # no sidebar given
+
+    def test_style_row_is_bound_both_ways(self):
+        row = self.dialog.rows["sidebar-style"]           # Milestone 54
+        self.assertEqual(row.get_selected(), 0)               # Full
+        row.set_selected(1)
+        self.assertEqual(self.settings.get("sidebar-style"), "icons")
+        self.settings.set("sidebar-style", "full")            # from the main menu
+        self.assertEqual(row.get_selected(), 0)
 
     def test_parts_switches_reach_the_sidebar_and_back(self):
         from proccoli.ui.sidebar_fields import Field

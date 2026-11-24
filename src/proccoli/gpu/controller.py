@@ -19,9 +19,11 @@ from .. import GPU_ICON
 from ..core.units import format_frequency, format_percent
 from ..devices.base import DeviceInfo, DeviceKind, Monitor, Snapshot
 from ..devices.manager import Discoverer
-from .backend import BackendRole, DetailBackend, GpuBackend, GpuDeps, GpuSummary, Probe
+from .backend import DetailBackend, GpuBackend, GpuDeps, GpuSummary, Probe
+from .detect import GpuPlan, plan_gpu
 from .info import GpuInfo, discover_gpus
 from .registry import GpuBackendRegistry
+from ..core.ticker import graph_points
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +51,15 @@ class GpuSnapshot(Snapshot):
         return {"usage": "%", "encode": "%", "decode": "%", "vram": "%",
                 "temperature": "°C", "power": "W", "frequency": "Hz"}
 
+    def stats_values(self):
+        s = self.summary
+        return {**self.history_values(), "vram-used": s.vram_used, "vram-total": s.vram_total,
+                "vram-frequency": s.vram_frequency_hz}
+
+    def stats_units(self) -> Mapping[str, str]:
+        return {**self.history_units(), "vram-used": "B", "vram-total": "B",
+                "vram-frequency": "Hz"}
+
 
 def merge_summaries(primary: GpuSummary, fallback: GpuSummary) -> GpuSummary:
     """``primary``'s values, with gaps filled from ``fallback`` (e.g. the
@@ -72,13 +83,16 @@ class GpuController(Monitor):
         self.registry = registry
         self.deps = deps
         self.settings = deps.settings
-        summary = registry.best(gpu, deps, BackendRole.SUMMARY)
-        if summary is None:
-            raise RuntimeError(f"no summary source can serve {gpu.pci_slot}")
-        self.summary_class: type[GpuBackend] = summary[0]
-        detail = registry.best(gpu, deps, BackendRole.DETAIL)
-        self.detail_class: Optional[type[DetailBackend]] = detail[0] if detail else None
-        self.detail_probe: Optional[Probe] = detail[1] if detail else None
+        # Which panel this GPU gets, and why (M55): logged, shown on the page,
+        # and the error page's text if nothing can serve it.
+        self.plan: GpuPlan = plan_gpu(gpu, registry, deps)
+        log.info("%s: %s", info.id, self.plan.explain())
+        if not self.plan.usable:
+            raise RuntimeError("No statistics source can read this GPU.\n" + self.plan.explain())
+        self.summary_class: type[GpuBackend] = self.plan.summary.backend
+        detail = self.plan.detail
+        self.detail_class: Optional[type[DetailBackend]] = detail.backend if detail else None
+        self.detail_probe: Optional[Probe] = detail.probe if detail else None
         self.summary_backend: Optional[GpuBackend] = None
         self.detail_backend: Optional[DetailBackend] = None
         self.detail_state = DetailState.UNAVAILABLE
@@ -192,8 +206,12 @@ class GpuController(Monitor):
         return base
 
     def process_usage(self):
+        # The detail source's figures while it has any (NVIDIA's tools have
+        # none: M55), otherwise the summary source's.
         if self.detail_running:
-            return self.detail_backend.process_usage()
+            usage = self.detail_backend.process_usage()
+            if usage:
+                return usage
         return self.summary_backend.process_usage() if self.summary_backend else {}
 
     def refresh(self, now: float) -> None:
@@ -231,4 +249,4 @@ class GpuDiscoverer(Discoverer):
     def create_monitor(self, info, sysroot, settings) -> Monitor:
         return GpuController(info, self._gpus[info.id], self.registry,
                              GpuDeps(sysroot, settings, self.system, self.helper),
-                             settings.get("graph-data-points"))
+                             graph_points(settings))

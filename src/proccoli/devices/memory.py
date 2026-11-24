@@ -14,6 +14,7 @@ from ..core.sysroot import SysRoot
 from ..core.units import Base, format_bytes, format_bytes_fixed, format_percent
 from .base import DeviceInfo, DeviceKind, Monitor, Snapshot
 from .manager import Discoverer
+from ..core.ticker import graph_points
 
 
 def parse_meminfo(text: str) -> dict[str, int]:
@@ -163,7 +164,7 @@ class MemoryDiscoverer(Discoverer):
                                               Base(settings.get("base"))), MEMORY_ICON)]
 
     def create_monitor(self, info, sysroot, settings) -> Monitor:
-        monitor = MemoryMonitor(info, sysroot, settings.get("graph-data-points"))
+        monitor = MemoryMonitor(info, sysroot, graph_points(settings))
         monitor.modules = getattr(self, "_modules", None)
         return monitor
 
@@ -182,6 +183,14 @@ class MemorySnapshot(Snapshot):
 
     def history_values(self):
         return {"usage": self.usage, "swap": self.swap_usage}
+
+    def stats_values(self):
+        return {**self.history_values(), "used": self.used, "total": self.total,
+                "swap-used": self.swap_used, "swap-total": self.swap_total}
+
+    def stats_units(self):
+        return {**self.history_units(), "used": "B", "total": "B",
+                "swap-used": "B", "swap-total": "B"}
 
     def history_units(self) -> Mapping[str, str]:
         return {"usage": "%", "swap": "%"}
