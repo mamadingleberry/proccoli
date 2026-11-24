@@ -7,7 +7,7 @@ from ...processes.model import ProcessInfo
 from ...processes.monitor import ProcessMonitor
 from gi.repository import Gtk
 
-from ...core.ticker import interval_for
+from ...core.ticker import update_interval_ms
 from ..dialogs.info import ProcessInfoDialog
 from ..dialogs.process_options import ProcessOptionsDialog
 from ..page import PageKind
@@ -118,7 +118,7 @@ class ProcessesPage(TablePage):
     def start_elevated_io(self, done=None) -> None:
         """Read every process's drive I/O through the helper; ``done(ok)``
         once the first record arrives or the helper exits."""
-        interval = interval_for(self.settings.get("refresh-speed"))
+        interval = update_interval_ms(self.settings)
         reader = self.helper.io_stream(interval)
         if done is not None:
             handlers = []

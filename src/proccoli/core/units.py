@@ -6,6 +6,7 @@ callers can pass sensor readings straight through.
 
 from __future__ import annotations
 
+import math
 from enum import Enum
 from typing import Optional
 
@@ -65,6 +66,15 @@ def iso_utc(epoch_s: float) -> str:
     if ms == 1000:
         whole, ms = whole + 1, 0
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(whole)) + f".{ms:03d}Z"
+
+
+def parse_iso_utc(text: str) -> float:
+    """The reverse of ``iso_utc``: epoch seconds (ValueError if malformed)."""
+    import calendar
+    import time
+    whole, _, frac = text.rstrip("Z").partition(".")
+    seconds = calendar.timegm(time.strptime(whole, "%Y-%m-%dT%H:%M:%S"))
+    return seconds + (int(frac) / 10 ** len(frac) if frac else 0.0)
 
 
 def format_used_total(used: Optional[float], total: Optional[float],
@@ -172,3 +182,108 @@ def format_duration(seconds: Optional[float]) -> str:
     if minutes:
         return f"{minutes} min {s} s"
     return f"{s} s"
+
+
+def nice_ceiling(v: float) -> float:
+    """Round up to 1, 2, 2.5 or 5 times a power of ten (an axis maximum;
+    moved here from the graph widget so domain code can use it, Idea 3)."""
+    if v <= 0:
+        return 1.0
+    exp = math.floor(math.log10(v))
+    base = 10 ** exp
+    for m in (1, 2, 2.5, 5, 10):
+        if v <= m * base * (1 + 1e-9):
+            return m * base
+    return 10 * base
+
+
+def format_reading(value: Optional[float], unit: str, base: Base = Base.DECIMAL,
+                   bits: bool = False,
+                   temperature: TemperatureUnit = TemperatureUnit.CELSIUS) -> str:
+    """A graph series' value by its unit ("%", "B/s", "W", "°C", "Hz";
+    anything else as a short number and the unit), with the user's unit
+    preferences: the hover box's default text (M61)."""
+    if value is None:
+        return NO_DATA
+    if unit == "%":
+        return format_percent(value)
+    if unit == "B/s":
+        return format_rate(value, base, bits)
+    if unit == "W":
+        return format_power(value)
+    if unit == "°C":
+        return format_temperature(value, temperature)
+    if unit == "Hz":
+        return format_frequency(value)
+    number = f"{value:.0f}" if abs(value) >= 100 else f"{value:.3g}"
+    return f"{number} {unit}".strip()
+
+
+def _short_number(v: float) -> str:
+    """At most three significant figures, no trailing zeros: 2, 1.5, 250."""
+    if abs(v) < 10:
+        text = f"{v:.2f}"
+    elif abs(v) < 100:
+        text = f"{v:.1f}"
+    else:
+        return f"{v:.0f}"
+    return text.rstrip("0").rstrip(".")
+
+
+_SI_PREFIXES = ["", "k", "M", "G", "T"]
+
+
+def _si(value: float) -> tuple[float, str]:
+    """Powers of 1000 with SI prefixes (hertz, counts)."""
+    v, i = float(value), 0
+    while abs(v) >= 1000 and i < len(_SI_PREFIXES) - 1:
+        v /= 1000
+        i += 1
+    return v, _SI_PREFIXES[i]
+
+
+def format_axis_label(value: float, unit: str, base: Base = Base.DECIMAL,
+                      bits: bool = False,
+                      temperature: TemperatureUnit = TemperatureUnit.CELSIUS) -> str:
+    """``format_reading``'s short form, for value-axis labels: "2 GB/s",
+    "1.5 GHz", "60 °C", "15 W" (Idea 4)."""
+    if unit == "%":
+        return f"{value:.0f} %"
+    if unit == "B/s":
+        v, p = _scaled(value * 8 if bits else value, base)
+        word = ("b/s" if p else "bit/s") if bits else "B/s"
+        return f"{_short_number(v)} {p}{word}"
+    if unit == "B":
+        v, p = _scaled(value, base)
+        return f"{_short_number(v)} {p}B"
+    if unit == "Hz":
+        v, p = _si(value)
+        return f"{_short_number(v)} {p}Hz"
+    if unit == "W":
+        if 0 < abs(value) < 1:
+            return f"{_short_number(value * 1000)} mW"
+        return f"{_short_number(value)} W"
+    if unit == "°C":
+        return format_temperature(value, temperature)
+    v, p = _si(value)
+    return f"{_short_number(v)}{p} {unit}".strip()
+
+
+def nice_max_in_units(peak: float, unit: str, base: Base = Base.DECIMAL,
+                      bits: bool = False) -> float:
+    """An automatic axis maximum rounded in the unit it's shown in, so a
+    binary axis reads "5 GiB/s", not "4.88 GiB/s" (Idea 4; was the Intel
+    tab's bandwidth rule)."""
+    if peak <= 0:
+        return nice_ceiling(peak)
+    if unit in ("B/s", "B"):
+        factor = 8.0 if bits and unit == "B/s" else 1.0
+        shown = peak * factor
+        step = 1024 if base == Base.BINARY else 1000
+        v, p = _scaled(shown, base)
+        prefixes = _BINARY_PREFIXES if base == Base.BINARY else _DECIMAL_PREFIXES
+        return nice_ceiling(v) * step ** prefixes.index(p) / factor
+    if unit == "Hz" or unit not in ("%", "W", "°C", ""):
+        v, p = _si(peak)
+        return nice_ceiling(v) * 1000 ** _SI_PREFIXES.index(p)
+    return nice_ceiling(peak)

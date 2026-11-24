@@ -23,6 +23,8 @@ from .backend import DetailBackend, GpuBackend, GpuDeps, GpuSummary, Probe
 from .detect import GpuPlan, plan_gpu
 from .info import GpuInfo, discover_gpus
 from .registry import GpuBackendRegistry
+from ..core.history import DETAIL_PREFIX
+from ..core.profile import profile_of
 from ..core.ticker import graph_points
 
 log = logging.getLogger(__name__)
@@ -40,6 +42,10 @@ class DetailState(Enum):
 @dataclass
 class GpuSnapshot(Snapshot):
     summary: Optional[GpuSummary] = None
+    # The Details tab's readings while it runs (``DetailBackend.
+    # history_readings``), recorded as "detail/<key>" (history follow-ups).
+    detail: dict = dataclasses.field(default_factory=dict)
+    detail_units: dict = dataclasses.field(default_factory=dict)
 
     def history_values(self):
         s = self.summary
@@ -54,11 +60,13 @@ class GpuSnapshot(Snapshot):
     def stats_values(self):
         s = self.summary
         return {**self.history_values(), "vram-used": s.vram_used, "vram-total": s.vram_total,
-                "vram-frequency": s.vram_frequency_hz}
+                "vram-frequency": s.vram_frequency_hz,
+                **{DETAIL_PREFIX + k: v for k, v in self.detail.items()}}
 
     def stats_units(self) -> Mapping[str, str]:
         return {**self.history_units(), "vram-used": "B", "vram-total": "B",
-                "vram-frequency": "Hz"}
+                "vram-frequency": "Hz",
+                **{DETAIL_PREFIX + k: self.detail_units.get(k, "") for k in self.detail}}
 
 
 def merge_summaries(primary: GpuSummary, fallback: GpuSummary) -> GpuSummary:
@@ -127,6 +135,9 @@ class GpuController(Monitor):
         user hasn't asked for."""
         if self.detail_class is None:
             self._set_state(DetailState.UNAVAILABLE)
+        elif not profile_of(self.settings).gpu_details:
+            self._set_state(DetailState.OFF, "Detailed statistics are off in Lightweight Mode "
+                            "(Preferences → General)")
         elif not self.details_enabled:
             self._set_state(DetailState.OFF, "Detailed statistics are turned off")
         elif self.needs_elevation and not self.settings.get("gpu-elevate"):
@@ -225,10 +236,16 @@ class GpuController(Monitor):
         if self.summary_backend is None:
             return None
         s = self.summary()
+        detail, units = (self.detail_backend.history_readings() if self.detail_running
+                         else ({}, {}))
         return GpuSnapshot(time=now, usage=s.usage,
                            usage_text=format_percent(s.usage) if s.usage is not None else "",
                            detail_text=format_frequency(s.frequency_hz) if s.frequency_hz else "",
-                           summary=s)
+                           summary=s, detail=detail, detail_units=units)
+
+    def detail_history(self):
+        """The running Details tab's history, to fill from the database."""
+        return self.detail_backend.history_target() if self.detail_running else None
 
 
 class GpuDiscoverer(Discoverer):

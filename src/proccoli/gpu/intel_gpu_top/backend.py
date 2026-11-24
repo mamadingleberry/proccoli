@@ -11,7 +11,7 @@ import logging
 
 from gi.repository import GLib
 
-from ...core.ticker import history_points, interval_for
+from ...core.ticker import history_plan, interval_for, time_range_s
 from ...core.trust import find_trusted
 from ..backend import (Capability, DetailBackend, GpuBackend, GpuDeps, GpuProcessUsage,
                        GpuSummary, Probe, SupportLevel, TabSpec)
@@ -24,11 +24,6 @@ INTEL_GPU_TOP = "intel_gpu_top"
 UNTRUSTED_REASON = ("intel_gpu_top isn't installed where only administrators can change it "
                     "(such as /usr/bin), so it isn't run as administrator")
 VIDEO_CLASSES = ("Video", "VideoEnhance")
-
-# The Details tab's History Length choices (intel_gpu_top_gui's), seconds.
-HISTORY_LENGTHS = [(60, "1 Minute"), (120, "2 Minutes"), (300, "5 Minutes"),
-                   (600, "10 Minutes"), (1800, "30 Minutes")]
-
 
 def has_perf_access(deps: GpuDeps, exe: str) -> bool:
     """Whether intel_gpu_top can open the GPU's perf counters without
@@ -59,7 +54,8 @@ class IntelGpuTopBackend(DetailBackend):
     def __init__(self, gpu: GpuInfo, deps: GpuDeps) -> None:
         super().__init__(gpu, deps)
         settings = deps.settings
-        self.history = History(self._points())
+        self.history = History(self._plan()[0])
+        self.history.set_plan(*self._plan())
         self.latest: Optional[dict] = None
         self.paused = False
         self.started = False
@@ -67,15 +63,26 @@ class IntelGpuTopBackend(DetailBackend):
         self.reader.connect("record", self._on_record)
         self.reader.connect("exited", self._on_exited)
         self._handlers = [
-            settings.connect_changed("intel-gpu-top-history",
-                                     lambda *_: self.history.set_max_points(self._points())),
+            settings.connect_changed("graph-time-range",
+                                     lambda *_: self.history.set_plan(*self._plan())),
             settings.connect_changed("intel-gpu-top-interval", lambda *_: self._on_interval()),
-            settings.connect_changed("refresh-speed", lambda *_: self._on_interval()),
+            settings.connect_changed("update-interval", lambda *_: self._on_interval()),
         ]
         self._interval = self.interval_ms
 
-    def _points(self) -> int:
-        return history_points(self.settings.get("intel-gpu-top-history"), self.interval_ms)
+    def _plan(self) -> tuple[int, int, float]:
+        """``(points, every, step_s)`` for the app's *Graph Time Range*
+        (Idea 3; was the tab's own History Length) at intel_gpu_top's
+        update interval; long ranges average samples."""
+        points, every = history_plan(time_range_s(self.settings.get("graph-time-range")),
+                                     self.interval_ms)
+        return points, every, self.interval_ms * every / 1000
+
+    def history_readings(self) -> tuple[dict, dict]:
+        return self.history.readings()
+
+    def history_target(self):
+        return self.history
 
     @classmethod
     def probe(cls, gpu, deps) -> Probe:
@@ -91,7 +98,7 @@ class IntelGpuTopBackend(DetailBackend):
     @property
     def interval_ms(self) -> int:
         own = self.settings.get("intel-gpu-top-interval")
-        return interval_for(own or self.settings.get("refresh-speed"))
+        return interval_for(own or self.settings.get("update-interval"))
 
     def command(self, exe: str) -> list[str]:
         return [exe, "-J", "-s", str(self.interval_ms), "-d", f"drm:/dev/dri/{self.gpu.card}"]
@@ -143,7 +150,7 @@ class IntelGpuTopBackend(DetailBackend):
             return
         self._interval = self.interval_ms
         self.history.clear()
-        self.history.set_max_points(self._points())
+        self.history.set_plan(*self._plan())
         if self.started:
             self.start(self.elevated)
 

@@ -11,7 +11,7 @@ from .device import DevicePage
 
 class DrivePage(DevicePage):
     def __init__(self, monitor: DriveMonitor, settings) -> None:
-        super().__init__(monitor, settings, PageKind.DRIVE, sort_name=monitor.block)
+        super().__init__(monitor, settings, PageKind.DRIVE)
         usage = self.add_group("Usage")
         self.busy = self.graph_box(usage, "Drive Usage", [("usage", "%")])
         self.read = self.graph_box(usage, "Read Speed", [("read", "B/s")],

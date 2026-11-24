@@ -87,17 +87,26 @@ Class and module names refer to [DESIGN.md](DESIGN.md). Section references
 | 53 Runs on Ubuntu 24.04 (bug) | ✅ Done | Start-up crashed: `GLibUnix.signal_add` (GLib 2.82+) and `Adw.Spinner` (libadwaita 1.6). Also breakpoints, CSS and tests fixed for GTK 4.14 / libadwaita 1.5 |
 | 54 Icons-only sidebar | ✅ Done | Main menu → *Sidebar*: Full, Icons Only, Hidden; hover text names each entry |
 | 55 GPU detection, error pages, NVIDIA, per-CPU chart, Overview at launch, UTC log | ✅ Done | NVIDIA checked on a real RTX 5060 Laptop GPU (Wayland: nvidia-smi); nvidia-settings' X11 path only against its documented format |
-| Lightweight mode | 💡 Idea | Was Milestone 56 (planned); moved to *Ideas* at the end |
+| Lightweight mode | ➡️ Moved | Was Milestone 56 (planned), then Idea 1; built as Milestone 66 |
 | 57 Per-CPU chart keeps the area; readings on the Overview cards | ✅ Done | |
 | 58 Legend clicks, graph time range, statistics files | ✅ Done | Normalize Processor Usage kept (see 58.3); Ideas section added |
 | 59 Reusable many-line chart; a chart never shows nothing | ✅ Done | `LegendChart`, used by the Processor and NVIDIA Details pages |
 | **Release 0.2.0** | ✅ Tagged `v0.2.0` | Milestones 53–59 since 0.1.0 (M52); release notes in the metainfo |
-| History database | 💡 Idea | SQLite instead of the M58 files, with summaries and session export; see *Ideas*, Idea 2 |
-| Intel Details graphs on the shared chart code | 💡 Idea | Retire the ported intel_gpu_top_gui graph classes; see *Ideas*, Idea 3 |
+| 60 Intel Details graphs on the shared chart code | ✅ Done | Was Idea 3. Every graph gains the hover crosshair; *History Length* replaced by *Graph Time Range* |
+| 61 The logo is the main menu; hover in the user's units | ✅ Done | Burger gone; *About Proccoli* first in the menu. Hover text now uses `core.units` (M60's default printed "1.23e+06 B/s") |
+| 62 History database | ✅ Done | Was Idea 2. SQLite replaces the M58 statistics files (imported once): a day of detail, a month of minutes, hours after that, under a 512 MiB cap; graphs fill from it at start-up; *Export Statistics…* |
+| 63 One chart family everywhere | ✅ Done | Was Idea 4. `ChartSettings` gives every graph its preferences live; both GPU *Details* tabs are `ChartCard`s in a `ChartGrid`; readings in the user's units everywhere; value axes on every graph with a unit |
+| 64 History follow-ups: long ranges, Details from history | ✅ Done | *Graph Time Range* up to a day (at most 1200 averaged points per graph); both GPU *Details* tabs recorded and filled from the database |
+| 65 Update Interval instead of Refresh Speed | ✅ Done | Was Idea 6. 1, 2, 3, 5 or 10 s, never faster; an old choice carries over once |
+| 66 Lightweight mode | ✅ Done | Was Idea 1. Pages built on visit and dropped after, the Overview a list, one graph per page, no icons or GPU details; about 55 % less private memory at start, about 35 % after visiting every page |
+| 67 Switch To any running app | ✅ Done | Was Idea 5. Proccoli's own GNOME Shell extension (installed off; *Install* / *Turn On* in Preferences); activation tokens for the M32 ways; `wmctrl` on X11. Not yet tried with the extension loaded: that needs a log-out |
+| **Release 0.3.0** | ✅ Tagged `v0.3.0` | Milestones 60–67 since 0.2.0; release notes in the metainfo |
+| Export any part of the history | 💡 Idea | *Export Statistics…* for this session, the last hour/day/week, or all saved history; see *Ideas*, Idea 7 |
+| Lightweight: small charts on the Overview, minimal sidebar | 💡 Idea | The sidebar's small charts move to the Overview cards, the busiest apps and processes come back to the Overview, and the sidebar is *Icons Only* or *Hidden* in Lightweight Mode; see *Ideas*, Idea 8 |
 
-Tests: 804, all passing on the headless display (`make ui-test`; on GTK
+Tests: 903, all passing on the headless display (`make ui-test`; on GTK
 4.14, 3 skip because they need a window taller than the 1024×768 headless
-screen, see M53). A plain `make test` runs the 594 that need no display
+screen, see M53). A plain `make test` runs the 671 that need no display
 and skips the rest, so it never opens windows on your desktop.
 
 **Platform floor:** Ubuntu 24.04 (Python 3.12, GTK 4.14, libadwaita 1.5,
@@ -1092,12 +1101,261 @@ show every core, and make this chart code reusable for future charts.
 | 59.4 | `DevicePage.add_legend_chart(group, title, …)`: adds a `LegendChart` fitted like any page graph, its legend counted in its area; `DevicePage.fit` ends with `fit_legends()`, `fit_key` includes the legends' heights. The fitting moved here from `CpuPage`, which now only calls `add_legend_chart` and `set_lines`/`set_values` | Existing area and compact-legend tests, now through the chart |
 | 59.5 | NVIDIA Details tab: its two- and three-line graphs are `LegendChart`s (legend inside the card, same rules); unreported measures via `set_available` | UI: NVIDIA views |
 
+## Milestone 60: Intel Details graphs on the shared chart code
+
+Was *Idea 3* (its design and reasons are kept there and in DESIGN §13.3).
+The Intel *Details* tab drew with its own copy of the graph code ported
+from intel_gpu_top_gui in Milestone 9; now it's built from `Graph`,
+`Legend` and `LegendChart` like every other chart, and the copy is gone.
+The open question was settled as the plan proposed: the tab's *History
+Length* is replaced by the app's *Graph Time Range*; its *Update
+Interval* (intel_gpu_top's sampling rate) stays.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 60.1 | `Graph.set_hover(on, value_format)`, `set_names`: a crosshair at the pointer, a marker per shown line and a box with the time and each line's value; on for every `NORMAL` graph (page graphs, Overview cards), off for the sidebar's. The arithmetic is in the new `ui/hover.py` (`hover_point`, `ago_text`, `box_origin`). `ui/axes.py` gains `AxisGutter` (the old `AxisGroup`, with an injected `schedule`), `value_divisions` and `value_ticks`; `Graph.set_axis_format(fmt, gutter)` gives non-percentage graphs value axes; `Graph.nice_max` rounds an automatic maximum in the shown unit | Unit: `test_hover` (hover maths, time text, box placement, value ticks, the gutter); UI: hover on a page graph, hidden lines skipped, value axes lined up by a shared gutter |
+| 60.2 | `IntelGraphsView` builds one `GroupChart` per group: a card holding a `LegendChart` (one line per engine or measure; percentages on 0–100, the rest scaled to the data), still laid out by `GraphGrid` (its `graph_cap` and legend-in-the-area sizing unchanged). Compact layout: a shorter floor, no subtitle, the legend's compact mode | UI: every group is a `LegendChart`, legend solo / never-empty, compact on and off; screenshots `demo-gpu-details`, `narrow-gpu-details`, `portrait-gpu-details` |
+| 60.3 | Colours from the `Theme` (distinct colours per line), axes from `ui/axes.py` and *Show Graph Axes*, grids from *Show Graph Grids*, time span and history length from *Graph Time Range* (`IntelGpuTopBackend._points`). `intel-gpu-top-history` removed from the schema, the Preferences GPU page and the tab's menu | UI: palette change recolours the tab; the backend's history follows the time range; the dialog no longer has the row |
+| 60.4 | Deleted `gpu/intel_gpu_top/graph.py` (`GraphView`, `GraphSection`, `LegendItem`, `Swatch`, `AxisGroup`, and the copies of `nice_ceiling`, `snap_to_device`, the palette and the rounded rectangle). Its number formats and names moved to the display-free `gpu/intel_gpu_top/labels.py`; `nice_ceiling` moved to `core/units.py` (still importable from the graph widget). The Intel `Series` is now the shared `core.history.Series` plus its group. `test_static` checks that no module outside `ui/` draws its own graph | `test_igt_labels` (ported from `test_igt_graph_helpers`); static test; whole suite |
+| 60.5 | DESIGN §2 (graph drawing), §4.1, §7.3, §9.1 (hover, value axes, gutter), §11 settings, §13.3 marked done; README | – |
+
+**Found while doing 60:**
+- A value axis measured its labels for a shorter plot than it drew, so it
+  could pick more ticks than it had made room for (clipped "3.75 GiB/s").
+  `plot_rect` now uses the drawn plot height.
+- Bandwidth rounded in MiB/s and showed in GiB/s ("4.88281 GiB/s"):
+  hence `Graph.nice_max` and `labels.nice_max_for`.
+- With axes on, the old 40 px compact floor left almost no plot between
+  the labels (the old graphs dropped their time labels instead); the
+  compact floor is now 56 px.
+- `GraphGrid` could measure a chart narrower than its legend's minimum
+  width; the column width is now never below the narrowest section.
+
+## Milestone 61: The logo is the main menu; hover in the user's units
+
+Requested: make the Proccoli icon the menu button and remove the burger
+menu, with an entry for *About Proccoli*.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 61.1 | `ui/page.py`: `main_menu_button` is now a flat `Gtk.MenuButton` whose child is the 24 px logo (`primary`, so F10 opens it; tooltip *Main Menu*). `app_logo_button` and the window's and page headers' `logo_button` are gone: the corner holds just the logo, in the sidebar header and in every page header | UI: `assert_corner` (the logo alone, a menu button with the window's model, F10); every test that found the corner through `logo_button` uses `menu_button` |
+| 61.2 | `primary_menu`: *About Proccoli* (`app.about`) moves from the last section to the first, a section of its own, then *Go To*, *Sidebar*, and *Show All Details…*, *Preferences*, *Keyboard Shortcuts* | UI: the first item is *About Proccoli*; `app.about` appears once in the whole menu; the *Sidebar* section is now third |
+| 61.3 | Hover text in the user's units: `core.units.format_reading(value, unit, base, bits, temperature)` (by unit: %, B/s, W, °C, Hz; other units as a short number). `Graph`'s default uses it; `DevicePage.add_graph` passes the page's preferences, read when the box shows, so a change applies at once; `RATES_IN_BITS` is set on network pages only | Unit: `FormatReadingTest`; UI: a demo page's Read graph follows *Data Units* and ignores *Network Speeds in Bits* |
+| 61.4 | README (the logo menu, F10), DESIGN §9.2 corner and modes, the window tree and the sidebar state diagram | – |
+
+**Found while doing 61:** M60's default hover text for graphs that
+aren't percentages was `f"{v:.3g} {unit}"`, so the drive and network
+pages would have shown "1.23e+06 B/s", ignoring *Data Units*. Fixed in
+61.3. Taking stock of every graph for Idea 4 is what found it.
+
+## Milestone 62: The history database
+
+Was Idea 2 (kept below with its measurements and reasoning). Every reading
+goes into one SQLite file, `$XDG_STATE_HOME/proccoli/history.sqlite3`,
+instead of the CSV files of Milestone 58. As it ages it's summarised, so
+years of running stay small. Graphs show it at once, even from an earlier
+run, and *Export Statistics…* writes the running session to files.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 62.1 | `core/history_db.py`: `HistoryDb(path, readonly)`, the SQL only. Tables `meta`, `device` (with each device's roll-up marks), `reading` (column → name, unit, scale), `session`; per device `d_<id>` (time in UTC ms, one integer column per reading), `d_<id>_m` and `d_<id>_h` (`n`, `<col>_avg/_min/_max`). Scaled integers per unit (`SCALES`); a new reading is `ALTER TABLE … ADD COLUMN` on all three. WAL, `synchronous=NORMAL`, `auto_vacuum=INCREMENTAL`, 512 KiB cache, 0600 file in a 0700 folder. Column names are the M58 ones (`column_name` moved here) | Unit in a temporary folder: file modes and pragmas, new columns, a clock set back, fixed-point round trips |
+| 62.2 | Housekeeping in `HistoryDb`: `roll_up` (minutes from detail, hours from minutes weighted by `n`, from each device's mark, idempotent), `expire` (never what isn't summarised yet), `enforce_cap` (hours a month at a time, then minutes a day at a time, then detail an hour at a time, never the last hour), `vacuum` | Unit: two hours rolled up exactly; expiry; the cap; through `HistoryStore`, a simulated week (every level for its time) and 3 years with a 256 KiB cap (ends under it, recent hours kept, oldest gone) |
+| 62.3 | `core/history_store.py`: `HistoryStore(devices, settings, path, version, wall_clock, idle, import_dir)` follows each device's `updated`, buffers rows, commits every 10 s and tidies every 10 minutes, both timed by the readings themselves; records sessions; logs errors and stops rather than raising. Settings `history`, `history-max-size` (MiB, 512, 16–4096), `history-detail-hours` (24, 1–168); `stats-log*` removed with `core/statslog.py`. `Application(history_path=, import_dir=)` starts it (never in `--demo`) | Unit: buffering, commit on quit, on/off (a new session), delete, unwritable folder, the detail-hours setting |
+| 62.4 | Graphs from history: `History.room/backfill` and `history.resample` (replaced by per-point averages in 64.2). On each device's first reading of a run, and when *Graph Time Range* or *Refresh Speed* changes, `HistoryStore.backfill` reads the rows before the oldest sample held (minute averages where detail is gone), moves them from UTC to the monitor's clock, puts each on the nearest refresh slot, with gaps where nothing was recorded. One device per idle call | Unit: a new run shows the last one with the gap between; widening the range fills from the database; one device per idle call; nothing when off. Checked on this machine: a restart showed 31 older samples per device at once |
+| 62.5 | `core/history_export.py`: `export_session` writes a new folder `proccoli-statistics-<UTC>Z` in the chosen one: a CSV per device (the M58 format), `<device>-minutes.csv` for the part older than the detail, `export.json`; its own read-only connection. `ui/export.py`: `StatisticsExport` (folder via `Gtk.FileDialog`, work on a thread, progress and result in toasts, *Open Folder*); main menu → *Export Statistics…* (`app.export-statistics`) | Unit: files, header, UTC times, real units, manifest, a second export beside the first, the long-session case; UI: cancel, one at a time, progress, failure, nothing recorded yet. Checked on this machine: 6 files and the manifest from a real session |
+| 62.6 | Preferences → General → *History* (replaces *Statistics Files*): *Keep History*, *Keep Every Reading For*, *Maximum Size*, *Size on Disk* with *Delete History…* (a confirmation, also offered when *Keep History* is turned off), *Export…*. M58's `stats/*.csv` imported once, on idle, then the folder removed | Dialog tests with a fake store; import test (both files of a device, a bad row, a device not present, the folder removed) |
+| 62.7 | `tests/ui/history_size.py`: the measurement, on this machine (below). README, DESIGN §4.1, §11, §13.2 | – |
+
+**Measured with 62.7** on this machine (6 devices, 37 readings per
+refresh, 1 s): **207 bytes a second of detail (17 MiB a day)**, 0.66 MiB a
+day of minutes and hours; a commit (10 s of rows) 0.3 ms; rolling up an
+hour 12 ms; the last 10 minutes of three devices read back in 1.5 ms.
+Steady state about 37 MiB, plus about 4 MiB of hours a year. That's in
+line with Idea 2's figures for the larger hybrid laptop (61 readings).
+
+**Deviations from Idea 2, and why:**
+
+- **Times are always milliseconds**, not seconds with milliseconds only at
+  fast refresh speeds: one rule, and SQLite's variable-length integers
+  make the difference about a byte per row.
+- **No timers of its own:** commits and housekeeping run when a reading
+  arrives and their time has come. Readings arrive every refresh anyway,
+  and tests need no main loop.
+- **An export never overwrites** because it always writes a new folder
+  (`… (2)` if the name is taken), so there's nothing to ask.
+- **The old files are imported as detail** whatever their age; the first
+  housekeeping summarises and expires them like any other rows.
+- **Not done yet:** longer *Graph Time Range* choices (an hour, a day)
+  drawn from the database and the Intel *Details* tab's own history (both
+  done in Milestone 64), and Idea 1's slower commits (Idea 1 isn't built).
+
+## Milestone 63: One chart family everywhere
+
+Was Idea 4 (kept below with the stock-taking that motivated it). M60 made
+every graph the shared `Graph`; this does the same for what surrounds it.
+Idea 4's open questions were settled with its own recommendations: drive
+and network speeds get value axes, and device pages keep Resources' rows
+(cards only on the Overview and the *Details* tabs).
+
+| Step | Create / change | Test |
+|---|---|---|
+| 63.1 | `ui/chart_settings.py`: `ChartSettings(settings)` with `bind(graph, PAGE/CARD/METER, rates_in_bits, gutter, show_axes)`, `unbind`, `release`, `set_entry_base`, `format_value`, `format_reading`. `DevicePage`, `OverviewPage` and the sidebar use it; their own handlers, `DevicePage._set_axes/_set_grid` and `axes.history_span_s` go | Unit (`test_chart_settings`, fake graphs): each kind's keys, live changes, units, entry colour, unbind and release. Existing page tests unchanged |
+| 63.2 | Detail tabs: `DetailServices.charts`, a new `ChartSettings` per set of views, released when the GPU page drops them; the NVIDIA tab follows every chart preference live; the Intel tab stops re-reading at each sample | UI: toggling *Show Graph Axes*, *Show Graph Grids* and *Graph Time Range* changes both Details tabs at once |
+| 63.3 | `ui/widgets/chart_grid.py`: `ChartGrid` (was `gpu/intel_gpu_top/grid.py`'s `GraphGrid`; arithmetic into `ui/layout.py` as `GridItem`, `split_columns`, `extra_heights`, `graph_cap`, `layout_quality`, `choose_columns`) and `ChartGridView` (caption, grid, placeholder, compact breakpoints), used by both tabs | `test_igt_grid` → `test_chart_grid`; UI: the NVIDIA tab fills a 1024×768 window in two or more columns; screenshots |
+| 63.4 | `ui/widgets/chart_card.py`: `ChartCard` (a card around a `LegendChart`, `set_compact`); `GroupChart` and the NVIDIA rows become `ChartCard`s; the one-legend rule (one line: no legend, its value in the info line) | UI: one-line cards have no legend on both tabs, many-line ones do |
+| 63.5 | Base units at the history boundary: Intel MiB/s → B/s, MHz → Hz (`history.to_base_unit`), NVIDIA clocks in Hz. `core.units.format_axis_label` (short form) and `nice_max_in_units`; value axes on every `PAGE` graph with a unit. `labels.format_value`, `format_axis`, `nice_max_for` and the NVIDIA `_format` removed | Unit: conversions, short forms, rounding in the shown unit; UI: Intel bandwidth "2 GiB/s" with binary units and "2.15 GB/s" with decimal; network axes in bits when chosen |
+| 63.6 | The GPU entry's colour for the Details tabs (`GpuPage.set_entry_color` forwards it) | UI: the first Details line has the GPU entry's colour |
+| 63.7 | `test_static`: graph keys only in `chart_settings.py` (and Preferences) among views; `gpu/` builds no `Graph`, `GraphBox`, `GraphPane`, `LegendChart`. DESIGN §9.1 (the chart family diagram), §4, §7.3, §11, §13.4; README | Static tests; whole suite; screenshots |
+
+**Deviations from Idea 4, and why:**
+
+- **`ChartCard` always holds a `LegendChart`** and hides its legend for
+  one line, rather than having two kinds of body: one code path for
+  spacing, hover and compact mode.
+- **`ChartGridView`** (not in the plan): the caption, grid, placeholder
+  and compact breakpoints both tabs had or needed, in one place.
+- **The `Graph(` rule covers `gpu/` only**, not "only `ui/widgets/`":
+  the Overview card builds its graph in `ui/pages/overview.py`, and moving
+  it would be churn with no gain. What matters (vendor code can't build
+  its own charts) is enforced.
+- **One-line Intel cards** show their value in the info line; their
+  description moved to the card's tooltip.
+- **The Intel tab's *Export as CSV*** now writes base units (B/s, Hz),
+  since that's what its history holds.
+
+**Found while doing 63.2:** the NVIDIA tab never showed grids at all, and
+ignored *Show Graph Axes* and *Graph Time Range* changes until it was
+rebuilt. Both now follow live (tested).
+
+## Milestone 64: History follow-ups
+
+The two things Milestone 62 left: *Graph Time Range* choices longer than
+10 minutes, and the GPU *Details* tabs filled from the database too.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 64.1 | `core/ticker.py`: `MAX_GRAPH_POINTS` (1200), `history_plan(span, interval)` → `(points, every)`, `graph_plan(settings)` → `(points, every, step_s)`; ranges 30 minutes, 1 hour, 6 hours, 1 day (schema, Preferences). `core.history.Averager`; `History.set_plan`, `every`, `step_s`, `keys()`; `Monitor.set_history_plan`; `DeviceManager` applies the plan when a device is added and when the range or speed changes | Unit: plans (a day at 1 s: 1184 points of 73; 10 min at 0.25 s: 801 of 3; under 10 min unchanged), the averager, averaged points and gaps |
+| 64.2 | `HistoryDb.buckets(table, columns, origin, count, bucket)`: the average per point slot in one grouped query per level (minutes where detail is gone). `HistoryStore._fill` replaces the nearest-row resample (`history.resample` removed); a history with no point yet is filled before "now" | Unit: buckets with minutes, detail and gaps; a 1-hour range after a 1 s run fills with 4 s averages at once. Checked on this machine: a second run with a 1-hour range at 0.25 s showed the first run's points on every device |
+| 64.3 | The Details tabs: `DetailBackend.history_readings()` / `history_target()`; `GpuSnapshot.detail` recorded as `detail/<key>` columns; `Monitor.detail_history()` (the controller: the running source's history); the store fills it once per Details tab and after a range or speed change. Intel `History`: averaging, `WALL_TIMES`, `room`, `keys`, `readings`, `backfill`. The NVIDIA history now follows the range (it was sized once, at start) | Unit: Intel averaging, readings and backfill; snapshot prefix; a Details history filled from the last run in wall-clock times |
+| 64.4 | DESIGN §11, §13.2; README | – |
+
+**Choices made:** a point of a long range is the **average** of its
+samples, so a short spike is smoothed out at an hour or a day (the
+database keeps every reading for a day, and the export has them all).
+The first point of a long range appears after `every` samples (73 s for a
+day at 1 s); until then the graph shows what the database held. Not
+checked on real Intel or NVIDIA hardware: this machine's Intel GPU has no
+`intel_gpu_top` access, so the Details fill is covered by unit tests only.
+
+**Found while doing 64.3:** the NVIDIA *Details* history was sized once,
+when the tab started, and never followed a new *Graph Time Range* or
+*Refresh Speed*. It does now.
+
+## Milestone 65: Update Interval instead of Refresh Speed
+
+Was Idea 6 (below): *Refresh Speed* could go too fast (0.25 s refreshed
+every device and every process four times a second).
+
+| Step | Create / change | Test |
+|---|---|---|
+| 65.1 | Schema `update-interval` (enum `UpdateInterval`: 1, 2, 3, 5, 10 s; default 1 s). `core.ticker`: `UPDATE_INTERVALS_MS`, `REFRESH_SPEED_TO_INTERVAL`, `interval_for` (either nick), `update_interval_ms(settings)`. The ticker, device manager, history store, `ChartSettings`, Processes and the Intel and NVIDIA backends read it | Unit: intervals (none under 1 s), old nicks, the ticker and the manager follow it |
+| 65.2 | `core.settings.migrate(settings)`: `refresh-speed` → `update-interval` and old Intel nicks, once (the old key is reset); `Application` runs it after loading and logs what it did | Unit: every old value; a second run and a fresh install do nothing |
+| 65.3 | Preferences *Update Interval* (and *intel_gpu_top Update Interval*), the Intel tab's *Update Interval* menu with the same choices | Dialog test; the Intel menu has nothing under a second |
+| 65.4 | README, DESIGN §4, §11 | – |
+
+**Tests that relied on 0.25 s** (to draw a stretch of graph in a few
+seconds) set the ticker's interval directly (`ticker.set_interval(250)`):
+the screenshot script's demo scenes and three UI tests. Nothing a user
+can choose goes under a second.
+
+## Milestone 66: Lightweight mode
+
+Was Idea 1 (kept below with the measurements that shaped it). Its open
+questions were settled with its own recommendations: the mode applies at
+the next start (Preferences offers *Restart Now*), the Overview stays the
+start page as a compact list, and Apps and Processes stay (built on
+visit, without icons).
+
+| Step | Create / change | Test |
+|---|---|---|
+| 66.1 | `core/profile.py`: `Profile` (`full()`, `lightweight()`: `lazy_pages`, `page_drop_s`, `overview_charts`, `overview_tables`, `extra_graphs`, `app_icons`, `gpu_details`, `pci_on_demand`, `theme_css`, `keep_process_data`, `pins`), `choose_profile`, `ProfileSettings` (the same store; pinned keys answered by the profile, also in change notifications; `bind` on a pinned key only shows it), `profile_settings`, `is_pinned`, `profile_of`. Schema `lightweight`; `--lightweight`; `Application` picks the profile once and hands out the profile's settings; `AppContext.profile` | Unit: both profiles, the setting and the flag, every pin, the user's choice kept, notifications, full profile untouched |
+| 66.2 | Pins: *Graph Time Range* at most 1 minute, no axes or grids, no per-CPU chart, progress-bar sidebar meters, Follow System and the System palette, log at most *Warnings* and no performance lines, table columns cut to name, ID, processor and memory | Unit: pins and kept columns; Preferences greys pinned rows out |
+| 66.3 | `pciids.on_demand()` / `OnDemandPciIds`: scans one vendor's block per new question, keeps only answers | Unit: the same answers as the full parse on the fixture |
+| 66.4 | `ui/summaries.py` (`summary_for`, `sort_name_for`): an entry's summary from its monitor alone, which device pages now use too (the network, processor and GPU overrides went). `ui/lazy.py`: `StubPage`, `LazyPages` (build on first visit, drop `page_drop_s` = 60 s after leaving; `schedule` injected); the window swaps them with `replace_page`, for devices and for Apps and Processes | Unit: build, keep when coming back in time, drop, removal; UI: a stub until visited, the real page after, the stub again after the timer, entry and colour kept |
+| 66.5 | `OverviewPage(profile)`: cards without charts in a 3-column list, no busiest tables; `OverviewCard(chart=False)` | UI: no `Graph` on the Overview, no tables |
+| 66.6 | `DevicePage.add_graph`: only the first graph is drawn; the others are hidden and keep their title and figures as text (`text_only`). The CPU page's *Show Usages of Logical CPUs* switch is insensitive | UI: one graph, no axes |
+| 66.7 | `ctx.app_icons = None`; `table.shown_column` drops the icon from the name column | Unit |
+| 66.8 | No `ThemeCss`; GPU detail sources not started (`GpuController` says why) | UI (the app); unit (the controller) |
+| 66.9 | `ProcessMonitor.release`: with nobody showing the list, its data is dropped (`keep_process_data`) | Unit |
+| 66.10 | Preferences → General → *Memory Use*: *Lightweight Mode* and *Restart Now* (`app.restart`: quits as usual, then `main` runs `System.restart_self`) | Dialog tests; app test |
+| 66.11 | `tests/ui/mem.py`: both profiles in fresh processes, RssAnon after start, after visiting every page, after the drop timer; README *Lightweight mode*, DESIGN §13.1 as built | Run (below) |
+
+**Measured with 66.11** on this machine (headless display; RssAnon, MiB;
+the full profile varies by about 10 MiB between runs):
+
+| | Full | Lightweight | Saved |
+|---|---|---|---|
+| Started, on the Overview | 78–90 | 37.8 | about 55 % |
+| After visiting every page | 91–95 | 61–62 | about 35 % |
+| After the pages were dropped again | 84–104 | 61–62 | about 30–40 % |
+
+Most of what remains after a visit is the Processes page (about 14 MiB
+with the cut columns; 20 MiB before them): dropped pages are freed, but
+glibc and GTK keep the freed memory for reuse rather than giving it back
+(a `gc.collect()` plus `malloc_trim(0)` gives back about 3 MiB). So the
+40 % target is met while Proccoli stays on its Overview, which is how
+it's typically left running, not after a tour of every page.
+
+**Deviations from Idea 1, and why:**
+
+- **Pinned settings instead of a profile passed to every page.** What the
+  mode changes is mostly what preferences already control (time range,
+  axes, grids, style, palette, logical CPUs, log level, meters, columns);
+  `ProfileSettings` pins those, and only what has no preference
+  (lazy pages, the Overview, icons, GPU details, pci.ids, the theme CSS,
+  process data) reads `Profile` flags. Pages need no new parameters.
+- **Sidebar meters are progress bars**, not text only: a progress bar
+  costs almost nothing and keeps the entries readable.
+- **Extra graphs are hidden, not replaced** by `InfoRow`s: their card
+  keeps its title and figures, so each page needed no change.
+- **Table columns are cut too** (not in the plan): the Processes page was
+  the largest single cost.
+- **Not changed:** the renderer (`GSK_RENDERER`), which would need
+  setting before GTK starts; it wasn't measured on a desktop session.
+  *Show All Details…* only offers what built pages can unlock.
+
+## Milestone 67: Switch To any running app
+
+Was Idea 5 (kept below with what was checked on this desktop). Its open
+questions were settled with its own recommendations: Proccoli ships its
+own small extension (an outside one's D-Bus interface could change under
+it), and an app with several windows gets its most recently used one
+raised.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 67.1 | Activation token: `System.activate_app(app_id, launch_context)` puts it in `platform-data` (`activation-token`, `desktop-startup-id`) and relaunches with the context; `system.activation_token`. The Apps page passes its display's launch context | Unit: the token, none, a context that can't give one; the context reaches the launch |
+| 67.2 | Running GApplications: `app_switch_method` answers "dbus" when the app owns its ID on the bus (`bus_name_owned`), except apps that open a new window on *Activate* (`NEW_WINDOW_ON_ACTIVATE`: terminals, Files) | Unit |
+| 67.3 | The extension, `data/gnome-shell/extensions/proccoli-windows@mamadingleberry.github.io/` (`metadata.json` for Shell 45–50, `extension.js`); `packaging/install.sh` installs and removes it | Unit: metadata, the interface agrees with `core.windows`, `gjs` parses it; a staged install has it |
+| 67.4 | `core/windows.py`: `Window`, `windows_for`, `parse_wmctrl`, `WindowSwitcher` (extension → ask the app → X11; extension states; install; enable); the `System` methods behind it; `AppContext.windows` | Unit with `FakeSystem`: matching, the most recent window, the order of ways, every extension state, install marks it enabled at log-in |
+| 67.5 | Apps: *Switch To* for every single real app; nothing reaches it → a toast with *Set Up…* (`app.preferences`). Preferences → General → *Window Switching* (state, *Install* from a checkout, *Turn On*) | UI: the extension raises an app's window; an unreachable app gets the toast; the Preferences row through every state |
+| 67.6 | DESIGN §8, §13.5; README (*Switch To*, *Window Switching*) | – |
+
+**Checked on this desktop** (GNOME Shell 50.1, Wayland): Proccoli reads
+the Shell's extension states over D-Bus (ours: not installed; others:
+their real states), and `NameHasOwner` sees GNOME Terminal and Files.
+**Not checked yet:** switching with the extension running. Installing it
+here would change the user's desktop and takes a log-out to load on
+Wayland, so that's left for the user to do from Preferences.
+
 ## Ideas
 
 Designed but not scheduled. Each becomes the next milestone when picked
 up. DESIGN.md §13 has the design side of each.
 
 ### Idea 1: Lightweight mode (minimal memory)
+
+*Done as Milestone 66 (what changed from this plan is listed there).*
 
 *Was Milestone 56. Steps are numbered L.1–L.11 so they don't clash with
 milestones; when it's picked up, it becomes the next milestone.*
@@ -1192,6 +1450,8 @@ doesn't grow over 10 minutes.
    keeps them (built on visit, icon-free).
 
 ### Idea 2: Metrics history in a SQLite database (replaces the statistics files)
+
+*Done as Milestone 62* (its deviations are listed there).
 
 **Goal:** keep a history of every reading Proccoli shows, cheaply and for
 as long as Proccoli runs (years without a restart included), without it
@@ -1334,6 +1594,8 @@ writes the session to the user's chosen folder.
 
 ### Idea 3: Intel Details graphs on the shared chart code
 
+*Done as Milestone 60. Kept as the design record.*
+
 **Goal:** the Intel GPU's *Details* tab looks and behaves like every other
 graph in Proccoli, using the same objects, instead of the graph code
 ported from intel_gpu_top_gui in Milestone 9.
@@ -1387,3 +1649,366 @@ show the same span. Keeping both is also possible.
 legend clicks, time range), every graph has the hover crosshair, and the
 ported graph classes are gone.
 
+### Idea 4: One chart family everywhere
+
+*Done as Milestone 63* (its deviations are listed there).
+
+**Goal:** every chart in Proccoli is built, configured and laid out the
+same way, so a change to how charts look or behave is made once. M60
+made the Intel *Details* tab draw with the shared `Graph`, `Legend` and
+`LegendChart`. This idea does the same for what sits around the graph:
+how settings reach it, the card it's in, how cards are laid out, number
+formats and colours.
+
+**Why: what's still done more than one way** (taken stock during M61):
+
+| Concern | Today | Problem |
+|---|---|---|
+| Settings reach graphs | Five ways: `DevicePage.add_graph` + `_set_axes` / `_set_grid` (live); Overview cards and the sidebar meters (axes and span, live, their own handlers); the NVIDIA Details tab (read **once** when it's built); the Intel Details tab (re-read at every sample, M60) | NVIDIA charts ignore *Show Graph Axes*, *Graph Time Range* and *Show Graph Grids* changes until the tab is rebuilt, and never show grids. Every new view must remember all three keys |
+| Layout | Three fitting systems: `DevicePage` (`layout.fit_heights`), the Overview (`layout.plan_grid`), the Intel tab (`gpu/intel_gpu_top/grid.py`: `GraphGrid`, its own `split_columns`, `extra_heights`, `graph_cap`); the NVIDIA tab has none (a plain scrolling column of 120 px graphs) | The NVIDIA tab doesn't fill the window or use columns; the Intel grid lives in a vendor package although nothing in it is Intel's |
+| The card | `GraphBox` / `DoubleGraphBox` / `LegendChart` rows in an `Adw.PreferencesGroup`; the Intel `GroupChart` (a `card` box around a `LegendChart` row, M60); `OverviewCard` (its own box) | Three ways to put a title, an info line and a graph in a card, with slightly different spacing |
+| Number formats | `core.units` (pages, and the hover box since M61); `gpu/intel_gpu_top/labels.py` (`format_value`, `format_axis`); the NVIDIA view's `_format` | Intel bandwidth is always MiB/s and GiB/s, whatever *Data Units* says; Intel and NVIDIA clocks are formatted differently; the Intel temperatures (if any) don't follow *Temperature Unit* |
+| Axes | Percentage axes everywhere; value axes (`axis_format`, M60) on the Intel tab only | NVIDIA clocks, power and temperature, and drive and network speeds, have no axes, while the Intel tab's do |
+| Colours | `colors`, `entry_index`, `entry_base` + `color_offset`, `distinct`: four ways to pick a graph's colours | The GPU *Details* tabs don't get `entry_base`, so their first colour isn't the GPU entry's colour, unlike the GPU *Overview* tab beside them |
+| Legend | `LegendChart` for some single-line graphs (Intel RC6, Interrupts), `GraphBox` for others (NVIDIA Temperature, Power) | A one-line chart has a legend on one tab and none on the other |
+
+**Design (DESIGN.md §13.4):**
+
+- **`ChartSettings`** (`ui/chart_settings.py`): the one place graphs get
+  *Show Graph Axes*, *Show Graph Grids*, *Graph Time Range* and the unit
+  preferences. `bind(graph, kind)` applies them now and on every change;
+  `kind` (`PAGE`, `CARD`, `METER`) says which apply (meters have no grid).
+  It owns its settings handlers and `release()`s them, so a view without
+  its own teardown (the detail tabs) gets one through `DetailViews`. It
+  also sets the hover formatter (61.3's `format_reading` with the
+  preferences). `DevicePage`, `OverviewPage`, the sidebar and both detail
+  tabs use it; their own handlers go.
+- **`ChartGrid`** (`ui/widgets/chart_grid.py`): `GraphGrid` moved out of
+  `gpu/intel_gpu_top/` (its arithmetic into `ui/layout.py`, beside
+  `fit_heights`, sharing `GraphLimits`). The NVIDIA tab lays its charts
+  out with it, so it fills the window in columns like the Intel tab.
+- **`ChartCard`** (`ui/widgets/chart_card.py`): a card with a title, an
+  info line and either one graph or a `LegendChart` body, with a
+  `compact` mode. `GroupChart` becomes a `ChartCard`; the detail tabs
+  build only `ChartCard`s. (`GraphBox` rows in preference groups stay for
+  device pages, which look like Resources'; `ChartCard` uses the same
+  `GraphPane`, so spacing matches.)
+- **One rule for legends:** a chart with two or more lines gets a
+  `LegendChart`; a one-line chart gets none, its value in the info line.
+- **Formats through `core.units`:** detail sources record readings in
+  base units (bytes per second, hertz, watts, degrees Celsius) at the
+  history boundary (the Intel `History.add`, the NVIDIA sample), so
+  `format_reading` and *Data Units* / *Temperature Unit* apply
+  everywhere. `format_reading` gains a short form for axis labels
+  (`"2 GB/s"`, `"1.5 GHz"`); `labels.format_value` / `format_axis` and
+  the NVIDIA `_format` go.
+- **Value axes for every graph with a unit**, from that short form, in a
+  shared gutter per column (`AxisGutter`, M60): drive and network speeds,
+  NVIDIA clocks, power and temperature. *Show Graph Axes* turns them all
+  off together.
+- **Colours:** `DetailServices` gains the GPU entry's colour index, so the
+  detail tabs start at the GPU entry's colour; `distinct` and
+  `entry_base` stay the only ways a multi-line chart picks colours.
+- **Enforced:** `test_static` checks that only `ui/chart_settings.py`
+  reads `show-graph-axes`, `show-graph-grids` and `graph-time-range` for
+  graphs, and that `Graph(` is constructed only inside `ui/widgets/`.
+
+| Step | Create / change | Test |
+|---|---|---|
+| I4.1 | `ChartSettings` with `bind` / `release`; `DevicePage`, `OverviewPage` and the sidebar use it, their own handlers removed | Unit (fake graphs, `Settings.for_tests()`): every kind gets the right keys, live changes, release disconnects; existing page tests unchanged |
+| I4.2 | Detail tabs: `DetailViews` carries a `ChartSettings` the page releases with the views; the NVIDIA tab follows changes live; the Intel tab stops re-reading at each sample | UI: toggling *Show Graph Axes* and *Graph Time Range* updates both Details tabs at once |
+| I4.3 | `ChartGrid` in `ui/` (arithmetic in `ui/layout.py`); the Intel tab and the NVIDIA tab use it | Port `test_igt_grid.py` to `test_chart_grid.py`; UI: the NVIDIA tab fills a 1024×768 window in two columns; screenshots |
+| I4.4 | `ChartCard`; `GroupChart` and the NVIDIA view's cards become `ChartCard`s; the one-legend rule | UI: one-line charts have no legend on both tabs, many-line charts do |
+| I4.5 | Base units at the history boundary for Intel (MiB/s → B/s, MHz → Hz) and NVIDIA (MHz → Hz); `format_reading` short form; value axes on drive, network and NVIDIA graphs; `labels.format_value` / `format_axis` and NVIDIA `_format` removed (names stay) | Unit: conversions, short forms; UI: Intel bandwidth in KiB/MiB/GiB with *Data Units* binary, GB with decimal; axes on drive and network pages |
+| I4.6 | GPU entry colour for the detail tabs | UI: the first Details line has the GPU entry's colour |
+| I4.7 | `test_static` checks above; DESIGN §9.1 (the chart family diagram: `ChartSettings`, `ChartCard`, `ChartGrid`), README (axes on rates; Details tabs follow every chart preference) | Static test; whole suite; screenshots |
+
+**Done when:** every graph's settings come through `ChartSettings`;
+both GPU *Details* tabs are `ChartCard`s in a `ChartGrid` and follow
+every chart preference live; every reading is formatted by `core.units`
+in the user's units; graphs with units have value axes; and the static
+test keeps it that way.
+
+**Open questions for the user:**
+1. Value axes on drive and network speed graphs: the plan adds them
+   (consistent with the Intel tab). Or keep page rate graphs axis-free,
+   as Resources does?
+2. Should device pages also move to `ChartCard` (cards in a grid instead
+   of preference-group rows)? The plan keeps Resources' look on device
+   pages and uses cards only on the Overview and the Details tabs.
+
+### Idea 5: Switch To any running app
+
+*Done as Milestone 67.*
+
+**Goal:** the Apps page's right-click menu offers *Switch To* for every
+running app with a window, not only the ones M32 can reach, and it brings
+that app's window to the front.
+
+**What's possible** (checked on this machine, Ubuntu with GNOME Shell
+50.1 on Wayland, during M61):
+
+| Way | Works for | Status here |
+|---|---|---|
+| Ask the app over D-Bus, `org.freedesktop.Application.Activate` (M32) | D-Bus-activatable apps; also any running GApplication that owns its app ID on the session bus, even if its `.desktop` file doesn't say `DBusActivatable` | Works, but the call sends no **activation token**, so GNOME's focus-stealing prevention may show "… is ready" instead of raising the window. Of the apps running now only GNOME Terminal owns its name; a terminal's *activate* may open a new window rather than raise one (not tried, to leave the desktop alone) |
+| Relaunch the `.desktop` entry (M32) | Apps with `SingleMainWindow=true` | Works; also needs the activation token (`GAppLaunchContext`), which M32 doesn't pass (it launches with `None`) |
+| GNOME Shell's own D-Bus `org.gnome.Shell.FocusApp(app_id)` | Every app | **Refused:** "FocusApp is not allowed". GNOME 41+ allows it only to a short list of GNOME's own programs; `Eval` is refused too |
+| `wmctrl` / `_NET_ACTIVE_WINDOW` (X11), matched by `_NET_WM_PID` | Every window in an X11 session; under Wayland only X11 apps running through XWayland | `wmctrl` isn't installed; Ubuntu's default session is Wayland |
+| A **GNOME Shell extension** that exposes windows over D-Bus (list windows with their PIDs and app IDs, activate one) | Every window on GNOME, X11 or Wayland: the extension runs inside the Shell, which may focus any window | Not installed. Existing ones ("Window Calls" and similar) do this; Proccoli could also ship a small one of its own |
+| KDE: KWin scripting over D-Bus | Every window on KDE Plasma | Not this desktop; possible later behind the same interface |
+
+So **there's no way for an ordinary app to focus another app's window on
+GNOME Wayland**; that's deliberate on GNOME's side. The only way to do it
+for every app is code running inside the Shell, i.e. an extension the
+user installs and enables once (and, on Wayland, logs out and in again
+the first time).
+
+**Design (DESIGN.md §13.5):**
+
+- **`WindowSwitcher`** (`core/windows.py`, through `System`, faked in
+  tests): `can_switch(app)` and `switch(app)`, trying in order:
+  1. **Proccoli's Shell extension** if it's enabled
+     (`proccoli-windows@mamadingleberry.github.io`, about 60 lines of
+     GJS, shipped in the `.deb` under
+     `/usr/share/gnome-shell/extensions/`): a D-Bus object
+     `io.github.mamadingleberry.Proccoli.Windows` with `List() →
+     [(window id, pid, app id, title)]` and `Activate(window id)`.
+     Proccoli matches an app's PIDs (`App.pids`) to window PIDs, so it
+     works for Firefox, VS Code, terminals and anything else with a
+     window. Its only powers are listing and activating windows, and
+     only on the user's own session bus.
+  2. **D-Bus activation with an activation token** (M32, fixed): the
+     token from `Gdk.Display.get_app_launch_context()` goes in
+     `platform-data` (`activation-token`, `desktop-startup-id`), and
+     relaunches pass the same launch context. Also for running
+     GApplications that own their app ID on the bus.
+  3. **X11:** `_NET_ACTIVE_WINDOW` for the app's windows when the session
+     is X11 (or the app runs through XWayland), if `wmctrl` is
+     installed. (An optional dependency, like `dmidecode`.)
+- **The menu:** *Switch To* shows for every app with a window when the
+  extension is on. Without it, for apps the other ways reach. Apps it
+  can't reach get a greyed *Switch To* whose hover text says how to turn
+  on the extension (once per session, a toast offers *Enable…*, which
+  runs `gnome-extensions enable` and explains the log-out on Wayland).
+- **Preferences → General:** *Window Switching*: whether the extension
+  is installed and enabled, with a button to enable it.
+
+| Step | Create / change | Test |
+|---|---|---|
+| I5.1 | Activation token for the existing ways (`System.activate_app` takes the launch context's token; `launch` passes the context) | Unit (fake System): the token reaches `platform-data` and the launch |
+| I5.2 | Running GApplications: `NameHasOwner(app_id)` makes an app switchable by D-Bus even without `DBusActivatable` (skipped for apps known to open a new window on *activate*, such as terminals) | Unit: name owned / not owned |
+| I5.3 | The extension (`data/gnome-shell/proccoli-windows@…/`: `metadata.json` for Shell 46–50, `extension.js`) and its packaging | Lint the JS in `make test` (`gjs -c` if present); manual check on the desktop |
+| I5.4 | `WindowSwitcher` with the three ways in order; `AppsPage` uses it; PID → window matching (`processes/` helper, pure) | Unit: matching an app's PIDs to windows (several windows: the most recently used); the order of ways |
+| I5.5 | Menu states, the toast, Preferences row | UI: enabled / greyed with hover text; the toast once |
+| I5.6 | DESIGN §8 and §11.1 (what the extension can do), README (*Switch To*, installing the extension), packaging | – |
+
+**Done when:** with the extension enabled, *Switch To* brings any
+running app with a window to the front on GNOME (Wayland and X11);
+without it, the M32 ways work reliably (with a token), and the menu says
+what to do for the rest.
+
+**Open questions for the user:**
+1. Ship Proccoli's own small extension, or use an existing one from
+   extensions.gnome.org if it's installed (less to maintain, but the
+   user installs it themselves and its D-Bus interface can change)?
+2. If an app has several windows, raise the most recently used one, or
+   offer a submenu of window titles?
+
+### Idea 6: Update Interval instead of Refresh Speed
+
+*Done as Milestone 65.*
+
+**Goal:** a plainer, safer choice of how often Proccoli takes readings.
+*Refresh Speed* (from Resources) offers five vague words, and its fastest
+settings, 0.5 s and 0.25 s, go too fast: every device, the process scan,
+every graph and the history database run up to four times a second. That
+costs processor time and battery for changes nobody can read that
+quickly, and it makes the history and the *Details* tabs store four times
+the rows.
+
+**Why: what's wrong today**
+
+| Today | Problem |
+|---|---|
+| *Very Slow, Slow, Normal, Fast, Very Fast* | The words don't say how often; users can't tell 0.5 s from 0.25 s |
+| 0.25 s and 0.5 s | Too fast: a full refresh of every device and every process 4 times a second; the history writes 4× the rows; the Intel tab's *Update Interval* menu offers 0.25 s too |
+| Slowest is 4 s | No choice for a quiet machine or a battery (5 or 10 s) |
+
+**Design:**
+
+- `update-interval` (enum, nicks `1-second`, `2-seconds`, `3-seconds`,
+  `5-seconds`, `10-seconds`; **default 1 second**, what *Normal* was).
+  Preferences → General → *Update Interval* with the times spelled out.
+  Nothing faster than 1 s.
+- `refresh-speed` stays in the schema only to **migrate** a choice once
+  at start-up: *Very Slow* (4 s) → 5 seconds, *Slow* (2 s) → 2 seconds,
+  anything else → 1 second; then it's reset, so the migration runs once
+  and never again.
+- The Intel tab's own interval (`intel-gpu-top-interval`) takes the same
+  nicks (empty: the *Update Interval*); its old refresh-speed nicks are
+  mapped the same way when read, and migrated at start-up.
+- `core.ticker`: `UPDATE_INTERVALS_MS`, `interval_for(nick)` (new and old
+  nicks), `update_interval_ms(settings)`; every reader of
+  `refresh-speed` (ticker, device manager, history, charts, Processes,
+  Intel and NVIDIA backends) reads `update-interval` instead.
+
+| Step | Create / change | Test |
+|---|---|---|
+| I6.1 | Schema `update-interval` (enum); `core.ticker` intervals and `update_interval_ms`; every reader switched | Unit: intervals; the ticker follows the new key; the manager resizes on it |
+| I6.2 | `core/settings.py`: `migrate(settings)` (refresh-speed and old Intel nicks, once); called by `Application` after loading | Unit: each old value, run twice, nothing to do on a fresh install |
+| I6.3 | Preferences *Update Interval*; the Intel *Update Interval* menu and preference with the new choices | Dialog test; UI: the Intel menu |
+| I6.4 | README, DESIGN §11 | – |
+
+**Done when:** no choice refreshes faster than once a second, a user's
+old choice carries over once, and nothing reads `refresh-speed` except
+the migration.
+
+### Idea 7: Export Statistics for the session or the whole saved history
+
+**Goal:** *Export Statistics…* lets the user choose what to export: **this
+session** (since Proccoli started, what it does now) or **the saved
+history** (everything in the database, across every run), plus a few
+ranges in between.
+
+**Why:** today the export always covers the running session only
+(Milestone 62). The database usually holds much more: a day of every
+reading, a month of minute summaries, and hours going back as far as the
+size cap allows. To get at the rest, a user has to query
+`history.sqlite3` with their own tools.
+
+**Design (DESIGN.md §13.6):**
+
+- **A choice before the folder picker:** an `Adw.Dialog` *Export
+  Statistics* with a *What to Export* combo:
+  - *This Session* (the default, today's behaviour);
+  - *Last Hour*, *Last Day*, *Last Week*;
+  - *All Saved History*.
+
+  Under it, what that covers and an estimate ("about 3 days, 2 sessions,
+  about 40 MB of CSV"), then *Export…*, which opens the folder picker as
+  now.
+- **One export function for any range:** `export_session` becomes
+  `export_range(db_path, parent, start_ms, end_ms, scope)`. Each level
+  goes in its own file per device, and only for the part of the range
+  that level holds, so no time appears twice:
+  - `<device>.csv`: every reading, where detail is kept;
+  - `<device>-minutes.csv`: minute average, minimum and maximum, where
+    only minutes are kept;
+  - `<device>-hours.csv`: the same per hour, older than that.
+- **`export.json`** gains the scope, the range (UTC), every session in it
+  (start and end, so gaps where Proccoli wasn't running can be told from
+  missing data), and each file's level and time span.
+- **Big exports:** *All Saved History* can be hundreds of MB of CSV (the
+  database is capped at 512 MiB by default, and CSV takes about 2–3 times
+  the space). So:
+  - the estimate comes from row counts per level, in one quick query;
+  - files are written in hour-sized chunks on the worker thread, as now;
+  - the toast shows progress and has *Cancel* (a `threading.Event`
+    checked between chunks; a cancelled export removes its folder);
+  - an export that would be larger than the free space in the chosen
+    folder says so before it starts.
+- **The menu and Preferences** open the same dialog (*Export…* in
+  Preferences → *History*). The folder naming stays as it is
+  (`proccoli-statistics-<UTC>Z`), so nothing is ever overwritten.
+
+| Step | Create / change | Test |
+|---|---|---|
+| I7.1 | `core/history_export.py`: `ExportScope` (session, hour, day, week, all), `scope_range(scope, now, session_start, oldest)`, `export_range` with detail / minutes / hours files that don't overlap, hours files, sessions in `export.json`, a cancel event | Unit: each scope's range; levels split without overlap (fake rows over a week); hours file; sessions listed; cancel removes the folder |
+| I7.2 | `estimate(db, start, end)`: rows per level and an approximate size from average row widths; a free-space check through `System` | Unit with fixture rows; the not-enough-space case with a fake `System` |
+| I7.3 | `ui/export.py`: the *Export Statistics* dialog (scope combo, what it covers, estimate), then the folder picker; the toast with progress and *Cancel* | UI: the default is *This Session*; changing the scope updates the estimate; *Cancel* stops it and removes the folder |
+| I7.4 | README (*Exporting statistics*), DESIGN §13.6 as built | – |
+
+**Done when:** *Export Statistics…* can write this session, the last
+hour, day or week, or all saved history, each level in its own file with
+no time appearing twice, shows how big it will be first, and can be
+cancelled.
+
+**Open questions for the user:**
+1. Are the in-between ranges (last hour, day, week) worth having, or just
+   *This Session* and *All Saved History*?
+2. One CSV per device and level (simple, opens in any spreadsheet), or
+   also an option to write everything into a single `.zip`?
+3. For *All Saved History*, should the export also be able to include the
+   database file itself (`history.sqlite3`, the most compact and complete
+   copy), for people who'd rather query it with their own tools?
+
+### Idea 8: Lightweight Mode: small charts on the Overview, a minimal sidebar
+
+**Goal:** in Lightweight Mode the Overview shows each device's trend
+again, as the small line chart the sidebar uses, and it keeps the
+busiest apps and processes. The sidebar can only be *Icons Only* or
+*Hidden*, never *Full*.
+
+**Why:** Milestone 66 made the lightweight Overview a plain list of
+readings, with no charts and without the busiest apps and processes, and
+kept the full sidebar (with progress bars).
+So at a glance there's no trend anywhere, while the sidebar's full
+entries still repeat the Overview's figures. Moving the small charts to
+the Overview and keeping the sidebar to icons puts the trend where people
+look, and the window draws about the same number of charts as before:
+one small chart per device, in one place instead of two. With the sidebar
+down to icons (or hidden), the Overview is the one page that shows what's
+going on, so what's using the machine belongs there too.
+
+**Design (DESIGN.md §13.7):**
+
+- **Overview cards in Lightweight Mode:** name, readings, and under them
+  the sidebar's small chart (`Graph(GraphStyle.SMALL)`, 36 px high, in
+  the entry's colour, network's receive and send on one automatic
+  scale). It's the same as `Meter`'s graph, so it has no hover and no
+  axes; axes stay pinned off. Its time range is the pinned one (at most
+  1 minute), so it costs what a sidebar meter did. `OverviewCard(chart=
+  "small")` (`"full"` / `"small"` / none instead of `True`/`False`); the
+  page keeps its 3-column list layout (no grid fitting) and binds the
+  graphs as `ChartKind.METER`.
+- **The busiest apps and processes stay on the Overview** in Lightweight
+  Mode: the two `TopTable`s below the cards (5 each, ranked by
+  `overview-top-by`), as in the full mode, but **without icons**
+  (`profile.app_icons` is off, so `TopTable.fill` leaves the icon out and
+  the image isn't built). `Profile.overview_tables` becomes true for
+  Lightweight Mode. The process scan still runs only while the Overview,
+  Apps or Processes is on screen (`ProcessMonitor.acquire`/`release`), and
+  with nobody showing it the process list is still dropped
+  (`keep_process_data`, M66). So the tables cost only while they're
+  visible. A click on a row opens Apps or Processes (built on visit) as
+  now.
+- **The sidebar:** `sidebar-style` is pinned to *Icons Only*
+  (`ProfileSettings`), so it stays *Icons Only* or *Hidden*
+  (`sidebar-shown`). The main menu's *Sidebar* section lists only *Icons
+  Only* and *Hidden* (`primary_menu(modes=…)`), and `SidebarVisibility`
+  turns a request for *Full* (a stale action target, F9 toggling back)
+  into *Icons Only*. The pin on `sidebar-meter-type` (progress bars) is
+  no longer needed: an icons-only sidebar shows no meters at all, so
+  their widgets aren't built (`StackSidebarItem` builds its meter on
+  first use).
+- **Memory, measured not assumed** (`tests/ui/mem.py`): the sidebar's
+  meters go; the Overview's small charts and its two tables (and the
+  process scan while it's shown) come in. Charts alone should be no worse
+  than Milestone 66 (37.8 MiB at start). The tables add the process list
+  while the Overview is open, a few MiB; the plan records both numbers
+  rather than assuming either, and the README's "about half the memory"
+  is corrected if they don't support it.
+
+| Step | Create / change | Test |
+|---|---|---|
+| I8.1 | `core/profile.py`: pin `sidebar-style` to `icons`; drop the `sidebar-meter-type` pin; `Profile.overview_charts` becomes `overview_chart` (`"full"`, `"small"`); `overview_tables` true in Lightweight Mode | Unit: the pins and flags; a user's *Full* comes back when the mode is off |
+| I8.2 | `ui/window.py` / `ui/sidebar_visibility.py`: the *Sidebar* menu without *Full* in Lightweight Mode; *Full* requests become *Icons Only* | UI: the menu's items; F9 and the action's targets |
+| I8.3 | `ui/pages/overview.py`: `OverviewCard(chart="small")` with the small chart, bound as `METER`, in the entry's colour; the busiest apps and processes below the cards; `ui/widgets/top_table.py`: rows without icons when the profile has none; `ui/sidebar.py`: meters built only when an item first needs one | UI: every Overview card has a `SMALL` graph and no axes; the two tables show, with no icon images, and their rows open Apps or Processes; the process scan stops when the Overview is left; an icons-only sidebar has no meter widgets |
+| I8.4 | Measure (`tests/ui/mem.py`), README *Lightweight mode*, DESIGN §13.1 and §13.7 as built | Run |
+
+**Done when:** in Lightweight Mode every Overview card shows its small
+chart, the Overview shows the busiest apps and processes (without
+icons), the sidebar offers only *Icons Only* and *Hidden*, and memory is
+measured and recorded against Milestone 66's.
+
+**Open questions for the user:**
+1. On a narrow window the sidebar opens over the page instead of beside
+   it. Should it be icons only there too, or full there, since it's only
+   shown while you pick a page?
+2. The sidebar's chart is a filled area under the line. Keep the fill on
+   the Overview, or draw a plain line?
+3. When Lightweight Mode is turned on, should the sidebar start *Hidden*
+   (the Overview then has every device) or *Icons Only*?
+4. The busiest tables show 5 apps and 5 processes in the full mode.
+   Keep 5 in Lightweight Mode, or show fewer (say 3) to keep the page
+   short?

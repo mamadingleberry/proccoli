@@ -21,25 +21,33 @@ log = logging.getLogger(__name__)
 
 class Application(Adw.Application):
     def __init__(self, args: argparse.Namespace, context_factory=None,
-                 log_file=None, stats_dir=None) -> None:
+                 log_file=None, history_path=None, import_dir=None) -> None:
         """``context_factory(settings, demo)`` builds the AppContext; tests
         can pass their own (default: ``proccoli.context.build_context``).
         ``log_file`` is the diagnostics log (default: ``applog.log_path()``),
-        ``stats_dir`` the statistics files' folder (``statslog.stats_dir()``)."""
+        ``history_path`` the history database (``history_store.history_path()``)
+        and ``import_dir`` the old statistics files to import once
+        (``history_store.old_stats_dir()``)."""
         super().__init__(application_id=APP_ID,
                          flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self.args = args
         self.context_factory = context_factory
         self.log_file = log_file
-        self.stats_dir = stats_dir
-        self.stats_log = None
+        self.history_path = history_path
+        self.import_dir = import_dir
+        self.history = None         # core.history_store.HistoryStore (not in --demo)
+        self.exporter = None        # ui.export.StatisticsExport
         self.ctx = None  # created in do_startup
+        self.profile = None          # core.profile.Profile, chosen in do_startup
+        self.restart_requested = False
 
         for name, callback, accels in (
                 ("quit", lambda *_: self.quit(), ["<Control>q"]),
                 ("preferences", lambda *_: self.show_preferences(), ["<Control>comma"]),
                 ("shortcuts", lambda *_: self.show_shortcuts(), ["<Control>question"]),
-                ("about", lambda *_: self.show_about(), [])):
+                ("about", lambda *_: self.show_about(), []),
+                ("export-statistics", lambda *_: self.export_statistics(), []),
+                ("restart", lambda *_: self.restart(), [])):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", callback)
             self.add_action(action)
@@ -60,9 +68,18 @@ class Application(Adw.Application):
         install_css()
         add_source_icons()
         Gtk.Window.set_default_icon_name(APP_ID)
-        settings = Settings.load()
+        from .core.profile import choose_profile, profile_settings
+        from .core.settings import migrate
+        base = Settings.load()
+        changes = migrate(base)                     # replaced keys, once (Idea 6)
+        # Lightweight mode (Idea 1): chosen once; everything reads the
+        # settings as the profile sees them.
+        self.profile = choose_profile(base, getattr(self.args, "lightweight", False))
+        settings = profile_settings(base, self.profile)
         from .core.applog import FileLog, log_path
         self.file_log = FileLog(settings, self.log_file or log_path())
+        for change in changes:
+            log.info("settings: %s", change)
         log.info("%s %s starting (demo=%s)", APP_NAME, __version__, self.args.demo)
         from .core.watchdog import StallWatchdog
         self.watchdog = StallWatchdog()     # logs stalls with stacks (M44)
@@ -76,20 +93,28 @@ class Application(Adw.Application):
             from .ui.theme import Theme
             self.ctx.theme = Theme(settings, Adw.StyleManager.get_default())
         from .ui.style import ThemeCss
-        self.theme_css = ThemeCss(self.ctx.theme)
+        self.theme_css = ThemeCss(self.ctx.theme) if self.ctx.profile.theme_css else None
         self.ctx.start()
-        # Every reading, on disk (M58); never the demo's made-up ones.
+        # Every reading, in the history database (Idea 2); never the demo's
+        # made-up ones.
         if not self.args.demo and self.ctx.devices is not None:
-            from .core.statslog import StatsLog, stats_dir
-            self.stats_log = StatsLog(self.ctx.devices, settings,
-                                      self.stats_dir or stats_dir())
+            from .core.history_store import HistoryStore, history_path, old_stats_dir
+            self.history = HistoryStore(self.ctx.devices, self.ctx.settings,
+                                        self.history_path or history_path(), __version__,
+                                        idle=GLib.idle_add,
+                                        import_dir=self.import_dir or old_stats_dir())
+        export = self.lookup_action("export-statistics")
+        export.set_enabled(self.history is not None and self.ctx.settings.get("history"))
+        self.ctx.settings.connect_changed("history", lambda _k, on: export.set_enabled(
+            self.history is not None and bool(on)))
 
     def do_shutdown(self) -> None:
-        if self.stats_log is not None:
-            self.stats_log.shutdown()             # writes out buffered rows
+        if self.history is not None:
+            self.history.shutdown()               # writes out buffered rows
         if self.ctx is not None:
             self.ctx.stop()
-            self.theme_css.shutdown()
+            if self.theme_css is not None:
+                self.theme_css.shutdown()
             self.ctx.theme.shutdown()
         if getattr(self, "watchdog", None) is not None:
             self.watchdog.stop()
@@ -109,6 +134,7 @@ class Application(Adw.Application):
             dialog.present()
 
     def show_preferences(self) -> None:
+        from .core.windows import extension_source
         from .devices.base import DeviceKind
         from .ui.dialogs.preferences import PreferencesDialog
         gpus = self.ctx.devices.monitors(DeviceKind.GPU) if self.ctx.devices else []
@@ -116,8 +142,26 @@ class Application(Adw.Application):
         self._present(PreferencesDialog(self.ctx.settings, gpus, self.ctx.theme,
                                         log_file=self.file_log.path,
                                         sidebar=getattr(window, "sidebar", None),
-                                        stats_dir=(self.stats_log.directory
-                                                   if self.stats_log else None)))
+                                        history=self.history,
+                                        export=self.export_statistics,
+                                        restart=self.restart,
+                                        windows=getattr(self.ctx, "windows", None),
+                                        extension_source=extension_source()))
+
+    def export_statistics(self) -> None:
+        """Main menu → *Export Statistics…*: pick a folder, write the session."""
+        if self.history is None:
+            return
+        if self.exporter is None:
+            from .ui.export import StatisticsExport
+            self.exporter = StatisticsExport(self.history, __version__)
+        self.exporter.start(self.get_active_window())
+
+    def restart(self) -> None:
+        """*Restart Now* (Lightweight Mode applies at start-up): quit as
+        usual (history written out), then ``main`` starts Proccoli again."""
+        self.restart_requested = True
+        self.quit()
 
     def show_shortcuts(self) -> None:
         from .ui.dialogs.about import shortcuts_dialog
@@ -172,6 +216,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
                         help="show synthetic data instead of reading the system")
     parser.add_argument("--debug", action="store_true",
                         help="log debugging information to stderr")
+    parser.add_argument("--lightweight", action="store_true",
+                        help="use as little memory as possible (Lightweight Mode)")
     return parser.parse_args(argv)
 
 
@@ -189,4 +235,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     app = Application(args)
     on_sigint(app.quit)
     # Our options are already parsed; GApplication only gets the program name.
-    return app.run(sys.argv[:1])
+    status = app.run(sys.argv[:1])
+    if app.restart_requested:
+        system = app.ctx.system if app.ctx is not None else None
+        if system is not None:
+            system.restart_self([a for a in sys.argv[1:] if a != "--lightweight"])
+    return status

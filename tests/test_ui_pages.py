@@ -17,6 +17,7 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from proccoli.core import pciids  # noqa: E402
 from proccoli.core.settings import Settings  # noqa: E402
+from proccoli.core.ticker import history_points  # noqa: E402
 from proccoli.core.sysroot import SysRoot  # noqa: E402
 
 HAVE_DISPLAY = os.environ.get("PROCCOLI_UI_TESTS") == "1" and Gtk.init_check()
@@ -155,8 +156,9 @@ class GpuPagesTest(unittest.TestCase):
         cls.app.register(None)
 
     def setUp(self):
-        self.settings = Settings.for_tests({"refresh-speed": "very-fast"})
+        self.settings = Settings.for_tests()
         ctx = make_context(self, demo=True, settings=self.settings, system=_RealStreams())
+        ctx.ticker.set_interval(250)          # faster than any Update Interval: tests only
         ctx.start()
         self.ticker = ctx.ticker
         self.devices = ctx.devices
@@ -185,6 +187,63 @@ class GpuPagesTest(unittest.TestCase):
         tips = [w.get_tooltip_text() for w in page.detail_header]
         self.assertEqual(tips, ["Pause Graphs", "Detailed Statistics Menu"])   # shared once
         self.assertTrue(pump(lambda: "engines" in graphs.sections, timeout=3))
+
+    def test_details_charts_are_the_shared_legend_charts(self):
+        # Idea 3: every group is a LegendChart with the app's palette,
+        # legend rules, hover, axes and Graph Time Range.
+        from proccoli.ui.widgets.legend_chart import LegendChart
+        self.settings.set("show-graph-axes", True)
+        self.settings.set("graph-time-range", "2-minutes")
+        page = self.win.page("gpu-demo")
+        self.win.select_page("gpu-demo")
+        self.win.present()
+        page.show_tab("details")
+        self.assertTrue(pump(lambda: page.hosts["details"].view is not None, timeout=3))
+        graphs = page.hosts["details"].view.widget
+        self.assertTrue(pump(lambda: {"engines", "frequency", "power"} <= set(graphs.sections)
+                             and graphs.sections["engines"].chart.legend.items, timeout=5))
+        engines = graphs.sections["engines"]
+        self.assertIsInstance(engines.chart, LegendChart)
+        graph = engines.graph
+        self.assertTrue(graph.hover and graph.has_axes())
+        self.assertEqual(graph.time_span_s, 120)
+        self.assertEqual(self.controller.detail_backend.history.max_points,
+                         history_points(120, self.controller.detail_backend.interval_ms))
+        self.assertEqual(engines.chart.legend.items[0].name, "Render/3D")
+        freq = graphs.sections["frequency"]
+        self.assertIsNone(freq.graph.max_value)                  # scaled to the data
+        self.assertTrue(freq.graph.has_axes())                   # value axis in MHz
+        self.assertIs(freq.graph.axis_gutter, graph.axis_gutter)  # plots line up
+        # Legend rules: right-click shows only that line, never nothing.
+        legend = engines.chart.legend
+        legend.solo(0)
+        self.assertEqual(legend.shown().count(True), 1)
+        legend.toggle(0)
+        self.assertTrue(all(legend.shown()))
+        # Compact layout: legend values move to the hover text.
+        graphs.set_compact(True)
+        self.assertTrue(legend.compact)
+        graphs.set_compact(False)
+        self.assertFalse(legend.compact)
+        # The menu no longer has its own History Length.
+        labels = [m.get_item_attribute_value(i, "label").get_string()
+                  for m in [page.detail_header.get_last_child().get_menu_model()
+                            .get_item_link(0, "section")]
+                  for i in range(m.get_n_items())]
+        self.assertEqual(labels, ["Update Interval"])
+
+    def test_palette_change_recolours_the_details_tab(self):
+        page = self.win.page("gpu-demo")
+        self.win.select_page("gpu-demo")
+        self.win.present()
+        page.show_tab("details")
+        self.assertTrue(pump(lambda: page.hosts["details"].view is not None
+                             and "engines" in page.hosts["details"].view.widget.sections,
+                             timeout=5))
+        graph = page.hosts["details"].view.widget.sections["engines"].graph
+        before = graph.color_for(0)
+        self.settings.set("palette", "tango")
+        self.assertNotEqual(graph.color_for(0), before)
 
     def test_gpu_processes_tab_gets_app_icons(self):
         ctx_icons = self.win.ctx.app_icons
@@ -291,7 +350,7 @@ class GraphsFillThePageTest(unittest.TestCase):
         g = page.memory.graph
         self.assertTrue(g.has_axes())                            # on by default
         self.assertEqual(g.time_span_s, 60.0)
-        self.settings.set("refresh-speed", "slow")
+        self.settings.set("update-interval", "2-seconds")
         self.assertEqual(g.time_span_s, 60.0)          # M58: the time range holds
         self.settings.set("graph-time-range", "2-minutes")
         self.assertEqual(g.time_span_s, 120.0)
@@ -301,8 +360,16 @@ class GraphsFillThePageTest(unittest.TestCase):
         self.assertFalse(cpu_chart.show_axes)
         self.settings.set("show-graph-axes", True)
         self.assertTrue(cpu_chart.has_axes())
+        # Idea 4: speeds get a value axis too, in the user's units.
         net = win.page("net-eno1").receiving.graph
-        self.assertFalse(net.has_axes())                        # speeds, not percentages
+        self.assertTrue(net.has_axes())
+        self.assertEqual(net.axis_format(2e6), "2 MB/s")
+        self.settings.set("network-bits", True)
+        self.assertEqual(net.axis_format(2e6), "16 Mb/s")
+        self.settings.set("base", "binary")
+        self.assertEqual(net.axis_format(2**20), "8 Mib/s")
+        self.settings.set("show-graph-axes", False)
+        self.assertFalse(net.has_axes())
 
     def test_column_uses_the_width(self):
         win, page = self.window("memory")
@@ -436,8 +503,9 @@ class GraphsFillThePageTest(unittest.TestCase):
         self.assertTrue(pump(lambda: not pair.stacked, timeout=2))
 
     def test_gpu_details_fill_the_height(self):
-        self.settings = Settings.for_tests({"refresh-speed": "very-fast", "gpu-view": "details"})
+        self.settings = Settings.for_tests({"gpu-view": "details"})
         ctx = make_context(self, demo=True, settings=self.settings, system=_RealStreams())
+        ctx.ticker.set_interval(250)          # faster than any Update Interval: tests only
         ctx.start()
         win = MainWindow(self.app, ctx)
         self.addCleanup(win.destroy)
@@ -454,13 +522,47 @@ class GraphsFillThePageTest(unittest.TestCase):
         resize_or_skip(self, win, 1024, 500)
         self.assertTrue(pump(lambda: 0 < grid.get_height() < tall, timeout=3))
         # Portrait (Milestone 36): one tall column, graphs capped by width.
-        from proccoli.gpu.intel_gpu_top.grid import graph_cap
+        from proccoli.ui.layout import graph_cap
         resize_or_skip(self, win, 700, 1800)
         pump(timeout=2.0)
         for section in grid.sections:
             if section.get_visible():
                 self.assertLessEqual(section.graph.get_height(),
                                      graph_cap(section.get_width()) + 1)
+
+    def test_intel_details_are_the_chart_family(self):
+        # Idea 4: user units, the legend rule, live preferences, entry colour.
+        self.settings = Settings.for_tests({"gpu-view": "details"})
+        ctx = make_context(self, demo=True, settings=self.settings, system=_RealStreams())
+        ctx.ticker.set_interval(250)          # faster than any Update Interval: tests only
+        ctx.start()
+        win = MainWindow(self.app, ctx)
+        self.addCleanup(win.destroy)
+        win.set_default_size(1024, 768)
+        win.select_page("gpu-demo")
+        win.present()
+        page = win.page("gpu-demo")
+        self.assertTrue(pump(lambda: page.hosts["details"].view is not None
+                             and "imc-bandwidth" in page.hosts["details"].view.widget.sections,
+                             timeout=4))
+        view = page.hosts["details"].view.widget
+        pump(lambda: view.sections["imc-bandwidth"].info != "", timeout=2)
+        bandwidth = view.sections["imc-bandwidth"].graph
+        self.assertEqual(bandwidth.series[0].unit, "B/s")
+        self.assertEqual(bandwidth.axis_format(2 * 2**30), "2.15 GB/s")
+        self.settings.set("base", "binary")
+        self.assertEqual(bandwidth.axis_format(2 * 2**30), "2 GiB/s")
+        self.assertTrue(view.sections["engines"].legend.get_visible())
+        self.assertFalse(view.sections["rc6"].legend.get_visible())       # one line
+        self.assertTrue(view.sections["rc6"].info.endswith("%"))          # its value
+        self.settings.set("show-graph-axes", False)                       # at once
+        self.assertFalse(view.sections["engines"].graph.has_axes())
+        self.settings.set("show-graph-grids", True)
+        self.assertTrue(view.sections["engines"].graph.show_grid)
+        # The Details tab starts at the GPU entry's colour, like its Overview.
+        self.assertIsNotNone(page.entry_index)
+        self.assertEqual(view.sections["engines"].graph.entry_base, page.entry_index)
+        self.assertEqual(page.usage.graph.entry_base, page.entry_index)
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")

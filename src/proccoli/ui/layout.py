@@ -23,7 +23,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Iterable, Optional, Sequence
+from itertools import combinations
+from typing import Iterable, NamedTuple, Optional, Sequence
 
 # Page graphs never get smaller than this: below it, the page scrolls.
 MIN_GRAPH_HEIGHT = 120
@@ -223,3 +224,104 @@ def plan_grid(count: int, width: float, height: float, spacing: float = 12,
         if best is None or score < best[0]:
             best = (score, plan)
     return best[1]
+
+
+# -- the chart grid of the GPU Details tabs (Idea 4; was the Intel tab's own,
+# Idea 3): columns chosen from the space given, spare height shared out by
+# each chart's weight. ``widgets/chart_grid.py`` is the widget over this.
+
+CHART_COLUMN_SPACING = 18
+CHART_ROW_SPACING = 6
+CHART_MIN_COLUMN_WIDTH = 300
+# A graph taller than width / CHART_ASPECT is not more useful than a wider one.
+CHART_ASPECT = 3.0
+# Prefer fewer columns unless more of them are clearly better.
+FEWER_COLUMNS_BIAS = 0.85
+
+
+class GridItem(NamedTuple):
+    min_h: int       # minimum height of the whole section at the column width
+    floor: int       # minimum height of its graph
+    weight: float    # share of spare height the graph gets
+
+
+def split_columns(heights: Sequence[float], columns: int) -> list[list[int]]:
+    """Split items (by index, kept in order) into at most ``columns``
+    consecutive runs so that the tallest run is as short as possible."""
+    n = len(heights)
+    if columns <= 1 or n <= 1:
+        return [list(range(n))]
+    columns = min(columns, n)
+    best = None
+    # A handful of sections and columns: trying every set of cuts is cheap.
+    for cuts in combinations(range(1, n), columns - 1):
+        bounds = (0, *cuts, n)
+        runs = [list(range(bounds[i], bounds[i + 1])) for i in range(columns)]
+        tallest = max(sum(heights[i] for i in r) + CHART_ROW_SPACING * (len(r) - 1)
+                      for r in runs)
+        if best is None or tallest < best[0]:
+            best = (tallest, runs)
+    return best[1]
+
+
+def column_min(items: Sequence[GridItem]) -> int:
+    return sum(i.min_h for i in items) + CHART_ROW_SPACING * max(0, len(items) - 1)
+
+
+def graph_cap(col_w: float, limits: GraphLimits = LIMITS) -> int:
+    """The tallest a graph in a column ``col_w`` wide gets (DESIGN.md §9.1):
+    on a portrait screen one column is narrow but very tall."""
+    return min(limits.max_height, int(col_w * limits.max_ratio))
+
+
+def extra_heights(items: Sequence[GridItem], height: int,
+                  cap: Optional[int] = None) -> list[int]:
+    """Spare height of a column, shared out by weight; with ``cap``, no
+    graph grows past it, and what it can't take goes to the others (any
+    rest is left empty at the bottom)."""
+    spare = max(0, height - column_min(items))
+    room = [float("inf") if cap is None else max(0, cap - i.floor) for i in items]
+    out = [0.0] * len(items)
+    open_items = {k for k in range(len(items)) if room[k] > 0}
+    while open_items and spare > 0.5:
+        total = sum(items[k].weight for k in open_items) or 1.0
+        give = {k: spare * items[k].weight / total for k in open_items}
+        full = [k for k in open_items if out[k] + give[k] >= room[k]]
+        if not full:
+            for k in open_items:
+                out[k] += give[k]
+            spare = 0
+            break
+        for k in full:
+            spare -= room[k] - out[k]
+            out[k] = room[k]
+            open_items.discard(k)
+    result = [int(v) for v in out]
+    if cap is None and result:
+        result[-1] += max(0, height - column_min(items)) - sum(result)  # rounding
+    return result
+
+
+def layout_quality(columns: Sequence[Sequence[GridItem]], col_w: float,
+                   height: int) -> float:
+    """How good a layout is: the size of its smallest graph, where height
+    beyond width / CHART_ASPECT does not count.  Negative (minus the overflow in
+    pixels) when it does not fit and the page would scroll."""
+    overflow = max(column_min(c) for c in columns) - height
+    if overflow > 0:
+        return -float(overflow)
+    best = float("inf")
+    for col in columns:
+        for item, extra in zip(col, extra_heights(col, height, graph_cap(col_w))):
+            best = min(best, min(item.floor + extra, col_w / CHART_ASPECT))
+    return best
+
+
+def choose_columns(qualities: dict[int, float]) -> int:
+    """Pick a column count from {columns: quality}."""
+    top = max(qualities.values())
+    for n in sorted(qualities):
+        q = qualities[n]
+        if q == top or (top > 0 and q >= top * FEWER_COLUMNS_BIAS):
+            return n
+    return min(qualities)

@@ -36,6 +36,7 @@ if [ "${1:-}" = "--uninstall" ]; then
           "$D$SHARE/icons/hicolor/scalable/apps/$APP_ID.svg" \
           "$D$SHARE"/icons/hicolor/*/apps/"$APP_ID"*.png \
           "$D$SHARE"/icons/hicolor/symbolic/apps/"$APP_ID"-*-symbolic.svg
+    rm -rf "$D$SHARE"/gnome-shell/extensions/proccoli-windows@*
     refresh_caches
     echo "Uninstalled $NAME from $D$PREFIX"
     exit 0
@@ -67,6 +68,11 @@ sed "s|@LIBEXECDIR@|$LIBEXECDIR|g" "data/$APP_ID.policy" > "$D$SHARE/polkit-1/ac
 chmod 644 "$D$SHARE/polkit-1/actions/$APP_ID.policy"
 ( cd data/icons && find hicolor -type f ) | while read -r f; do
     install -Dm 644 "data/icons/$f" "$D$SHARE/icons/$f"
+done
+# The GNOME Shell extension for Switch To (off until the user turns it on
+# in Preferences → General → Window Switching).
+( cd data && find gnome-shell -type f ) | while read -r f; do
+    install -Dm 644 "data/$f" "$D$SHARE/$f"
 done
 
 refresh_caches

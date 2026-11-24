@@ -30,6 +30,23 @@
     <control>keyboard</control>
   </supports>
   <releases>
+    <release version="0.3.0" date="2026-11-24">
+      <description>
+        <p>A history of every reading, lighter on memory, and one look for every chart.</p>
+        <ul>
+          <li>Every reading is kept in a history that stays small: a day of detail, a month of minutes, hours after that</li>
+          <li>Charts start full, even after a restart, and can show up to a day</li>
+          <li>Export Statistics saves this session's readings as CSV files</li>
+          <li>Lightweight Mode uses about half the memory</li>
+          <li>Update Interval replaces Refresh Speed: every 1 to 10 seconds, never faster</li>
+          <li>Value scales on speed, clock, power and temperature charts, in your units</li>
+          <li>The NVIDIA and Intel Details tabs fill the window and follow every chart preference</li>
+          <li>Hover over any chart to see its values</li>
+          <li>The Proccoli logo opens the main menu</li>
+          <li>Switch To can bring any app to the front with an optional GNOME Shell extension</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-11-23">
       <description>
         <p>Runs on Ubuntu 24.04, adds NVIDIA statistics and keeps a record of every reading.</p>

@@ -12,15 +12,17 @@ switcher stays put while the source starts, fails and restarts.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Optional
 
 from gi.repository import Adw, Gtk
 
-from ...core.units import (device_facts, format_bytes, format_frequency, format_percent, format_power,
+from ...core.units import (format_bytes, format_frequency, format_percent, format_power,
                            format_temperature)
 from ...gpu.backend import DetailServices, DetailView, GpuSummary
 from ...gpu.controller import DetailState, GpuController, GpuSnapshot
 from .. import compat
+from ..chart_settings import ChartSettings
 from ..page import PageKind
 from ..widgets.double_graph_box import DoubleGraphBox
 from ..widgets.info_row import InfoRow
@@ -93,8 +95,7 @@ class GpuPage(DevicePage):
     def __init__(self, controller: GpuController, settings, app_icon=None) -> None:
         """``app_icon(pid)`` (processes.apps.AppIconLookup.icon_for_pid) gives
         the vendor Processes tab its app icons."""
-        super().__init__(controller, settings, PageKind.GPU,
-                         sort_name=controller.gpu.pci_slot)
+        super().__init__(controller, settings, PageKind.GPU)
         self.controller = controller
         self.services = (DetailServices(settings, app_icon) if app_icon is not None
                          else DetailServices(settings))
@@ -104,6 +105,7 @@ class GpuPage(DevicePage):
         self.hosts: dict[str, DetailHost] = {}
         self._views_from = None          # the backend the current views came from
         self._view_handlers = None       # (backend, handler ids) feeding those views
+        self._view_charts = None         # ChartSettings of those views (Idea 4)
         self.stack = Adw.ViewStack(vexpand=True)
         overview = self.get_child()
         self.set_child(None)
@@ -139,6 +141,12 @@ class GpuPage(DevicePage):
     def shutdown(self) -> None:
         self._set_views(None)
         super().shutdown()
+
+    def set_entry_color(self, index) -> None:
+        """The Details tabs start at the GPU entry's colour too (Idea 4)."""
+        super().set_entry_color(index)
+        if self._view_charts is not None:
+            self._view_charts.set_entry_base(index)
 
     # -- overview ------------------------------------------------------------------
 
@@ -181,15 +189,6 @@ class GpuPage(DevicePage):
         # What detection chose for this GPU, and why (M55).
         props["Detailed Statistics"] = c.plan.detail_text()
         self.add_properties(props)
-
-    def sidebar_summary(self):
-        summary = super().sidebar_summary()
-        snap = self.monitor.latest
-        if snap is not None and snap.summary is not None:
-            s = snap.summary
-            summary.facts = device_facts(s.temperature_c, self.temperature_unit,
-                                         s.vram_used, s.vram_total, self.base)
-        return summary
 
     def update_labels(self, snap: GpuSnapshot) -> None:
         s: GpuSummary = snap.summary
@@ -293,12 +292,18 @@ class GpuPage(DevicePage):
             for h in handlers:
                 source.disconnect(h)
         self._view_handlers = None
+        if self._view_charts is not None:
+            self._view_charts.release()
+            self._view_charts = None
         for w in list(self.detail_header):
             self.detail_header.remove(w)
         self._views_from = backend
         views = []
         if backend is not None:
-            built = backend.create_views(self.controller, self.services)
+            self._view_charts = ChartSettings(self.settings)
+            self._view_charts.set_entry_base(self.entry_index)
+            built = backend.create_views(self.controller, dataclasses.replace(
+                self.services, charts=self._view_charts))
             views = built.views
             self._view_handlers = (backend, built.handlers)
         by_name = {v.name: v for v in views}

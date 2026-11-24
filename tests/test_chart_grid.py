@@ -1,13 +1,15 @@
+"""ui.layout's chart-grid arithmetic (Idea 4; was the Intel tab's grid,
+test_igt_grid)."""
+
 import os
 import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from proccoli.gpu.intel_gpu_top.grid import (  # noqa: E402
-    ASPECT, ROW_SPACING, Item, choose_columns, column_min, extra_heights, graph_cap,
-    layout_quality)
-from proccoli.ui.layout import LIMITS  # noqa: E402
+from proccoli.ui.layout import (  # noqa: E402
+    CHART_ASPECT as ASPECT, CHART_ROW_SPACING as ROW_SPACING, LIMITS, GridItem as Item,
+    choose_columns, column_min, extra_heights, graph_cap, layout_quality, split_columns)
 
 
 def items(n, min_h=100, floor=50, weight=1.0):

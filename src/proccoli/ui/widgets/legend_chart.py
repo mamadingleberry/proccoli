@@ -53,6 +53,7 @@ class LegendChart(GraphBox):
         if list(series) != self.graph.series:
             self.set_series(list(series))
         self.legend.set_names(list(names))
+        self.graph.set_names(names)               # the hover box's names
 
     def set_values(self, texts: Sequence[str]) -> None:
         """Each line's current value, in the legend."""

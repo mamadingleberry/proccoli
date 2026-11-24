@@ -2,27 +2,28 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Sequence
 
 from gi.repository import Adw, Gtk
 
 from ... import GPU_ICON
 from ...core.palette import PALETTES, hex_to_rgb
+from ...core.profile import is_pinned, profile_of
 from ...core.styles import STYLES
 from .. import sidebar_order
 from ..sidebar_fields import FIELD_LABELS, Field
-from ...gpu.intel_gpu_top.backend import HISTORY_LENGTHS
 
-REFRESH_SPEEDS = [("very-slow", "Very Slow"), ("slow", "Slow"), ("normal", "Normal"),
-                  ("fast", "Fast"), ("very-fast", "Very Fast")]
+UPDATE_INTERVALS = [("1-second", "1 Second"), ("2-seconds", "2 Seconds"),
+                    ("3-seconds", "3 Seconds"), ("5-seconds", "5 Seconds"),
+                    ("10-seconds", "10 Seconds")]
 BASES = [("decimal", "Decimal (kB, MB, GB)"), ("binary", "Binary (KiB, MiB, GiB)")]
 TEMPERATURE_UNITS = [("celsius", "Celsius"), ("fahrenheit", "Fahrenheit"), ("kelvin", "Kelvin")]
 LOG_LEVELS = [("off", "Off"), ("error", "Errors"), ("warning", "Warnings"),
               ("info", "Information and Performance"), ("debug", "Everything (Debug)")]
 GRAPH_TIME_RANGES = [("30-seconds", "30 Seconds"), ("1-minute", "1 Minute"),
                      ("2-minutes", "2 Minutes"), ("5-minutes", "5 Minutes"),
-                     ("10-minutes", "10 Minutes")]
+                     ("10-minutes", "10 Minutes"), ("30-minutes", "30 Minutes"),
+                     ("1-hour", "1 Hour"), ("6-hours", "6 Hours"), ("1-day", "1 Day")]
 METER_TYPES = [("progress-bar", "Progress Bar"), ("graph", "Graph")]
 SIDEBAR_STYLES = [("full", "Full"), ("icons", "Icons Only")]
 
@@ -40,16 +41,26 @@ PROCESS_COLUMNS = [("id", "Process ID"), ("user", "User")] + APP_COLUMNS + [
 
 class PreferencesDialog(Adw.PreferencesDialog):
     def __init__(self, settings, gpu_controllers: Sequence = (), theme=None,
-                 log_file=None, launcher=None, sidebar=None, stats_dir=None) -> None:
+                 log_file=None, launcher=None, sidebar=None, history=None,
+                 export=None, restart=None, windows=None, extension_source=None) -> None:
         """``theme`` (ui.theme.Theme) only picks light or dark swatches;
-        ``log_file`` (a Path) enables *Open Log Folder*, and ``stats_dir``
-        the statistics files' *Open Folder*, which ``launcher(folder)``
-        opens (default: Gtk.FileLauncher)."""
+        ``log_file`` (a Path) enables *Open Log Folder*, which
+        ``launcher(folder)`` opens (default: Gtk.FileLauncher).
+        ``history`` (core.history_store.HistoryStore) enables the size used
+        and *Delete History…*, ``export()`` the *Export…* button,
+        ``restart()`` *Restart Now* after Lightweight Mode changes,
+        ``windows`` (core.windows.WindowSwitcher) the *Window Switching*
+        row, which installs the extension from ``extension_source``."""
         super().__init__(title="Preferences", search_enabled=True)
         self.settings = settings
         self.theme = theme
         self.log_file = log_file
-        self.stats_dir = stats_dir
+        self.history = history
+        self.export = export
+        self.delete_alert = None
+        self.restart = restart
+        self.windows = windows
+        self.extension_source = extension_source
         self.launcher = launcher
         # ui.sidebar.StackSidebar: per-entry pages (none in tests that skip it).
         self.sidebar = sidebar
@@ -59,6 +70,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.rows: dict[str, Gtk.Widget] = {}      # settings key -> row (for tests)
 
         general = self._page("General", "preferences-system-symbolic")
+        self._lightweight_group(general)
         appearance = self._group(general, "Appearance")
         self._style_row(appearance)
         self._palette_row(appearance)
@@ -71,8 +83,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._switch(units, "network-bits", "Show Network Speeds in Bits per Second")
         self._combo(units, "temperature-unit", "Temperature Unit", TEMPERATURE_UNITS)
         ui = self._group(general, "User Interface")
-        self._combo(ui, "refresh-speed", "Refresh Speed", REFRESH_SPEEDS,
-                    "Higher refresh speeds can lead to higher processor usage")
+        self._combo(ui, "update-interval", "Update Interval", UPDATE_INTERVALS,
+                    "How often Proccoli takes readings. Shorter intervals use more processor time")
         self._switch(ui, "show-graph-grids", "Show Graph Grids")
         self._switch(ui, "show-graph-axes", "Show Graph Axes",
                      "Percentage and time labels with ticks on percentage graphs")
@@ -98,20 +110,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
             diagnostics.add(row)
             self.log_button = button
 
-        # Every reading on disk (M58).
-        stats = self._group(general, "Statistics Files",
-                            "Every reading, one CSV file per device, with times in UTC")
-        self._switch(stats, "stats-log", "Keep Statistics Files")
-        size = self._spin(stats, "stats-log-max-size", "Maximum Size per Device (KiB)",
-                          64, 1048576)
-        size.set_subtitle("One older file is kept too, so at most twice this per device")
-        if stats_dir is not None:
-            row = Adw.ActionRow(title="Folder", subtitle=str(stats_dir))
-            button = Gtk.Button(label="Open Folder", valign=Gtk.Align.CENTER)
-            button.connect("clicked", lambda *_: self.open_folder(Path(stats_dir)))
-            row.add_suffix(button)
-            stats.add(row)
-            self.stats_button = button
+        self._history_group(general)
+        if windows is not None:
+            self._window_switching_group(general)
 
         self._sidebar_page()
 
@@ -152,11 +153,14 @@ class PreferencesDialog(Adw.PreferencesDialog):
                      "Start Detailed Statistics with Administrator Rights",
                      "Asks for your password when the app starts, if the detailed "
                      "data source needs it")
-        self._combo(detail, "intel-gpu-top-interval", "intel_gpu_top Refresh Speed",
-                    [("", "Same as Refresh Speed")] + REFRESH_SPEEDS)
-        self._combo(detail, "intel-gpu-top-history", "intel_gpu_top History Length",
-                    HISTORY_LENGTHS)
+        self._combo(detail, "intel-gpu-top-interval", "intel_gpu_top Update Interval",
+                    [("", "Same as Update Interval")] + UPDATE_INTERVALS)
 
+        # Lightweight Mode fixes some preferences while it's on (Idea 1).
+        for key, row in self.rows.items():
+            if is_pinned(settings, key):
+                row.set_sensitive(False)
+                row.set_tooltip_text("Fixed while Lightweight Mode is on")
         self.connect("closed", self._on_closed)
 
     # -- building blocks ----------------------------------------------------------
@@ -349,6 +353,135 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.entry_pages[page_id] = sub
         self.push_subpage(sub)
         return sub
+
+    # -- Lightweight Mode (Idea 1) --------------------------------------------------
+
+    def _lightweight_group(self, page) -> None:
+        group = self._group(page, "Memory Use")
+        self._switch(group, "lightweight", "Lightweight Mode",
+                     "As little memory as possible: pages are built when you open them, "
+                     "the Overview is a list, and charts, icons and GPU details are kept "
+                     "to a minimum. Applies at the next start")
+        row = Adw.ActionRow(title="Restart to Apply",
+                            subtitle="Proccoli starts again with the new mode")
+        button = Gtk.Button(label="Restart Now", valign=Gtk.Align.CENTER)
+        button.add_css_class("suggested-action")
+        button.connect("clicked", lambda *_: self.restart and self.restart())
+        row.add_suffix(button)
+        group.add(row)
+        self.restart_row, self.restart_button = row, button
+        self._watch("lightweight", lambda *_: self._show_restart())
+        self._show_restart()
+
+    def _show_restart(self) -> None:
+        running = profile_of(self.settings).is_lightweight
+        self.restart_row.set_visible(self.restart is not None
+                                     and bool(self.settings.get("lightweight")) != running)
+
+    # -- Window Switching (Idea 5) ---------------------------------------------------
+
+    def _window_switching_group(self, page) -> None:
+        group = self._group(page, "Window Switching",
+                            "GNOME lets an app bring only its own windows to the front. "
+                            "A small GNOME Shell extension lets Apps → Switch To bring "
+                            "any app's window forward. It can only list windows and "
+                            "activate one")
+        row = Adw.ActionRow(title="Proccoli Window Switching")
+        button = Gtk.Button(valign=Gtk.Align.CENTER)
+        button.add_css_class("suggested-action")
+        button.connect("clicked", lambda *_: self._on_window_switching())
+        row.add_suffix(button)
+        group.add(row)
+        self.switching_row, self.switching_button = row, button
+        self.show_window_switching()
+
+    def show_window_switching(self) -> None:
+        from ...core.windows import ExtensionState
+        state = self.windows.extension_state()
+        texts = {
+            ExtensionState.ENABLED: "On: Switch To works for every app with a window",
+            ExtensionState.DISABLED: "Installed, but turned off",
+            ExtensionState.NEEDS_LOGIN: "Installed: log out and back in to start it",
+            ExtensionState.NOT_INSTALLED: "Not installed: Switch To works only for apps "
+                                          "that can be asked to show their window",
+            ExtensionState.UNAVAILABLE: "Needs GNOME Shell (this desktop isn't GNOME)",
+        }
+        self.switching_row.set_subtitle(texts[state])
+        label = {ExtensionState.DISABLED: "Turn On"}.get(state)
+        if state == ExtensionState.NOT_INSTALLED and self.extension_source is not None:
+            label = "Install"
+        self.switching_button.set_visible(label is not None)
+        if label:
+            self.switching_button.set_label(label)
+        self.switching_state = state
+
+    def _on_window_switching(self) -> None:
+        from ...core.windows import ExtensionState
+        if self.switching_state == ExtensionState.DISABLED:
+            ok = self.windows.enable()
+        else:
+            ok = self.windows.install(self.extension_source)
+        if not ok:
+            self.add_toast(Adw.Toast(title="Couldn't set up window switching", timeout=4))
+        self.show_window_switching()
+
+    # -- History (Idea 2) ---------------------------------------------------------
+
+    def _history_group(self, page) -> None:
+        group = self._group(page, "History",
+                            "Every reading, with times in UTC. Graphs show it at once, "
+                            "even from earlier runs")
+        self._switch(group, "history", "Keep History")
+        self._spin(group, "history-detail-hours", "Keep Every Reading For (Hours)", 1, 168
+                   ).set_subtitle("Then averages per minute for 30 days, per hour after that")
+        self._spin(group, "history-max-size", "Maximum Size (MiB)", 16, 4096
+                   ).set_subtitle("The oldest readings go first")
+        self._watch("history", lambda _k, on: on or self.offer_delete())
+        if self.history is not None:
+            row = Adw.ActionRow(title="Size on Disk")
+            button = Gtk.Button(label="Delete History…", valign=Gtk.Align.CENTER)
+            button.add_css_class("destructive-action")
+            button.connect("clicked", lambda *_: self.offer_delete())
+            row.add_suffix(button)
+            group.add(row)
+            self.size_row, self.delete_button = row, button
+            self.show_size()
+        if self.export is not None:
+            row = Adw.ActionRow(title="Export Statistics",
+                                subtitle="This session's readings as CSV files")
+            button = Gtk.Button(label="Export…", valign=Gtk.Align.CENTER)
+            button.connect("clicked", lambda *_: self.export())
+            row.add_suffix(button)
+            group.add(row)
+            self.export_button = button
+
+    def show_size(self) -> None:
+        from ...core.units import Base, format_bytes
+        if self.history is not None:
+            size = self.history.size_on_disk()
+            self.size_row.set_subtitle(format_bytes(size, Base.BINARY) if size else "Empty")
+
+    def offer_delete(self) -> None:
+        """*Delete History…*, and on turning *Keep History* off."""
+        if self.history is None or not self.history.size_on_disk():
+            return
+        alert = Adw.AlertDialog(heading="Delete History?",
+                                body="Every reading kept so far is removed. "
+                                     "This can't be undone.")
+        alert.add_response("keep", "Keep")
+        alert.add_response("delete", "Delete")
+        alert.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        alert.set_default_response("keep")
+        alert.set_close_response("keep")
+        alert.connect("response", self._on_delete_response)
+        self.delete_alert = alert
+        alert.present(self)
+
+    def _on_delete_response(self, alert, response: str) -> None:
+        self.delete_alert = None
+        if response == "delete":
+            self.history.delete()
+            self.show_size()
 
     def open_log_folder(self) -> None:
         self.open_folder(self.log_file.parent)

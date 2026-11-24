@@ -23,7 +23,8 @@ from typing import Callable, Optional, Sequence
 from gi.repository import Gtk, Pango
 
 from ... import OVERVIEW_ICON
-from ..axes import history_span_s
+from ...core.profile import Profile
+from ..chart_settings import ChartKind, ChartSettings
 from ..layout import (GRID_MAX_RATIO, GRID_MIN_CHART, LIMITS, GridPlan, card_width,
                       needs_update, plan_grid)
 from ..page import FittingPage, PageKind, ResourcePage, ScrollingPage, SidebarSummary
@@ -45,7 +46,9 @@ TOP_TABLE_MIN_WIDTH = 340              # two tables side by side above 2 × this
 class OverviewCard(Gtk.Box):
     """One entry: icon, name, usage line, chart (DESIGN.md §9.6)."""
 
-    def __init__(self, page: ResourcePage, color: Optional[int], settings) -> None:
+    def __init__(self, page: ResourcePage, color: Optional[int],
+                 charts: Optional[ChartSettings], chart: bool = True) -> None:
+        """``chart=False``: name and readings only (Lightweight Mode)."""
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=8,
                          width_request=CARD_MIN_WIDTH)
         self.add_css_class("card")
@@ -73,21 +76,26 @@ class OverviewCard(Gtk.Box):
                                      visible=False)
         self.facts_label.add_css_class("caption")
         self.facts_label.add_css_class("numeric")
-        self.graph = Graph(GraphStyle.NORMAL)
-        self.graph.set_content_height(CARD_START_CHART)   # the page fits it
-        self.empty_label = Gtk.Label(label="No data", vexpand=True,
-                                     height_request=CARD_START_CHART)
-        self.empty_label.add_css_class("dim-label")
+        self.graph: Optional[Graph] = None
+        self.empty_label: Optional[Gtk.Label] = None
+        if chart:
+            self.graph = Graph(GraphStyle.NORMAL)
+            self.graph.set_content_height(CARD_START_CHART)   # the page fits it
+            self.empty_label = Gtk.Label(label="No data", vexpand=True,
+                                         height_request=CARD_START_CHART)
+            self.empty_label.add_css_class("dim-label")
         inner.append(header)
         inner.append(self.detail_label)
         inner.append(self.facts_label)
-        inner.append(self.graph)
-        inner.append(self.empty_label)
+        if chart:
+            inner.append(self.graph)
+            inner.append(self.empty_label)
         self.append(inner)
-        self.settings = settings
+        self.charts = charts            # axes, time span, hover units (Idea 4)
         self.page: Optional[ResourcePage] = None
         self._handler = 0
-        self.set_style()
+        if charts is not None and self.graph is not None:
+            charts.bind(self.graph, ChartKind.CARD)
         self.set_page(page, color)
 
     @property
@@ -101,20 +109,16 @@ class OverviewCard(Gtk.Box):
             self._handler = page.connect("summary-changed", lambda *_: self.update())
         self.icon.set_from_icon_name(page.icon_name)
         self.title_label.set_label(page.title)
-        self.graph.set_entry_color(color)
+        if self.graph is not None:
+            self.graph.set_entry_color(color)
         self.update()
-
-    def set_style(self) -> None:
-        """Axes and time span follow the graph preferences."""
-        if self.settings is not None:
-            self.graph.set_show_axes(self.settings.get("show-graph-axes"))
-            self.graph.set_time_span(history_span_s(self.settings))
 
     def update(self) -> None:
         summary: Optional[SidebarSummary] = self.page.sidebar_summary()
-        has_chart = summary is not None and summary.has_chart()
-        self.graph.set_visible(has_chart)
-        self.empty_label.set_visible(not has_chart)
+        has_chart = summary is not None and summary.has_chart() and self.graph is not None
+        if self.graph is not None:
+            self.graph.set_visible(has_chart)
+            self.empty_label.set_visible(not has_chart)
         usage = ""
         detail = self.page.description
         if summary is not None:
@@ -143,7 +147,7 @@ class OverviewCard(Gtk.Box):
     def set_chart_height(self, height: int) -> None:
         """The page's grid decides (Milestone 50); "No data" takes the
         same space, so cards stay alike."""
-        if needs_update(self.graph.get_content_height(), height):
+        if self.graph is not None and needs_update(self.graph.get_content_height(), height):
             self.graph.set_content_height(height)
             self.empty_label.set_size_request(-1, height)
 
@@ -154,8 +158,10 @@ class OverviewCard(Gtk.Box):
 
     def chrome_height(self, width: int) -> int:
         """The cell's height apart from its chart, at ``width``."""
-        chart = self.graph if self.graph.get_visible() else self.empty_label
         natural = self.cell().measure(Gtk.Orientation.VERTICAL, width)[1]
+        if self.graph is None:
+            return natural
+        chart = self.graph if self.graph.get_visible() else self.empty_label
         return natural - chart.measure(Gtk.Orientation.VERTICAL, -1)[1]
 
     def min_width(self) -> int:
@@ -165,7 +171,7 @@ class OverviewCard(Gtk.Box):
         """The width of a ``slot``-wide grid column apart from the chart
         (the FlowBox child's margins, the card's border and padding), once
         laid out; None before."""
-        chart = self.graph.get_width()
+        chart = self.graph.get_width() if self.graph is not None else 0
         if slot > 0 and chart > 0 and self.graph.get_visible():
             return int(round(slot - chart))
         return None
@@ -177,6 +183,8 @@ class OverviewCard(Gtk.Box):
 
     def shutdown(self) -> None:
         self._disconnect()
+        if self.charts is not None and self.graph is not None:
+            self.charts.unbind(self.graph)
 
 
 class TopTables(Gtk.Box):
@@ -285,9 +293,12 @@ class OverviewPage(FittingPage):
     page and the tables scroll into view below them."""
 
     def __init__(self, settings, navigate: Callable[[str], None],
-                 processes=None, grouper=None) -> None:
+                 processes=None, grouper=None, profile: Optional[Profile] = None) -> None:
+        """``profile``: Lightweight Mode makes it a list of names and
+        readings, without charts or the busiest tables (Idea 1)."""
         super().__init__("overview", PageKind.OVERVIEW, "Overview", OVERVIEW_ICON)
         self.settings = settings
+        self.profile = profile or Profile.full()
         self.navigate = navigate
         self.cards: dict[str, OverviewCard] = {}
         self.plan = GridPlan(1, 0, CARD_START_CHART)
@@ -297,17 +308,17 @@ class OverviewPage(FittingPage):
                                 max_children_per_line=1, column_spacing=CARD_SPACING,
                                 row_spacing=CARD_SPACING, selection_mode=Gtk.SelectionMode.NONE,
                                 activate_on_single_click=True, valign=Gtk.Align.START)
+        if not self.profile.overview_charts:
+            self.flow.set_max_children_per_line(3)     # a list in columns
         self.flow.connect("child-activated", self._on_activated)
         self.box.append(self.flow)
         self.empty = Gtk.Label(label="No devices yet", vexpand=True)
         self.empty.add_css_class("dim-label")
         self.box.append(self.empty)
-        if settings is not None:
-            for key in ("show-graph-axes", "graph-time-range", "refresh-speed"):
-                self.track(settings, settings.connect_changed(key, lambda *_: self._restyle()))
+        self.charts = ChartSettings(settings) if settings is not None else None
         # Without a process monitor (demo mode, tests) there are no tables.
         self.tops: Optional[TopTables] = None
-        if processes is not None and grouper is not None:
+        if processes is not None and grouper is not None and self.profile.overview_tables:
             self.tops = TopTables(processes, grouper, settings, navigate)
             self.box.append(self.tops)
 
@@ -333,7 +344,8 @@ class OverviewPage(FittingPage):
         for page, color in entries:
             card = self.cards.get(page.page_id)
             if card is None:
-                card = self.cards[page.page_id] = OverviewCard(page, color, self.settings)
+                card = self.cards[page.page_id] = OverviewCard(page, color, self.charts,
+                                                                  self.profile.overview_charts)
                 self.flow.append(card)
             else:
                 card.set_page(page, color)
@@ -375,7 +387,8 @@ class OverviewPage(FittingPage):
 
     def _chrome(self, card_width: int) -> int:
         """The cards' height apart from their charts (they're all alike)."""
-        cards = [c for c in self.cards.values() if c.graph.get_visible()] \
+        cards = [c for c in self.cards.values()
+                 if c.graph is not None and c.graph.get_visible()] \
             or list(self.cards.values())
         if not cards or card_width <= 0:
             return CARD_CHROME_H
@@ -418,6 +431,8 @@ class OverviewPage(FittingPage):
         return best
 
     def fit(self, _vw: int, vh: int) -> bool:
+        if not self.profile.overview_charts:       # a plain list: nothing to fit
+            return False
         width = self.box.get_width()
         if not self.cards or width <= 0 or vh <= 0:
             return False
@@ -442,14 +457,11 @@ class OverviewPage(FittingPage):
     def _on_activated(self, _flow, child: Gtk.FlowBoxChild) -> None:
         self.navigate(child.get_child().page_id)
 
-    def _restyle(self) -> None:
-        for card in self.cards.values():
-            card.set_style()
-            card.graph.queue_draw()
-
     def shutdown(self) -> None:
         for card in self.cards.values():
             card.shutdown()
+        if self.charts is not None:
+            self.charts.release()
         if self.tops is not None:
             self.tops.shutdown()
         super().shutdown()

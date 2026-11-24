@@ -26,7 +26,14 @@ class FlattenSampleTest(unittest.TestCase):
             "scalar": 5,
             "list": [1, 2],
         })
-        self.assertEqual(g, {"frequency": ("MHz", {"requested": 300.0})})
+        self.assertEqual(g, {"frequency": ("Hz", {"requested": 300e6})})   # base units
+
+    def test_readings_are_kept_in_base_units(self):
+        # Idea 4: so charts format them in the user's units.
+        g = flatten_sample({"imc-bandwidth": {"reads": 2, "unit": "MiB/s"},
+                            "power": {"GPU": 1.5, "unit": "W"}})
+        self.assertEqual(g, {"imc-bandwidth": ("B/s", {"reads": 2 * 2**20}),
+                             "power": ("W", {"GPU": 1.5})})
 
     def test_engines_without_busy_are_ignored(self):
         g = flatten_sample({"engines": {"A": {"sema": 1}, "B": "x"}})
@@ -70,6 +77,7 @@ class HistoryTest(unittest.TestCase):
         h.add(sample(x={"a": 1, "unit": "MHz"}), 1)
         h.add(sample(x={"a": 1, "unit": "GHz"}), 2)
         self.assertEqual(h.series[("x", "a")].unit, "GHz")
+        self.assertEqual(list(h.series[("x", "a")].values), [1e6, 1.0])
 
     def test_default_timestamp_and_latest_sample(self):
         h = History()
@@ -138,6 +146,48 @@ class HistoryTest(unittest.TestCase):
             History().write_csv(path)
             with open(path) as fh:
                 self.assertEqual(fh.read().splitlines(), ["timestamp"])
+
+
+class HistoryFollowUpsTest(unittest.TestCase):
+    """Averaged points, and filling from the history database."""
+
+    def test_points_average_samples(self):
+        h = History(10)
+        h.set_plan(10, 2, 0.5)
+        h.add({"rc6": {"value": 10, "unit": "%"}}, 1.0)
+        self.assertEqual(len(h.times), 0)
+        h.add({"rc6": {"value": 30, "unit": "%"}}, 2.0)
+        self.assertEqual(list(h.series[("rc6", "value")].values), [20.0])
+        self.assertEqual(list(h.times), [2.0])
+
+    def test_readings_and_backfill(self):
+        h = History(5)
+        h.add({"rc6": {"value": 10, "unit": "%"}, "imc-bandwidth": {"reads": 1, "unit": "MiB/s"}},
+              10.0)
+        values, units = h.readings()
+        self.assertEqual(values, {"rc6/value": 10.0, "imc-bandwidth/reads": 2**20})
+        self.assertEqual(units["imc-bandwidth/reads"], "B/s")
+        self.assertEqual(sorted(h.keys()), [("imc-bandwidth/reads", "B/s"), ("rc6/value", "%")])
+        self.assertTrue(History.WALL_TIMES)
+        self.assertEqual(h.room(), 4)
+        added = h.backfill([7.0, 8.0, 9.0, 11.0], {"rc6/value": [1.0, None, 3.0, 4.0]})
+        self.assertEqual(added, 3)
+        self.assertEqual(list(h.times), [7.0, 8.0, 9.0, 10.0])
+        self.assertEqual(list(h.series[("rc6", "value")].values), [1.0, None, 3.0, 10.0])
+        self.assertEqual(list(h.series[("imc-bandwidth", "reads")].values)[:3],
+                         [None, None, None])
+        self.assertEqual(History(3).readings(), ({}, {}))
+
+
+class SnapshotDetailTest(unittest.TestCase):
+    def test_details_readings_are_recorded_with_a_prefix(self):
+        from proccoli.gpu.backend import GpuSummary
+        from proccoli.gpu.controller import GpuSnapshot
+        snap = GpuSnapshot(0.0, summary=GpuSummary(usage=5.0),
+                           detail={"rc6/value": 30.0}, detail_units={"rc6/value": "%"})
+        self.assertEqual(snap.stats_values()["detail/rc6/value"], 30.0)
+        self.assertEqual(snap.stats_units()["detail/rc6/value"], "%")
+        self.assertNotIn("detail/rc6/value", snap.history_values())     # not graphed twice
 
 
 if __name__ == "__main__":

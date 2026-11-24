@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from enum import Enum
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 import gi
 
@@ -20,8 +20,11 @@ gi.require_version("PangoCairo", "1.0")
 from gi.repository import Adw, Gtk, Pango, PangoCairo  # noqa: E402
 
 from ...core.history import Series  # noqa: E402
+from ...core.units import format_reading, nice_ceiling  # noqa: E402,F401
 from ...core.palette import RGB, entry_colors, hex_to_rgb, secondary  # noqa: E402,F401
-from ..axes import is_percent_graph, percent_ticks, time_ticks  # noqa: E402
+from ..axes import (AxisGutter, is_percent_graph, percent_ticks, time_ticks,  # noqa: E402
+                    value_ticks)
+from ..hover import ago_text, box_origin, hover_point  # noqa: E402
 from ..layout import aspect_height  # noqa: E402
 from ..theme import DEFAULT_ACCENT, default_theme_colors, theme_of  # noqa: E402
 
@@ -39,18 +42,6 @@ STYLE_METRICS = {
 
 
 # -- pure helpers (unit-tested) ---------------------------------------------------
-
-def nice_ceiling(v: float) -> float:
-    """Round up to 1, 2, 2.5 or 5 times a power of ten (axis maximum)."""
-    if v <= 0:
-        return 1.0
-    exp = math.floor(math.log10(v))
-    base = 10 ** exp
-    for m in (1, 2, 2.5, 5, 10):
-        if v <= m * base * (1 + 1e-9):
-            return m * base
-    return 10 * base
-
 
 def snap_to_device(v: float, scale: float, line_dev_px: int = 1) -> float:
     """Position a line of ``line_dev_px`` device pixels on the pixel grid,
@@ -85,9 +76,12 @@ def graph_runs(values: Sequence[Optional[float]], capacity: int, width: float,
     return runs
 
 
-def auto_max(series: Sequence[Series], floor: float = 0.0) -> float:
+def auto_max(series: Sequence[Series], floor: float = 0.0,
+             nice: Callable[[float], float] = None) -> float:
+    """The automatic scale: the peak (at least ``floor``) rounded up by
+    ``nice`` (default ``nice_ceiling``)."""
     peak = max((s.peak() or 0.0 for s in series), default=0.0)
-    return nice_ceiling(max(peak, floor))
+    return (nice or nice_ceiling)(max(peak, floor))
 
 
 def rounded_rect(cr, x, y, w, h, r) -> None:
@@ -167,6 +161,19 @@ class Graph(Gtk.DrawingArea):
         self.fill = True
         self.distinct = False
         self.hidden: set[int] = set()
+        # Value axes (Idea 3): a label for a tick value turns axes on for a
+        # graph that isn't a percentage (MHz, W, ...); a shared gutter lines
+        # up the plots of several graphs.
+        self.axis_format: Optional[Callable[[float], str]] = None
+        self.axis_gutter: Optional[AxisGutter] = None
+        # Rounds the automatic maximum (default nice_ceiling); a graph whose
+        # labels switch unit (MiB/s to GiB/s) rounds in the shown unit.
+        self.nice_max: Optional[Callable[[float], float]] = None
+        # Hover crosshair (Idea 3): each line's name and value at the pointer.
+        self.names: list[str] = []
+        self.value_format: Optional[Callable[[int, Optional[float]], str]] = None
+        self.hover = False
+        self.hover_x: Optional[float] = None
         height, self.radius, self.line_width = STYLE_METRICS[self.style]
         self.set_content_height(height)
         self.set_hexpand(True)
@@ -174,6 +181,70 @@ class Graph(Gtk.DrawingArea):
         # Colours come from the window's Theme, which redraws its graphs when
         # the palette or the light/dark style changes (ui/window.py).
         self.set_draw_func(self._draw)
+        motion = Gtk.EventControllerMotion()
+        motion.connect("motion", self._on_motion)
+        motion.connect("leave", self._on_leave)
+        self.add_controller(motion)
+        self.set_hover(self.style == GraphStyle.NORMAL)
+
+    # -- hover (Idea 3) ------------------------------------------------------------
+
+    def set_hover(self, on: bool,
+                  value_format: Optional[Callable[[int, Optional[float]], str]] = None) -> None:
+        """A crosshair at the pointer with every shown line's value there
+        (on by default for page graphs and Overview cards). ``value_format(
+        index, value)`` formats them; without it, by unit."""
+        self.hover = on
+        if value_format is not None:
+            self.value_format = value_format
+        if not on and self.hover_x is not None:
+            self.hover_x = None
+            self.queue_draw()
+
+    def set_names(self, names: Sequence[str]) -> None:
+        """The lines' names in the hover box (default: the series' names)."""
+        self.names = list(names)
+
+    def _on_motion(self, _ctrl, x, _y) -> None:
+        if self.hover:
+            self.hover_x = x
+            self.queue_draw()
+
+    def _on_leave(self, _ctrl) -> None:
+        if self.hover_x is not None:
+            self.hover_x = None
+            self.queue_draw()
+
+    def name_for(self, index: int) -> str:
+        if index < len(self.names):
+            return self.names[index]
+        return self.series[index].name if index < len(self.series) else ""
+
+    def format_for(self, index: int, value: Optional[float]) -> str:
+        if self.value_format is not None:
+            return self.value_format(index, value)
+        unit = self.series[index].unit if index < len(self.series) else ""
+        return format_reading(value, unit)
+
+    def hover_lines(self, plot_w: float) -> Optional[tuple]:
+        """(point, [(index, text)], heading) under the pointer, or None."""
+        if not self.hover or self.hover_x is None:
+            return None
+        shown = [(i, s) for i, s in enumerate(self.series) if i not in self.hidden]
+        if not shown:
+            return None
+        capacity = max(s.capacity for _, s in shown)
+        n = max(len(s.values) for _, s in shown)
+        point = hover_point(self.hover_x - self._plot_x, plot_w, capacity, n)
+        if point is None:
+            return None
+        rows = []
+        for i, s in shown:
+            k = point.index - (n - len(s.values))
+            value = s.values[k] if 0 <= k < len(s.values) else None
+            rows.append((i, f"{self.name_for(i)}   {self.format_for(i, value)}"
+                         if len(shown) > 1 or self.name_for(i) else self.format_for(i, value)))
+        return point, rows, ago_text(point.back, capacity, self.time_span_s)
 
     def set_series(self, series: Sequence[Series],
                    colors: Optional[Sequence[Optional[RGB]]] = None,
@@ -252,7 +323,7 @@ class Graph(Gtk.DrawingArea):
     def y_max(self) -> float:
         if self.max_value is not None:
             return self.max_value
-        return auto_max(self.series, self.min_max)
+        return auto_max(self.series, self.min_max, self.nice_max)
 
     def set_entry_base(self, index: Optional[int]) -> None:
         """Start this graph's colours at sidebar entry ``index``'s colour."""
@@ -299,9 +370,28 @@ class Graph(Gtk.DrawingArea):
             self.time_span_s = seconds
             self.queue_draw()
 
+    def is_percent(self) -> bool:
+        return is_percent_graph([s.unit for s in self.series], self.max_value)
+
     def has_axes(self) -> bool:
-        return self.show_axes and is_percent_graph([s.unit for s in self.series],
-                                                   self.max_value)
+        """Axes when *Show Graph Axes* is on, for percentage graphs and for
+        graphs given an ``axis_format``."""
+        return self.show_axes and (self.is_percent() or self.axis_format is not None)
+
+    def set_axis_format(self, fmt: Optional[Callable[[float], str]],
+                        gutter: Optional[AxisGutter] = None) -> None:
+        """Label a value axis with ``fmt(value)`` (a graph that isn't a
+        percentage); ``gutter`` shares the label width with other graphs."""
+        self.axis_format = fmt
+        self.axis_gutter = gutter
+        self.queue_draw()
+
+    def y_tick_labels(self, plot_h: float, label_h: float) -> list[tuple[float, Optional[str]]]:
+        """(fraction of the plot height from the bottom, label or None)."""
+        if self.is_percent() or self.axis_format is None:
+            return [(v / 100.0, label) for v, label in percent_ticks(plot_h, label_h)]
+        y_max = self.y_max()
+        return [(v / y_max, self.axis_format(v)) for v in value_ticks(y_max, plot_h, label_h)]
 
     def _layout(self, text: str):
         layout = self.create_pango_layout(text)
@@ -316,7 +406,15 @@ class Graph(Gtk.DrawingArea):
         if not self.has_axes():
             return 0.0, 0.0, float(width), float(height)
         label_w, label_h = self._layout("100 %").get_pixel_size()
+        if not self.is_percent():
+            # The same plot height _draw_axes uses, so the same ticks.
+            plot_h = max(1.0, height - label_h - self.TICK - label_h / 2)
+            label_w = max((self._layout(t).get_pixel_size()[0]
+                           for _f, t in self.y_tick_labels(plot_h, label_h) if t), default=0)
         left = label_w + 2 * self.TICK
+        if self.axis_gutter is not None:
+            self.axis_gutter.report(self, left)
+            left = max(left, self.axis_gutter.width)
         bottom = label_h + self.TICK
         return left, label_h / 2, max(1.0, width - left), max(1.0, height - bottom - label_h / 2)
 
@@ -327,9 +425,9 @@ class Graph(Gtk.DrawingArea):
         _, label_h = self._layout("0").get_pixel_size()
         cr.set_line_width(hair)
         cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.45)
-        ticks = percent_ticks(h, label_h)
-        for value, _label in ticks:
-            y = y0 + h - h * value / 100.0
+        ticks = self.y_tick_labels(h, label_h)
+        for frac, _label in ticks:
+            y = y0 + h - h * frac
             cr.move_to(x0 - self.TICK, y)
             cr.line_to(x0, y)
         span = self.time_span_s or 0.0
@@ -340,11 +438,11 @@ class Graph(Gtk.DrawingArea):
             cr.line_to(x, y0 + h + self.TICK)
         cr.stroke()
         cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.7)
-        for value, label in ticks:
+        for frac, label in ticks:
             if label:
                 layout = self._layout(label)
                 lw, lh = layout.get_pixel_size()
-                cr.move_to(x0 - self.TICK - 2 - lw, y0 + h - h * value / 100.0 - lh / 2)
+                cr.move_to(x0 - self.TICK - 2 - lw, y0 + h - h * frac - lh / 2)
                 PangoCairo.show_layout(cr, layout)
         for frac, label in xticks:
             layout = self._layout(label)
@@ -360,6 +458,7 @@ class Graph(Gtk.DrawingArea):
         rect = self.plot_rect(width, height)
         if rect[2] < 4 or rect[3] < 4:
             return
+        self._plot_x = rect[0]
         if rect[:2] != (0.0, 0.0) or rect[2:] != (width, height):
             fg = self.get_color()
             scale = self._device_scale()
@@ -371,6 +470,68 @@ class Graph(Gtk.DrawingArea):
             cr.restore()
         else:
             self._draw_plot(cr, width, height)
+        self._draw_hover(cr, rect, width, height)
+
+    _plot_x = 0.0
+
+    def _draw_hover(self, cr, rect, width: int, height: int) -> None:
+        found = self.hover_lines(rect[2])
+        if found is None:
+            return
+        point, rows, heading = found
+        x0, y0, w, h = rect
+        fg = self.get_color()
+        scale = self._device_scale()
+        hair_dev = max(1, round(scale))
+        x = x0 + point.x
+        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.45)
+        cr.set_line_width(hair_dev / scale)
+        cr.move_to(snap_to_device(x, scale, hair_dev), y0)
+        cr.line_to(snap_to_device(x, scale, hair_dev), y0 + h)
+        cr.stroke()
+        dark = Adw.StyleManager.get_default().get_dark()
+        y_max = self.y_max()
+        for i, _text in rows:
+            s = self.series[i]
+            k = point.index - (max(len(t.values) for t in self.series) - len(s.values))
+            v = s.values[k] if 0 <= k < len(s.values) else None
+            if v is None:
+                continue
+            y = y0 + h - h * min(max(v / y_max, 0.0), 1.0)
+            cr.arc(x, y, 5, 0, 2 * math.pi)
+            cr.set_source_rgb(*((0.12, 0.12, 0.12) if dark else (1, 1, 1)))
+            cr.fill()
+            cr.arc(x, y, 3.5, 0, 2 * math.pi)
+            cr.set_source_rgb(*self.color_for(i))
+            cr.fill()
+        # The box: the time, then a swatch, name and value per line.
+        swatch = 12 if len(rows) > 1 else 0
+        layouts = [(None, self._layout(heading))]
+        layouts += [(i, self._layout(text)) for i, text in rows]
+        sizes = [lay.get_pixel_size() for _i, lay in layouts]
+        pad = 6
+        box_w = max(sw + (swatch if i is not None else 0)
+                    for (i, _l), (sw, _h) in zip(layouts, sizes)) + 2 * pad
+        box_h = sum(sh + 2 for _w, sh in sizes) + 2 * pad - 2
+        bx, by = box_origin(x, box_w, box_h, width, height, y0)
+        rounded_rect(cr, bx, by, box_w, box_h, 6)
+        cr.set_source_rgba(*((0.16, 0.16, 0.17, 0.96) if dark else (1, 1, 1, 0.97)))
+        cr.fill_preserve()
+        cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.18)
+        cr.set_line_width(hair_dev / scale)
+        cr.stroke()
+        cy = by + pad
+        for (i, layout), (_sw, sh) in zip(layouts, sizes):
+            cx = bx + pad
+            if i is not None and swatch:
+                rounded_rect(cr, cx, cy + sh / 2 - 4, 8, 8, 2)
+                cr.set_source_rgb(*self.color_for(i))
+                cr.fill()
+                cx += swatch
+            cr.set_source_rgba(fg.red, fg.green, fg.blue, 1.0)
+            cr.move_to(cx, cy)
+            PangoCairo.show_layout(cr, layout)
+            cy += sh + 2
 
     def _draw_plot(self, cr, width: float, height: float) -> None:
         fg = self.get_color()

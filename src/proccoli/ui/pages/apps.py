@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import logging
 
+from gi.repository import Adw, GLib
+
+from ...core.windows import WindowSwitcher
 from ...core.units import Base, format_bytes, format_percent, format_rate
 from ...processes.apps import SYSTEM_ID, App, AppGrouper
 from ...processes.monitor import ProcessMonitor
@@ -50,12 +53,15 @@ class AppsPage(TablePage):
     NOUN = "App"
 
     def __init__(self, monitor: ProcessMonitor, settings, grouper: AppGrouper,
-                 actions, system=None) -> None:
+                 actions, system=None, windows=None) -> None:
         """``system`` (core.system.System) brings apps to the front; it
-        defaults to the one ``actions`` uses."""
+        defaults to the one ``actions`` uses. ``windows``
+        (core.windows.WindowSwitcher) decides how (default: over
+        ``system``)."""
         self.COLUMNS = _cols(settings)
         self.grouper = grouper
         self.system = system if system is not None else actions.system
+        self.windows = windows if windows is not None else WindowSwitcher(self.system)
         super().__init__("apps", PageKind.APPS, "Apps", "view-app-grid-symbolic", settings,
                          monitor, actions)
         self.refresh()
@@ -66,9 +72,9 @@ class AppsPage(TablePage):
         return [("switch-to", self.switch_to)]
 
     def switchable(self, selected: list) -> bool:
-        """One app, a real one, that can be asked to show its window."""
-        return (len(selected) == 1 and selected[0].id != SYSTEM_ID
-                and self.system.app_switch_method(selected[0].id) is not None)
+        """One app, a real one. *Switch To* is offered for every app (Idea
+        5); one Proccoli can't reach says how to set up window switching."""
+        return len(selected) == 1 and selected[0].id != SYSTEM_ID
 
     def update_extra_actions(self, selected: list) -> None:
         self.action_group.lookup_action("switch-to").set_enabled(self.switchable(selected))
@@ -81,13 +87,27 @@ class AppsPage(TablePage):
         if not self.switchable(selected):
             return
         app = selected[0]
+        if self.windows.way(app) is None:
+            self.offer_setup(app)
+            return
+        display = self.get_display()
+        context = display.get_app_launch_context() if display is not None else None
         try:
-            ok = self.system.activate_app(app.id)
+            ok = self.windows.switch(app, context)
         except Exception as exc:          # D-Bus or launch errors
             ok = False
             log.info("switching to %s failed: %s", app.id, exc)
         if not ok:
             self.toast(f"Could not switch to {app.name}")
+
+    def offer_setup(self, app) -> None:
+        """GNOME lets an app raise only its own windows: say how to let
+        Proccoli raise any (Preferences → General → *Window Switching*)."""
+        self.last_message = (f"{app.name} can only be brought to the front with "
+                             "window switching turned on")
+        toast = Adw.Toast(title=GLib.markup_escape_text(self.last_message), timeout=6,
+                          button_label="Set Up…", action_name="app.preferences")
+        self.toast_overlay.add_toast(toast)
 
     def search_text(self, a: App) -> str:
         return f"{a.name} {a.id} {a.description}"

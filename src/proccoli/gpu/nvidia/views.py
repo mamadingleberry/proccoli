@@ -2,10 +2,12 @@
 reports, as graphs over time.
 
 A caption names the GPU, its driver and the tool in use (and why that one),
-then one graph per measure: utilisation (graphics, memory controller,
-PCIe), video engines, video memory, clocks, temperature, power and fan.
-Graphs with several lines get a legend. A measure the tool doesn't report
-hides its graph.
+then a card per measure: utilisation (graphics, memory controller, PCIe),
+video engines, video memory, clocks, temperature, power and fan. Since
+Idea 4 they're the shared ``ChartCard``s in a ``ChartGridView``, like the
+Intel tab: they fill the window in columns, follow every chart preference
+live, and show readings in the user's units. Cards with several lines get
+a legend. A measure the tool doesn't report hides its line, or its card.
 """
 
 from __future__ import annotations
@@ -14,25 +16,26 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gtk  # noqa: E402
+from gi.repository import GLib  # noqa: E402
 
-from ...core.units import (Base, TemperatureUnit, format_bytes, format_frequency,  # noqa: E402
-                           format_percent, format_power, format_temperature)
-from ...ui.axes import history_span_s  # noqa: E402
-from ...ui.widgets.graph_box import GraphBox  # noqa: E402
-from ...ui.widgets.legend_chart import LegendChart  # noqa: E402
+from ...core.units import format_bytes, format_frequency, format_percent, format_power  # noqa: E402
+from ...ui.axes import AxisGutter  # noqa: E402
+from ...ui.chart_settings import ChartSettings  # noqa: E402
+from ...ui.widgets.chart_card import ChartCard  # noqa: E402
+from ...ui.widgets.chart_grid import ChartGridView  # noqa: E402
 from ..backend import DetailView, DetailViews  # noqa: E402
 
-# (title, [(series, legend name)], fixed max or None, min of an automatic max)
+# (title, [(series, legend name)], fixed max or None, min of an automatic
+# max, relative height)
 GRAPHS = [
     ("GPU Utilization", [("graphics", "Graphics"), ("memory-controller", "Memory Controller"),
-                         ("pcie", "PCIe")], 100.0, 0.0),
-    ("Video Engines", [("encoder", "Encoder"), ("decoder", "Decoder")], 100.0, 0.0),
-    ("Video Memory", [("vram", "Used")], 100.0, 0.0),
-    ("Clocks", [("clock", "Graphics"), ("memory-clock", "Memory")], None, 1000.0),
-    ("Temperature", [("temperature", "GPU")], None, 100.0),
-    ("Power", [("power", "Draw")], None, 10.0),
-    ("Fan", [("fan", "Speed")], 100.0, 0.0),
+                         ("pcie", "PCIe")], 100.0, 0.0, 200),
+    ("Video Engines", [("encoder", "Encoder"), ("decoder", "Decoder")], 100.0, 0.0, 140),
+    ("Video Memory", [("vram", "Used")], 100.0, 0.0, 110),
+    ("Clocks", [("clock", "Graphics"), ("memory-clock", "Memory")], None, 1e9, 140),
+    ("Temperature", [("temperature", "GPU")], None, 100.0, 110),
+    ("Power", [("power", "Draw")], None, 10.0, 110),
+    ("Fan", [("fan", "Speed")], 100.0, 0.0, 110),
 ]
 
 
@@ -47,49 +50,43 @@ def caption_text(backend) -> str:
     return " · ".join(parts)
 
 
-class NvidiaDetailsView(Gtk.ScrolledWindow):
-    def __init__(self, backend, settings) -> None:
-        super().__init__(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+class NvidiaDetailsView(ChartGridView):
+    def __init__(self, backend, charts: ChartSettings) -> None:
+        super().__init__()
         self.backend = backend
-        self.settings = settings
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18,
-                      margin_top=18, margin_bottom=18, margin_start=12, margin_end=12)
-        self.caption = Gtk.Label(xalign=0, wrap=True)
-        self.caption.add_css_class("dim-label")
-        box.append(self.caption)
-        self.boxes: dict[str, GraphBox] = {}
+        self.charts = charts
+        self.gutter = AxisGutter(schedule=GLib.idle_add)
+        self.boxes: dict[str, ChartCard] = {}
         self.legends: dict = {}
-        self.groups: dict[str, Adw.PreferencesGroup] = {}
-        for title, series, max_value, min_max in GRAPHS:
-            group = Adw.PreferencesGroup()
-            lines = [backend.history.series(name) for name, _ in series]
+        for title, series, max_value, min_max, weight in GRAPHS:
+            card = ChartCard(title, max_value=max_value, min_max=min_max, weight=weight)
+            card.set_lines([backend.history.series(name) for name, _ in series],
+                           [label for _, label in series])
+            charts.bind(card.graph, gutter=self.gutter)
             if len(series) > 1:
-                # The reusable many-line chart (M59): legend in the card, the
-                # same click rules as the per-CPU chart.
-                graph_box = LegendChart(title, max_value=max_value, min_max=min_max)
-                graph_box.set_lines(lines, [label for _, label in series])
-                self.legends[title] = graph_box.legend
-            else:
-                graph_box = GraphBox(title, max_value=max_value, min_max=min_max)
-                graph_box.set_series(lines)
-            graph_box.graph.set_show_axes(settings.get("show-graph-axes"))
-            graph_box.graph.set_time_span(history_span_s(settings))
-            group.add(graph_box)
-            self.boxes[title] = graph_box
-            self.groups[title] = group
-            box.append(group)
-        self.set_child(Adw.Clamp(maximum_size=1600, child=box))
+                self.legends[title] = card.legend
+            self.boxes[title] = card
+        self.set_cards(list(self.boxes.values()))
         self.refresh()
 
+    @property
+    def groups(self) -> dict[str, ChartCard]:
+        """Each measure's card (hidden when the tool doesn't report it)."""
+        return self.boxes
+
     def refresh(self) -> None:
-        """New reading: captions, info lines, which graphs show, redraw."""
-        self.caption.set_label(caption_text(self.backend))
+        """New reading: captions, values, which lines and cards show, redraw."""
+        self.set_caption(caption_text(self.backend))
         s = self.backend.sample
         values = s.history_values() if s else {}
-        for title, series, _max, _min in GRAPHS:
+        visibility_changed = False
+        for title, series, _max, _min, _w in GRAPHS:
+            card = self.boxes[title]
             reported = [values.get(name) is not None for name, _ in series]
-            self.groups[title].set_visible(s is None or any(reported))
-            graph = self.boxes[title].graph
+            shown = s is None or any(reported)
+            if card.get_visible() != shown:
+                card.set_visible(shown)
+                visibility_changed = True
             legend = self.legends.get(title)
             for i, is_reported in enumerate(reported):
                 if s is None:
@@ -99,18 +96,14 @@ class NvidiaDetailsView(Gtk.ScrolledWindow):
                 if legend is not None:
                     legend.set_available(i, is_reported)
                 else:
-                    graph.set_series_shown(i, is_reported)
-            if legend is not None:
-                legend.set_values([self._format(name, values.get(name)) for name, _ in series])
-            self.boxes[title].set_info(self._info(title, s))
-            graph.queue_draw()
-
-    def _format(self, name: str, value) -> str:
-        if value is None:
-            return "—"
-        if name in ("clock", "memory-clock"):
-            return format_frequency(value * 1e6)
-        return format_percent(value)
+                    card.graph.set_series_shown(i, is_reported)
+            units = [card.graph.series[i].unit for i in range(len(series))]
+            card.set_values([self.charts.format_value(values.get(name), unit)
+                             for (name, _), unit in zip(series, units)],
+                            info=self._info(title, s))
+            card.graph.queue_draw()
+        if visibility_changed:
+            self.set_cards(self.cards)
 
     def _info(self, title: str, s) -> str:
         if s is None:
@@ -122,13 +115,12 @@ class NvidiaDetailsView(Gtk.ScrolledWindow):
                 return format_percent(s.video)
             return f"Encoder {format_percent(s.encoder)} · Decoder {format_percent(s.decoder)}"
         if title == "Video Memory" and s.vram_used is not None:
-            base = Base(self.settings.get("base"))
+            base = self.charts.base
             return f"{format_bytes(s.vram_used, base)} of {format_bytes(s.vram_total, base)}"
         if title == "Clocks":
             return format_frequency(s.clock_hz) + (f" · {s.pstate}" if s.pstate else "")
         if title == "Temperature":
-            return format_temperature(s.temperature_c,
-                                      TemperatureUnit(self.settings.get("temperature-unit")))
+            return self.charts.format_value(s.temperature_c, "°C")
         if title == "Power":
             text = format_power(s.power_w)
             return text + (f" of {format_power(s.power_limit_w)}" if s.power_limit_w else "")
@@ -138,6 +130,6 @@ class NvidiaDetailsView(Gtk.ScrolledWindow):
 
 
 def create_views(backend, controller, services) -> DetailViews:
-    view = NvidiaDetailsView(backend, services.settings)
+    view = NvidiaDetailsView(backend, services.charts or ChartSettings(services.settings))
     handler = backend.connect("updated", lambda _b: view.refresh())
     return DetailViews([DetailView("details", view, [])], [handler])

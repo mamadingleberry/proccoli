@@ -127,6 +127,25 @@ class ProcessOptionsTest(unittest.TestCase):
         self.assertFalse(d.apply_button.get_sensitive())
 
 
+class FakeHistory:
+    """What the dialog and the export use of a HistoryStore."""
+
+    def __init__(self, size=0, session=1795470085154, path=None):
+        self.size, self.deleted, self.commits = size, 0, 0
+        self.session, self.path, self.db = session, path, object()
+        self.wall_clock = lambda: 1795470095.154
+
+    def size_on_disk(self):
+        return self.size
+
+    def delete(self):
+        self.deleted += 1
+        self.size = 0
+
+    def commit(self):
+        self.commits += 1
+
+
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class PreferencesTest(unittest.TestCase):
     def setUp(self):
@@ -135,9 +154,9 @@ class PreferencesTest(unittest.TestCase):
 
     def test_every_switch_works_both_ways(self):
         switches = {k: r for k, r in self.dialog.rows.items() if isinstance(r, Adw.SwitchRow)}
-        # General 8 (with Keep Statistics Files, M58), Apps columns,
+        # General 9 (with Keep History and Lightweight Mode), Apps columns,
         # Processes 1 + columns, Devices 2, GPU 1.
-        self.assertEqual(len(switches), 8 + len(APP_COLUMNS) + 1 + len(PROCESS_COLUMNS) + 2 + 1)
+        self.assertEqual(len(switches), 9 + len(APP_COLUMNS) + 1 + len(PROCESS_COLUMNS) + 2 + 1)
         for key, row in switches.items():
             before = self.settings.get(key)
             self.assertEqual(row.get_active(), before, key)
@@ -204,29 +223,64 @@ class PreferencesTest(unittest.TestCase):
         self.assertEqual(opened, [Path(tmp.name) / "x"])
         self.assertTrue(opened[0].is_dir())
 
-    def test_statistics_files(self):
-        # M58: on by default, size per device, and the folder opens.
+    def test_history_group(self):
+        # Idea 2: on by default, its limits, and no size or export rows
+        # without a store.
         rows = self.dialog.rows
-        self.assertTrue(rows["stats-log"].get_active())
-        rows["stats-log"].set_active(False)
-        self.assertFalse(self.settings.get("stats-log"))
-        rows["stats-log-max-size"].set_value(8192)
-        self.assertEqual(self.settings.get("stats-log-max-size"), 8192)
-        self.assertFalse(hasattr(self.dialog, "stats_button"))         # no folder given
-        import tempfile
-        from pathlib import Path
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        opened = []
-        dialog = PreferencesDialog(self.settings, stats_dir=Path(tmp.name) / "stats",
-                                   launcher=opened.append)
-        dialog.stats_button.emit("clicked")
-        self.assertEqual(opened, [Path(tmp.name) / "stats"])
+        self.assertTrue(rows["history"].get_active())
+        rows["history-max-size"].set_value(1024)
+        self.assertEqual(self.settings.get("history-max-size"), 1024)
+        rows["history-detail-hours"].set_value(48)
+        self.assertEqual(self.settings.get("history-detail-hours"), 48)
+        self.assertFalse(hasattr(self.dialog, "delete_button"))
+        self.assertFalse(hasattr(self.dialog, "export_button"))
+        rows["history"].set_active(False)                          # nothing to delete
+        self.assertIsNone(self.dialog.delete_alert)
+
+    def test_history_size_delete_and_export(self):
+        store = FakeHistory(1536 * 1024)
+        exported = []
+        dialog = PreferencesDialog(self.settings, history=store,
+                                   export=lambda: exported.append(1))
+        self.assertEqual(dialog.size_row.get_subtitle(), "1.5 MiB")
+        dialog.export_button.emit("clicked")
+        self.assertEqual(exported, [1])
+        dialog.delete_button.emit("clicked")
+        dialog.delete_alert.emit("response", "keep")
+        self.assertEqual(store.deleted, 0)
+        self.settings.set("history", False)                        # offers to delete
+        dialog.delete_alert.emit("response", "delete")
+        self.assertEqual(store.deleted, 1)
+        self.assertEqual(dialog.size_row.get_subtitle(), "Empty")
+
+    def test_window_switching_row(self):
+        # Idea 5: the extension's state, Install from a checkout, Turn On.
+        from proccoli.core.windows import WindowSwitcher
+        system = FakeSystem()
+        system.extension_info = {}
+        dialog = PreferencesDialog(self.settings, windows=WindowSwitcher(system),
+                                   extension_source="/src/ext")
+        self.assertIn("Not installed", dialog.switching_row.get_subtitle())
+        self.assertEqual(dialog.switching_button.get_label(), "Install")
+        dialog.switching_button.emit("clicked")
+        self.assertEqual(system.installed_from, "/src/ext")
+        self.assertIn("log out", dialog.switching_row.get_subtitle())
+        self.assertFalse(dialog.switching_button.get_visible())
+        system.extension_info = {"state": 2.0, "enabled": False}
+        dialog.show_window_switching()
+        self.assertEqual(dialog.switching_button.get_label(), "Turn On")
+        dialog.switching_button.emit("clicked")
+        self.assertTrue(dialog.switching_row.get_subtitle().startswith("On"))
+        self.assertFalse(dialog.switching_button.get_visible())
+        none = PreferencesDialog(self.settings, windows=WindowSwitcher(FakeSystem()))
+        self.assertIn("GNOME Shell", none.switching_row.get_subtitle())
+        self.assertFalse(hasattr(PreferencesDialog(self.settings), "switching_row"))
 
     def test_combos_and_spin(self):
         rows = self.dialog.rows
-        rows["refresh-speed"].set_selected(4)
-        self.assertEqual(self.settings.get("refresh-speed"), "very-fast")
+        rows["update-interval"].set_selected(4)
+        self.assertEqual(self.settings.get("update-interval"), "10-seconds")
+        self.assertNotIn("refresh-speed", rows)                    # replaced (Idea 6)
         self.settings.set("temperature-unit", "kelvin")
         self.assertEqual(rows["temperature-unit"].get_selected(), 2)
         rows["intel-gpu-top-interval"].set_selected(0)
@@ -256,8 +310,7 @@ class PreferencesTest(unittest.TestCase):
         row.set_active(True)
         self.assertEqual(controller.detail_state, DetailState.STARTING)
         self.assertEqual(ctx.settings.get("gpu-details-disabled"), [])
-        dialog.rows["intel-gpu-top-history"].set_selected(2)
-        self.assertEqual(ctx.settings.get("intel-gpu-top-history"), 300)
+        self.assertNotIn("intel-gpu-top-history", dialog.rows)   # Graph Time Range now
         ctx.devices.stop()
 
     def test_without_gpus(self):
@@ -441,13 +494,15 @@ class ApplicationTest(unittest.TestCase):
         app.register(None)                         # runs do_startup
         self.assertEqual(len(built), 1)
         self.assertTrue(built[0].demo)
-        for name in ("quit", "preferences", "shortcuts", "about"):
+        for name in ("quit", "preferences", "shortcuts", "about", "export-statistics"):
             self.assertIsNotNone(app.lookup_action(name), name)
+        self.assertIsNone(app.history)                             # never in --demo
+        self.assertFalse(app.lookup_action("export-statistics").get_enabled())
         self.assertEqual(app.get_accels_for_action("app.preferences"), ["<Control>comma"])
         app.activate()
         win = app.get_active_window()
         self.assertIn("gpu-demo", win.containers)
-        self.assertTrue(win.logo_button.is_sensitive())     # app.about exists: not greyed
+        self.assertTrue(win.menu_button.is_sensitive())     # the logo opens the main menu
         shown = []
         app._present = shown.append
         app.show_preferences()
@@ -459,6 +514,83 @@ class ApplicationTest(unittest.TestCase):
         win.close()
         app.ctx.stop()
         app.file_log.shutdown()
+
+    def test_history_store_outside_the_demo(self):
+        from proccoli.app import Application
+        import tempfile
+        from pathlib import Path
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        app = Application(argparse.Namespace(demo=False, debug=False),
+                          context_factory=lambda s, d: make_context(
+                              self, settings=Settings.for_tests()),
+                          log_file=os.path.join(tmp.name, "p.log"),
+                          history_path=Path(tmp.name) / "history.sqlite3",
+                          import_dir=Path(tmp.name) / "stats")
+        app.set_flags(app.get_flags() | Gio.ApplicationFlags.NON_UNIQUE)
+        app.register(None)
+        try:
+            self.assertEqual(app.history.path, Path(tmp.name) / "history.sqlite3")
+            action = app.lookup_action("export-statistics")
+            self.assertEqual(action.get_enabled(), app.settings.get("history"))
+            app.settings.set("history", False)
+            self.assertFalse(action.get_enabled())
+        finally:
+            app.history.shutdown()
+            app.ctx.stop()
+            app.file_log.shutdown()
+
+
+@unittest.skipUnless(HAVE_DISPLAY, "no display")
+class ExportFlowTest(unittest.TestCase):
+    def setUp(self):
+        from proccoli.ui.export import StatisticsExport
+        self.window = Adw.ApplicationWindow()
+        self.window.toast_overlay = Adw.ToastOverlay()
+        self.chosen, self.runs, self.opened = [], [], []
+        self.store = FakeHistory(path="/nowhere/history.sqlite3")
+        self.export = StatisticsExport(self.store, "9.9",
+                                       choose_folder=lambda w, cb: self.chosen.append(cb),
+                                       run=lambda work, done: self.runs.append((work, done)),
+                                       launcher=self.opened.append)
+
+    def test_cancelled(self):
+        self.export.start(self.window)
+        self.chosen[0](None)
+        self.assertEqual(self.runs, [])
+
+    def test_exports_off_the_main_loop_then_offers_the_folder(self):
+        from pathlib import Path
+        from proccoli.core.history_export import ExportResult
+        self.export.start(self.window)
+        self.chosen[0](Path("/tmp/out"))
+        self.assertEqual(self.store.commits, 1)                  # buffered rows go too
+        self.assertTrue(self.export.busy)
+        self.assertEqual(self.export.toast.get_title(), "Exporting statistics…")
+        self.export.start(self.window)                           # one at a time
+        self.assertEqual(len(self.chosen), 1)
+        _work, done = self.runs[0]
+        self.export._progress(2, 5)
+        self.assertEqual(self.export.toast.get_title(), "Exporting statistics… 2 of 5 devices")
+        done(ExportResult(Path("/tmp/out/proccoli-statistics-x")))
+        self.assertFalse(self.export.busy)
+        toast = self.export.toast
+        self.assertEqual(toast.get_title(), "Statistics exported to proccoli-statistics-x")
+        toast.emit("button-clicked")
+        self.assertEqual(self.opened, [Path("/tmp/out/proccoli-statistics-x")])
+
+    def test_failure_and_nothing_recorded(self):
+        from pathlib import Path
+        self.export.start(self.window)
+        self.chosen[0](Path("/tmp/out"))
+        with self.assertLogs("proccoli.ui.export", "WARNING"):
+            self.runs[0][1](OSError("disk full"))
+        self.assertEqual(self.export.toast.get_title(), "Couldn't export statistics: disk full")
+        self.store.session = None
+        self.export.start(self.window)
+        self.chosen[1](Path("/tmp/out"))
+        self.assertEqual(self.export.toast.get_title(), "Nothing has been recorded yet")
+        self.assertEqual(len(self.runs), 1)
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")

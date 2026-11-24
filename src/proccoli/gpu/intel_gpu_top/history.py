@@ -8,8 +8,20 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
+from ...core.history import Averager
+from ...core.history import Series as CoreSeries
+
 # Top-level keys that are not plotted as metric groups.
 _SKIP_GROUPS = {"period", "clients", "engines"}
+
+# intel_gpu_top's units -> (factor, base unit): readings are kept in base
+# units, so charts format them in the user's units like every other (Idea 4).
+BASE_UNITS = {"MiB/s": (1024.0 * 1024.0, "B/s"), "MHz": (1e6, "Hz")}
+
+
+def to_base_unit(unit: str, value: float) -> tuple[str, float]:
+    factor, base = BASE_UNITS.get(unit, (1.0, unit))
+    return base, value * factor
 
 
 def to_float(value) -> Optional[float]:
@@ -43,37 +55,87 @@ def flatten_sample(sample: dict) -> dict[str, tuple[str, dict[str, float]]]:
     for key, data in sample.items():
         if key in _SKIP_GROUPS or not isinstance(data, dict):
             continue
-        unit = str(data.get("unit", ""))
+        raw_unit = str(data.get("unit", ""))
+        unit = to_base_unit(raw_unit, 0.0)[0]
         series = {}
         for name, v in data.items():
             if name == "unit":
                 continue
             fv = to_float(v)
             if fv is not None:
-                series[name] = fv
+                series[name] = to_base_unit(raw_unit, fv)[1]
         if series:
             groups[key] = (unit, series)
     return groups
 
 
-@dataclass
-class Series:
-    group: str
-    name: str
-    unit: str
-    values: deque  # aligned with History.times; None = no data
+class Series(CoreSeries):
+    """The shared graph series (``core.history.Series``: what ``Graph``
+    draws) with the metric group it belongs to. Values are aligned with
+    ``History.times``; None = no data."""
+
+    def __init__(self, group: str, name: str, unit: str, capacity: int) -> None:
+        super().__init__(name, unit, capacity)
+        self.group = group
 
 
 @dataclass
 class History:
+    """Every series of every group, aligned with ``times`` (wall-clock
+    seconds). With ``set_plan(points, every, step_s)`` each point averages
+    ``every`` samples (long *Graph Time Range*s). It can be filled from the
+    history database (``room``, ``keys``, ``backfill``: series keys are
+    ``"group/name"``)."""
+
     max_points: int = 600
     times: deque = field(default_factory=deque)
     series: dict[tuple[str, str], Series] = field(default_factory=dict)
     group_order: list[str] = field(default_factory=list)
     latest_sample: Optional[dict] = None
+    step_s: Optional[float] = None
+
+    WALL_TIMES = True
 
     def __post_init__(self) -> None:
         self.times = deque(maxlen=self.max_points)
+        self._averager = Averager(1)
+        self._units: dict[tuple[str, str], str] = {}
+
+    def set_plan(self, points: int, every: int = 1, step_s: Optional[float] = None) -> None:
+        self.set_max_points(points)
+        if max(1, every) != self._averager.every:
+            self._averager = Averager(every)
+        self.step_s = step_s
+
+    def room(self) -> int:
+        return self.max_points - len(self.times)
+
+    def keys(self) -> list[tuple[str, str]]:
+        return [(f"{g}/{n}", s.unit) for (g, n), s in self.series.items()]
+
+    def readings(self) -> tuple[dict, dict]:
+        """The latest sample as ``({"group/name": value}, {key: unit})``."""
+        if self.latest_sample is None:
+            return {}, {}
+        values, units = {}, {}
+        for group, (unit, items) in flatten_sample(self.latest_sample).items():
+            for name, v in items.items():
+                values[f"{group}/{name}"] = v
+                units[f"{group}/{name}"] = unit
+        return values, units
+
+    def backfill(self, times, values) -> int:
+        """Older points in front (as ``core.history.History.backfill``)."""
+        oldest = self.times[0] if self.times else float("inf")
+        room = self.room()
+        keep = [i for i, t in enumerate(times) if t < oldest][-room:] if room > 0 else []
+        if not keep:
+            return 0
+        self.times.extendleft(times[i] for i in reversed(keep))
+        for (g, n), s in self.series.items():
+            column = values.get(f"{g}/{n}")
+            s.values.extendleft(None if column is None else column[i] for i in reversed(keep))
+        return len(keep)
 
     def set_max_points(self, n: int) -> None:
         if n == self.max_points:
@@ -84,6 +146,7 @@ class History:
             s.values = deque(s.values, maxlen=n)
 
     def clear(self) -> None:
+        self._averager.reset()
         self.times.clear()
         for s in self.series.values():
             s.values.clear()
@@ -93,28 +156,28 @@ class History:
         ts = time.time() if timestamp is None else timestamp
         groups = flatten_sample(sample)
         self.latest_sample = sample
-        self.times.append(ts)
-        seen = set()
+        flat = {}
         for group, (unit, values) in groups.items():
             if group not in self.group_order:
                 self.group_order.append(group)
             for name, v in values.items():
                 key = (group, name)
-                s = self.series.get(key)
-                if s is None:
+                if key not in self.series:
                     # Back-fill so that the deque stays aligned with times.
-                    s = Series(group, name, unit, deque(maxlen=self.max_points))
-                    s.values.extend([None] * (len(self.times) - 1))
-                    self.series[key] = s
-                s.unit = unit
-                s.values.append(v)
-                seen.add(key)
+                    s = self.series[key] = Series(group, name, unit, self.max_points)
+                    s.values.extend([None] * len(self.times))
+                self.series[key].unit = unit
+                flat[key] = v
+        point = self._averager.push(flat)
+        if point is None:
+            return
+        self.times.append(ts)
         for key, s in self.series.items():
-            if key not in seen:
-                s.values.append(None)
+            s.values.append(point.get(key))
 
     def add_gap(self, timestamp: Optional[float] = None) -> None:
         """Insert an empty sample so that lines break (e.g. after a pause)."""
+        self._averager.reset()
         if not self.times:
             return
         self.times.append(time.time() if timestamp is None else timestamp)

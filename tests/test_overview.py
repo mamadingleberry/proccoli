@@ -137,7 +137,7 @@ class OverviewPageTest(unittest.TestCase):
         self.assertTrue(graph.show_axes)
         self.settings.set("show-graph-axes", False)
         self.assertFalse(graph.show_axes)
-        self.settings.set("refresh-speed", "slow")
+        self.settings.set("update-interval", "2-seconds")
         self.assertEqual(graph.time_span_s, 60.0)      # M58: the time range holds
         self.settings.set("graph-time-range", "2-minutes")
         self.assertEqual(graph.time_span_s, 120.0)

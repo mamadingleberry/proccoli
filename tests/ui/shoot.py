@@ -127,9 +127,7 @@ def shoot(app: Adw.Application, name: str, scene, outdir: str, real: bool = Fals
     overrides = dict(overrides)
     scroll_end = overrides.pop("_scroll", None) == "end"   # shoot the bottom of the page
     pick_last = overrides.pop("_pick", None) == "last"     # e.g. a second GPU
-    # Real processes need 1 s samples: at 250 ms most use under one clock tick.
-    settings = Settings.for_tests({"refresh-speed": "normal" if real else "very-fast",
-                                   "graph-time-range": "30-seconds", **overrides})
+    settings = Settings.for_tests({"graph-time-range": "30-seconds", **overrides})
     # Demo scenes never touch the system; --real ones use the real services,
     # minus the privileged helper (nothing here should prompt).
     ctx = build_context(settings, demo=not real, helper_command=None)
@@ -137,6 +135,11 @@ def shoot(app: Adw.Application, name: str, scene, outdir: str, real: bool = Fals
     theme_css = ThemeCss(ctx.theme)
     ctx.start()
     ticker = ctx.ticker
+    if not real:
+        # Demo scenes tick 4 times a second so a stretch of graph draws in
+        # a few seconds (faster than any Update Interval; screenshots only).
+        # Real processes need 1 s samples: at 250 ms most use under a tick.
+        ticker.set_interval(250)
     win = MainWindow(app, ctx)
     win.set_default_size(width, height)
     matches = [i for i in win.sidebar.order() if i.startswith(page)]

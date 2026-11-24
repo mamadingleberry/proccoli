@@ -1,0 +1,8 @@
+{
+  "uuid": "proccoli-windows@mamadingleberry.github.io",
+  "name": "Proccoli Window Switching",
+  "description": "Lets Proccoli bring any running app's window to the front (Apps → Switch To). It can only list windows and activate one, for programs on your own session.",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/mamadingleberry/proccoli",
+  "version": 1
+}

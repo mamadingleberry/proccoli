@@ -1,4 +1,5 @@
-"""Hiding the sidebar at any width; the burger stays top left (Milestone 46);
+"""Hiding the sidebar at any width; the main menu (the logo since M61)
+stays top left (Milestone 46);
 the sidebar's Full / Icons Only / Hidden modes in the main menu (Milestones
 52 and 54)."""
 
@@ -45,7 +46,7 @@ class FakeSplit(GObject.Object):
 
 
 class RulesTest(unittest.TestCase):
-    def test_page_headers_show_the_burger_unless_the_sidebar_is_beside_them(self):
+    def test_page_headers_show_the_logo_unless_the_sidebar_is_beside_them(self):
         self.assertFalse(header_controls_visible(show_sidebar=True, collapsed=False))
         self.assertTrue(header_controls_visible(show_sidebar=False, collapsed=False))
         self.assertTrue(header_controls_visible(show_sidebar=True, collapsed=True))   # overlay
@@ -219,20 +220,24 @@ class WindowTest(unittest.TestCase):
         self.assertTrue(ok)
         return b.get_x(), b.get_y()
 
-    def assert_corner(self, logo, burger, win):
-        """Logo in the top-left corner, the burger beside it, nothing after
-        it in the same box (the sidebar toggle is a menu item, M52)."""
+    def assert_corner(self, logo, win):
+        """The logo in the top-left corner, nothing after it in the same box
+        (the sidebar toggle is a menu item, M52; the burger went in M61)."""
         from proccoli import APP_ID
         x, y = self.at(logo, win)
         self.assertLess(x, 40, "logo at the left edge")
         self.assertLess(y, 40, "logo at the top")
-        bx, by = self.at(burger, win)
-        self.assertLess(x, bx, "burger right of the logo")
-        self.assertLess(bx - x, 60, "burger next to the logo")
-        self.assertLess(by, 40)
-        self.assertIsNone(burger.get_next_sibling(), "nothing after the burger")
+        self.assertIsNone(logo.get_next_sibling(), "nothing after the logo (no burger)")
         self.assertEqual(logo.get_child().get_icon_name(), APP_ID)
-        self.assertEqual(logo.get_action_name(), "app.about")
+        # M61: the logo is the main menu, About its first item.
+        self.assertIsInstance(logo, Gtk.MenuButton)
+        self.assertIs(logo.get_menu_model(), win.menu_model)
+        self.assertTrue(logo.get_primary())                   # F10
+        first = win.menu_model.get_item_link(0, Gio.MENU_LINK_SECTION)
+        s = GLib.VariantType("s")
+        self.assertEqual([first.get_item_attribute_value(0, a, s).get_string()
+                          for a in ("label", "action")], ["About Proccoli", "app.about"])
+        self.assertEqual(self.menu_actions(win).count("app.about"), 1)
 
     def sidebar_buttons(self, widget):
         """Every button under ``widget`` showing the sidebar icon."""
@@ -242,6 +247,22 @@ class WindowTest(unittest.TestCase):
         while child is not None:
             out += self.sidebar_buttons(child)
             child = child.get_next_sibling()
+        return out
+
+    def menu_actions(self, win):
+        """Every action in the main menu, sections and submenus included."""
+        s, out = GLib.VariantType("s"), []
+
+        def walk(model):
+            for i in range(model.get_n_items()):
+                action = model.get_item_attribute_value(i, "action", s)
+                if action is not None:
+                    out.append(action.get_string())
+                for link in (Gio.MENU_LINK_SECTION, Gio.MENU_LINK_SUBMENU):
+                    child = model.get_item_link(i, link)
+                    if child is not None:
+                        walk(child)
+        walk(win.menu_model)
         return out
 
     def sidebar_section(self, win):
@@ -259,14 +280,14 @@ class WindowTest(unittest.TestCase):
             return i, title.get_string(), items
         return None
 
-    def test_logo_then_burger_in_the_sidebar_header(self):
+    def test_logo_is_the_main_menu_in_the_sidebar_header(self):
         win = self.make()
-        self.assert_corner(win.logo_button, win.menu_button, win)
-        self.assertIs(win.menu_button.get_menu_model(), win.menu_model)
+        self.assert_corner(win.menu_button, win)
+        self.assertFalse(hasattr(win, "logo_button"))
 
     def test_no_sidebar_buttons_anywhere(self):
         win = self.make()
-        self.at(win.logo_button, win)
+        self.at(win.menu_button, win)
         headers = [win.sidebar_header] + [c.header for c in win.containers.values()]
         for header in headers:
             self.assertEqual(self.sidebar_buttons(header), [])
@@ -274,14 +295,14 @@ class WindowTest(unittest.TestCase):
     def test_sidebar_modes_follow_go_to_in_the_main_menu(self):
         win = self.make()
         index, _title, items = self.sidebar_section(win)
-        self.assertEqual(index, 1)                            # Go To, then Sidebar
+        self.assertEqual(index, 2)                    # About, Go To, then Sidebar
         self.assertEqual(items, [(MODE_LABELS[m], f"win.{MODE_ACTION}", m.value)
                                  for m in Mode])
         self.assertEqual(win.get_action_state(MODE_ACTION).get_string(), "full")
         win.split_view.set_show_sidebar(False)
         self.assertEqual(win.get_action_state(MODE_ACTION).get_string(), "hidden")
 
-    def test_hiding_from_the_menu_moves_the_burger_into_the_page_headers(self):
+    def test_hiding_from_the_menu_moves_the_logo_into_the_page_headers(self):
         win = self.make()
         container = win.containers[win.visible_page_id()]
         self.assertFalse(container.start_controls.get_visible())
@@ -289,8 +310,7 @@ class WindowTest(unittest.TestCase):
                             GLib.Variant.new_string("hidden"))   # ≡ → Sidebar → Hidden
         self.assertFalse(win.split_view.get_show_sidebar())
         self.assertTrue(container.start_controls.get_visible())
-        self.assert_corner(container.logo_button, container.menu_button, win)
-        self.assertIs(container.menu_button.get_menu_model(), win.menu_model)
+        self.assert_corner(container.menu_button, win)
         self.assertFalse(self.settings.get(SETTING))
         win.activate_action(f"win.{MODE_ACTION}", GLib.Variant.new_string("full"))
         self.assertTrue(win.split_view.get_show_sidebar())
@@ -314,18 +334,17 @@ class WindowTest(unittest.TestCase):
         from test_ui_shell import pump
         win = self.make()
         full = (win.split_view.get_min_sidebar_width(), win.split_view.get_max_sidebar_width())
-        self.at(win.logo_button, win)
+        self.at(win.menu_button, win)
         win.activate_action(f"win.{MODE_ACTION}", GLib.Variant.new_string("icons"))
         self.assertEqual(self.settings.get(STYLE_SETTING), "icons")
         width = win.split_view.get_max_sidebar_width()
         self.assertEqual(win.split_view.get_min_sidebar_width(), width)
         self.assertLess(width, full[0])
         pump(lambda: win.sidebar.get_width() <= width + 1, timeout=3)
-        # The corner still holds the logo and the burger, side by side.
-        self.assert_corner(win.logo_button, win.menu_button, win)
-        lx, _ = self.at(win.logo_button, win)
-        bx, _ = self.at(win.menu_button, win)
-        self.assertLessEqual(bx + win.menu_button.get_width(), width + 1)
+        # The corner still holds the logo (the main menu), inside the rail.
+        self.assert_corner(win.menu_button, win)
+        lx, _ = self.at(win.menu_button, win)
+        self.assertLessEqual(lx + win.menu_button.get_width(), width + 1)
         # Every row is just its icon, with hover text.
         for item in win.sidebar.items.values():
             self.assertTrue(item.compact)

@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from ...core.units import format_bytes, format_rate
 from ...devices.network import NetworkMonitor, NetworkSnapshot
-from ..page import PageKind, SidebarSummary
+from ..page import PageKind
 from ..widgets.info_row import InfoRow
 from .device import DevicePage
 
 
 class NetworkPage(DevicePage):
+    RATES_IN_BITS = True             # the hover box follows the bits preference
+
     def __init__(self, monitor: NetworkMonitor, settings) -> None:
-        super().__init__(monitor, settings, PageKind.NETWORK,
-                         sort_name=f"{monitor.sort_order()}-{monitor.iface}")
+        super().__init__(monitor, settings, PageKind.NETWORK)
         usage = self.add_group("Usage")
         self.receiving = self.graph_box(usage, "Receiving", [("rx", "B/s")],
                                         max_value=None, min_max=1e5)
@@ -38,13 +37,3 @@ class NetworkPage(DevicePage):
         self.property_rows["Network Name"].set_value(snap.network_name)
         self.property_rows["Link Speed"].set_value(
             f"{snap.link_speed_mbps} Mbit/s" if snap.link_speed_mbps else None)
-
-    def sidebar_summary(self) -> Optional[SidebarSummary]:
-        snap = self.monitor.latest
-        history = self.monitor.history
-        series = [history.series("rx"), history.series("tx")]   # receive, send
-        if snap is None:
-            return SidebarSummary(series=series, max_value=None)
-        return SidebarSummary(
-            None, f"↓ {self._rate(snap.rx_bps)}", f"↑ {self._rate(snap.tx_bps)}",
-            series, max_value=None)

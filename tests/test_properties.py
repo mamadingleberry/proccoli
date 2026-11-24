@@ -16,7 +16,7 @@ from proccoli.core.jsonstream import JsonStreamParser  # noqa: E402
 from proccoli.core.settings import Settings  # noqa: E402
 from proccoli.devices.cpu import busy_percent  # noqa: E402
 from proccoli.gpu.fdinfo import FdinfoReader  # noqa: E402
-from proccoli.gpu.intel_gpu_top.grid import split_columns  # noqa: E402
+from proccoli.ui.layout import split_columns  # noqa: E402
 from proccoli.processes.apps import app_id_for_cgroup  # noqa: E402
 from proccoli.processes.model import parse_stat  # noqa: E402
 from proccoli.ui.widgets.graph import graph_runs, nice_ceiling, snap_to_device  # noqa: E402

@@ -1,39 +1,69 @@
 """The app-wide refresh clock.
 
 One ``Ticker`` drives every monitor, so all graphs sample at the same moments
-and line up. Its interval follows the *Refresh Speed* preference.
+and line up. Its interval follows the *Update Interval* preference
+(``update-interval``; it replaced *Refresh Speed*, Idea 6).
 """
 
 from __future__ import annotations
 
+import math
 import time
 from typing import Callable, Optional
 
 from gi.repository import GLib, GObject
 
-# Refresh-speed nicks (settings schema) -> milliseconds.
-REFRESH_INTERVALS_MS = {
-    "very-slow": 4000,
-    "slow": 2000,
-    "normal": 1000,
-    "fast": 500,
-    "very-fast": 250,
+# Update-interval nicks (settings schema) -> milliseconds. Nothing faster
+# than once a second (Idea 6).
+UPDATE_INTERVALS_MS = {
+    "1-second": 1000,
+    "2-seconds": 2000,
+    "3-seconds": 3000,
+    "5-seconds": 5000,
+    "10-seconds": 10000,
+}
+DEFAULT_INTERVAL = "1-second"
+
+# The old *Refresh Speed* nicks -> the update interval that replaces them
+# (settings.migrate; also how an old Intel tab interval is read).
+REFRESH_SPEED_TO_INTERVAL = {
+    "very-slow": "5-seconds",      # was 4 s
+    "slow": "2-seconds",
+    "normal": "1-second",
+    "fast": "1-second",            # was 0.5 s: too fast
+    "very-fast": "1-second",       # was 0.25 s: too fast
 }
 
 
-def interval_for(speed: str) -> int:
-    return REFRESH_INTERVALS_MS.get(speed, REFRESH_INTERVALS_MS["normal"])
+def interval_for(nick: str) -> int:
+    """Milliseconds for an update-interval nick (or an old refresh-speed
+    one); unknown: 1 second."""
+    nick = REFRESH_SPEED_TO_INTERVAL.get(nick, nick)
+    return UPDATE_INTERVALS_MS.get(nick, UPDATE_INTERVALS_MS[DEFAULT_INTERVAL])
+
+
+def update_interval_ms(settings) -> int:
+    return interval_for(settings.get("update-interval"))
 
 
 # Graph time-range nicks (settings schema) -> seconds (M58). Graphs show
-# this much time whatever the refresh speed; the number of points follows.
+# this much time whatever the update interval; the number of points follows.
 TIME_RANGES_S = {
     "30-seconds": 30,
     "1-minute": 60,
     "2-minutes": 120,
     "5-minutes": 300,
     "10-minutes": 600,
+    "30-minutes": 1800,         # the longer ranges average samples (below)
+    "1-hour": 3600,
+    "6-hours": 21600,
+    "1-day": 86400,
 }
+
+# A graph keeps at most this many points; a longer range averages several
+# samples into each point, so a day costs no more memory or drawing than
+# ten minutes (history follow-ups).
+MAX_GRAPH_POINTS = 1200
 
 
 def time_range_s(nick: str) -> int:
@@ -46,11 +76,30 @@ def history_points(span_s: float, interval_ms: int) -> int:
     return max(2, int(span_s * 1000 / interval_ms) + 1)
 
 
+def history_plan(span_s: float, interval_ms: int,
+                 max_points: int = MAX_GRAPH_POINTS) -> tuple[int, int]:
+    """``(points, every)``: a history of ``points`` covering ``span_s``,
+    each point the average of ``every`` samples taken ``interval_ms``
+    apart (1 for ranges that fit: 10 minutes at 1 s is 601 points of one
+    sample; a day at 1 s is 1200 points of 72)."""
+    raw = history_points(span_s, interval_ms)
+    every = max(1, math.ceil((raw - 1) / (max_points - 1)))
+    return history_points(span_s, interval_ms * every), every
+
+
+def graph_plan(settings) -> tuple[int, int, float]:
+    """``(points, every, step_s)`` for the graphs' time range at the
+    update interval; ``step_s`` is the time between points."""
+    interval = update_interval_ms(settings)
+    points, every = history_plan(time_range_s(settings.get("graph-time-range")), interval)
+    return points, every, interval * every / 1000
+
+
 def graph_points(settings) -> int:
-    """How many samples a graph keeps: its time range at the refresh speed
-    (1 minute at 1 s: 61; at 0.25 s: 241)."""
-    return history_points(time_range_s(settings.get("graph-time-range")),
-                          interval_for(settings.get("refresh-speed")))
+    """How many points a graph keeps: its time range at the update
+    interval (1 minute at 1 s: 61; at 2 s: 31; never more than
+    ``MAX_GRAPH_POINTS``)."""
+    return graph_plan(settings)[0]
 
 
 class Ticker(GObject.Object):
@@ -113,10 +162,10 @@ class Ticker(GObject.Object):
         self.emit("tick", self._clock())
 
     def follow(self, settings) -> None:
-        """Keep the interval in sync with the ``refresh-speed`` setting."""
-        self.set_interval(interval_for(settings.get("refresh-speed")))
+        """Keep the interval in sync with the ``update-interval`` setting."""
+        self.set_interval(update_interval_ms(settings))
         self._settings_handler = settings.connect_changed(
-            "refresh-speed", lambda _k, v: self.set_interval(interval_for(v)))
+            "update-interval", lambda _k, v: self.set_interval(interval_for(v)))
 
     def _arm(self) -> None:
         self._source = self._timeout_add(self._interval_ms, self._on_timeout)

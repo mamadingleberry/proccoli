@@ -8,12 +8,14 @@ fixture ``SysRoot``), and get exactly the same object graph.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from .core import pciids
 from .core.applog import PerformanceLog
 from .core.privileged import PrivilegedHelper, helper_argv, helper_protocol, optional_helper
+from .core.profile import Profile, profile_of
+from .core.windows import WindowSwitcher
 from .core.sysroot import SysRoot
 from .core.system import System
 from .core.ticker import Ticker
@@ -44,6 +46,8 @@ class AppContext:
     pages: object = None        # ui.pages.factory.PageFactory; the window makes one if None
     theme: object = None        # ui.theme.Theme; the window makes one if None
     perf_log: object = None     # core.applog.PerformanceLog
+    profile: Profile = field(default_factory=Profile.full)   # lightweight mode (Idea 1)
+    windows: object = None      # core.windows.WindowSwitcher (Switch To, Idea 5)
 
     def start(self) -> None:
         if self.devices is not None:
@@ -67,12 +71,15 @@ def build_context(settings, *, demo: bool = False, system: Optional[System] = No
                   connection_name: object = _DEFAULT,
                   gpu_registry=None) -> AppContext:
     """Wire up the app. Every argument defaults to the real system; pass
-    fakes to test. ``helper_command=None`` disables privileged actions;
+    fakes to test. The profile (full or lightweight) comes with
+    ``settings`` (``core.profile.ProfileSettings``). ``helper_command=None`` disables privileged actions;
     ``connection_name=None`` skips NetworkManager; ``gpu_registry`` replaces
     the GPU backends (``gpu.registry.standard_registry()``)."""
     system = system or System()
     sysroot = sysroot or SysRoot("/")
-    pci = pci if pci is not None else pciids.load()
+    profile = profile_of(settings)
+    if pci is None:
+        pci = pciids.on_demand() if profile.pci_on_demand else pciids.load()
     ticker = ticker or Ticker()
     ticker.follow(settings)
     if helper_command is _DEFAULT:
@@ -103,8 +110,10 @@ def build_context(settings, *, demo: bool = False, system: Optional[System] = No
     return AppContext(settings=settings, ticker=ticker, system=system, sysroot=sysroot,
                       pci=pci, devices=devices, processes=processes,
                       actions=actions, grouper=grouper,
-                      app_icons=AppIconLookup(icon_root, grouper), helper=helper, demo=demo,
-                      perf_log=perf_log)
+                      app_icons=(AppIconLookup(icon_root, grouper) if profile.app_icons
+                                 else None),
+                      helper=helper, demo=demo, perf_log=perf_log, profile=profile,
+                      windows=WindowSwitcher(system))
 
 
 def standard_discoverers(system: System, pci: pciids.PciIds,

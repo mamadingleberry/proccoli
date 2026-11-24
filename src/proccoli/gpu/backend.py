@@ -43,9 +43,14 @@ class DetailView:
 @dataclass(frozen=True)
 class DetailServices:
     """What a detail backend's views may use (injected by the page
-    factory): preferences, and the app icon of a PID (None: no icon)."""
+    factory): preferences, the app icon of a PID (None: no icon), and
+    ``charts`` (``ui.chart_settings.ChartSettings``): where every graph
+    gets its preferences, units and the GPU entry's colour (Idea 4). The
+    GPU page makes a new one for each set of views and releases it with
+    them."""
     settings: object
     app_icon: Callable[[int], object] = lambda pid: None
+    charts: object = None
 
 
 @dataclass
@@ -190,3 +195,16 @@ class DetailBackend(GpuBackend):
     def create_views(self, controller, services: DetailServices) -> DetailViews:
         """One DetailView per TabSpec (UI code: imported lazily)."""
         raise NotImplementedError
+
+    # The history database (history follow-ups): what the Details tab
+    # graphs, recorded with the GPU's readings, and the history to fill
+    # from them again. None / empty: nothing to record or fill.
+
+    def history_readings(self) -> tuple[dict, dict]:
+        """``({key: latest value}, {key: unit})``, base units."""
+        return {}, {}
+
+    def history_target(self):
+        """The Details tab's history (``room()``, ``times``, ``keys()``,
+        ``step_s``, ``WALL_TIMES``, ``backfill(times, values)``), or None."""
+        return None

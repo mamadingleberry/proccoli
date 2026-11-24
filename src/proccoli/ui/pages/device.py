@@ -12,10 +12,13 @@ from typing import Iterable, Mapping, Optional
 
 from gi.repository import Adw, GLib, Gtk
 
+from ...core.profile import profile_of
 from ...core.units import Base, TemperatureUnit
 from ...devices.base import Monitor, Snapshot
+from ..axes import AxisGutter
+from ..chart_settings import ChartKind, ChartSettings
 from ..page import FittingPage, PageKind, ScrollingPage, SidebarSummary
-from ..axes import history_span_s
+from ..summaries import sort_name_for, summary_for
 from ..layout import (LIMITS, GraphLimits, fit_heights, graph_in_area, group_rows, needs_update,
                       stack_pair)
 from ..widgets.graph import Graph, GraphStyle
@@ -33,19 +36,21 @@ class DevicePage(FittingPage):
                  sort_name: str = "", title: Optional[str] = None) -> None:
         info = monitor.info
         super().__init__(info.id, kind, title or info.name, info.icon_name,
-                         description=info.description, sort_name=sort_name)
+                         description=info.description,
+                         sort_name=sort_name or sort_name_for(monitor))
         self.monitor = monitor
         self.settings = settings
         self.graphs: list[Graph] = []
+        self.text_only: list[Graph] = []     # not drawn in Lightweight Mode
         self.pairs: list[DoubleGraphBox] = []
         self._reserves: dict = {}       # graph -> measure(width): its area's extra (M57)
         self.legend_charts: list[LegendChart] = []
         self.limits: GraphLimits = LIMITS
         self.entry_index: Optional[int] = None    # set by the sidebar
-        self.track(settings, settings.connect_changed(
-            "show-graph-grids", lambda _k, v: self._set_grid(v)))
-        for key in ("graph-time-range", "refresh-speed", "show-graph-axes"):
-            self.track(settings, settings.connect_changed(key, lambda *_: self._set_axes()))
+        # Axes, grids, time span, units and colours of every graph (Idea 4);
+        # one gutter lines up the page's value axes.
+        self.charts = ChartSettings(settings)
+        self.gutter = AxisGutter(schedule=GLib.idle_add)
         for key in UNIT_KEYS:
             self.track(settings, settings.connect_changed(key, lambda *_: self.refresh_labels()))
         self.track(monitor, monitor.connect("updated", self._on_updated))
@@ -67,14 +72,19 @@ class DevicePage(FittingPage):
         """The sidebar gave this page's entry colour ``index``: the page's
         graphs start at the same colour (DESIGN.md §9.3)."""
         self.entry_index = index
-        for g in self.graphs:
-            g.set_entry_base(index)
+        self.charts.set_entry_base(index)
 
     def add_graph(self, graph: Graph) -> Graph:
-        graph.set_show_grid(self.settings.get("show-graph-grids"))
-        graph.set_show_axes(self.settings.get("show-graph-axes"))
-        graph.set_time_span(history_span_s(self.settings))
-        graph.set_entry_base(self.entry_index)
+        """A page graph: the chart preferences, a value axis in the user's
+        units, the hover box, the page's colours. In Lightweight Mode only
+        the page's first graph is drawn; the others keep their title and
+        figures as text (Idea 1)."""
+        if self.graphs and not profile_of(self.settings).extra_graphs:
+            graph.set_visible(False)
+            self.text_only.append(graph)
+            return graph
+        self.charts.bind(graph, ChartKind.PAGE, rates_in_bits=self.RATES_IN_BITS,
+                         gutter=self.gutter)
         self.graphs.append(graph)
         return graph
 
@@ -138,6 +148,14 @@ class DevicePage(FittingPage):
     def update_labels(self, snapshot: Snapshot) -> None:
         """Fill labels from the latest snapshot (subclasses)."""
 
+    def format_reading(self, graph: Graph, index: int, value) -> str:
+        """Series ``index`` of ``graph`` at ``value``, in the user's units."""
+        return self.charts.format_reading(graph, index, value)
+
+    # Whether *Show Network Speeds in Bits* applies to this page's rates
+    # (network pages; a drive's speeds stay in bytes).
+    RATES_IN_BITS = False
+
     def refresh_labels(self) -> None:
         if self.monitor.latest is not None:
             self.update_labels(self.monitor.latest)
@@ -147,22 +165,13 @@ class DevicePage(FittingPage):
             g.queue_draw()
 
     def sidebar_summary(self) -> Optional[SidebarSummary]:
-        snap = self.monitor.latest
-        series = [self.monitor.history.series("usage")]
-        if snap is None:
-            return SidebarSummary(series=series)
-        return SidebarSummary(snap.usage, snap.usage_text, snap.detail_text, series)
+        """From the monitor alone (``ui.summaries``), so an entry looks the
+        same before its page is built (Lightweight Mode)."""
+        return summary_for(self.monitor, self.settings)
 
-    def _set_axes(self) -> None:
-        show, span = self.settings.get("show-graph-axes"), history_span_s(self.settings)
-        for g in self.graphs:
-            g.set_show_axes(show)
-            g.set_time_span(span)
-        self.redraw()
-
-    def _set_grid(self, show: bool) -> None:
-        for g in self.graphs:
-            g.set_show_grid(show)
+    def shutdown(self) -> None:
+        self.charts.release()
+        super().shutdown()
 
     def _on_updated(self, _monitor, snapshot: Snapshot) -> None:
         self.update_labels(snapshot)

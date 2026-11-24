@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from proccoli.core.units import (  # noqa: E402
     NO_DATA, Base, TemperatureUnit, convert_temperature, format_bytes,
     format_duration, format_frequency, format_percent, format_power,
-    format_rate, format_temperature)
+    format_rate, format_reading, format_temperature)
 
 B, D = Base.BINARY, Base.DECIMAL
 
@@ -85,6 +85,60 @@ class FactsTest(unittest.TestCase):
                          ["Temperature 102 °F", "Memory 598.7 MB / 8.5 GB"])
         self.assertEqual(device_facts(None, memory_used=1, memory_total=None), [])
         self.assertEqual(device_facts(), [])
+
+
+class FormatReadingTest(unittest.TestCase):
+    def test_by_unit(self):
+        self.assertEqual(format_reading(None, "%"), NO_DATA)
+        self.assertEqual(format_reading(42.0, "%"), format_percent(42.0))
+        self.assertEqual(format_reading(1.5e6, "B/s"), format_rate(1.5e6))
+        self.assertEqual(format_reading(1.5e6, "B/s", B, True), format_rate(1.5e6, B, True))
+        self.assertEqual(format_reading(12.5, "W"), format_power(12.5))
+        self.assertEqual(format_reading(50, "°C", temperature=TemperatureUnit.FAHRENHEIT),
+                         "122 °F")
+        self.assertEqual(format_reading(2.4e9, "Hz"), format_frequency(2.4e9))
+
+    def test_other_units_are_short_numbers(self):
+        self.assertEqual(format_reading(1234567.0, "rpm"), "1234567 rpm")
+        self.assertEqual(format_reading(3.14159, ""), "3.14")
+
+
+class AxisLabelTest(unittest.TestCase):
+    """format_axis_label: format_reading's short form (Idea 4)."""
+
+    def test_units(self):
+        from proccoli.core.units import format_axis_label
+        B, D = Base.BINARY, Base.DECIMAL
+        cases = [
+            ((50, "%"), "50 %"),
+            ((2 * 2**30, "B/s", B), "2 GiB/s"),
+            ((2e9, "B/s", D), "2 GB/s"),
+            ((1.25e6, "B/s", D, True), "10 Mb/s"),
+            ((0, "B/s", D), "0 B/s"),
+            ((1.5e9, "Hz"), "1.5 GHz"),
+            ((2.5, "W"), "2.5 W"),
+            ((0.5, "W"), "500 mW"),
+            ((1500, "irq/s"), "1.5k irq/s"),
+            ((250, "irq/s"), "250 irq/s"),
+            ((4 * 2**30, "B", B), "4 GiB"),
+        ]
+        for args, expected in cases:
+            self.assertEqual(format_axis_label(*args), expected, args)
+        self.assertEqual(format_axis_label(100, "°C", temperature=TemperatureUnit.FAHRENHEIT),
+                         "212 °F")
+
+
+class NiceMaxInUnitsTest(unittest.TestCase):
+    def test_rounds_in_the_shown_unit(self):
+        from proccoli.core.units import nice_max_in_units
+        self.assertEqual(nice_max_in_units(4.1 * 2**30, "B/s", Base.BINARY), 5 * 2**30)
+        self.assertEqual(nice_max_in_units(4.1e9, "B/s", Base.DECIMAL), 5e9)
+        self.assertEqual(nice_max_in_units(800 * 2**20, "B/s", Base.BINARY), 1000 * 2**20)
+        self.assertAlmostEqual(nice_max_in_units(1.3e6 / 8, "B/s", Base.DECIMAL, True),
+                               2e6 / 8)
+        self.assertAlmostEqual(nice_max_in_units(1.3e9, "Hz"), 2e9)
+        self.assertEqual(nice_max_in_units(42, "W"), 50)
+        self.assertEqual(nice_max_in_units(0, "W"), 1.0)
 
 
 if __name__ == "__main__":

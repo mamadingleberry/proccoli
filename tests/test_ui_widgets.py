@@ -142,6 +142,66 @@ class GraphDrawTest(unittest.TestCase):
         big.set_show_axes(True)
         self.assertLess(small[0], big.plot_rect(200, 48)[0])   # smaller font, narrower gutter
 
+    def test_hover_crosshair_and_values(self):
+        # Idea 3: page graphs show every line's value at the pointer.
+        h = History(11)
+        h.define("u", "%")
+        for t in range(11):
+            h.add(float(t), {"u": float(t * 10)})
+        g = Graph(max_value=100)
+        self.assertTrue(g.hover)                                 # on for page graphs
+        self.assertFalse(Graph(GraphStyle.SMALL).hover)          # not for sidebar meters
+        g.set_series([h.series("u")])
+        g.set_names(["Usage"])
+        g.set_time_span(10)
+        self.assertIsNone(g.hover_lines(100))                    # pointer elsewhere
+        before = render(g, 100, 60)
+        g._on_motion(None, 79, 0)
+        point, rows, heading = g.hover_lines(100)
+        self.assertEqual((point.index, heading), (8, "2 s ago"))
+        self.assertEqual(rows, [(0, "Usage   80 %")])           # core.units.format_percent
+        after = render(g, 100, 60)
+        self.assertNotEqual([after(80, y) for y in range(60)],    # the crosshair
+                            [before(80, y) for y in range(60)])
+        g._on_leave(None)
+        self.assertIsNone(g.hover_lines(100))
+        g.set_hover(False)
+        g._on_motion(None, 79, 0)
+        self.assertIsNone(g.hover_lines(100))
+
+    def test_hover_skips_hidden_lines_and_uses_the_formatter(self):
+        h = History(5)
+        for t in range(5):
+            h.add(float(t), {"a": 1.0, "b": 2.0})
+        g = Graph(max_value=None)
+        g.set_series([h.series("a"), h.series("b")])
+        g.set_hover(True, lambda i, v: f"{v:g} W")
+        g.set_series_shown(0, False)
+        g._on_motion(None, 100, 0)
+        _point, rows, heading = g.hover_lines(100)
+        self.assertEqual(heading, "now")
+        self.assertEqual(rows, [(1, "b   2 W")])
+
+    def test_value_axes_and_shared_gutter(self):
+        from proccoli.ui.axes import AxisGutter
+        h = flat_history(1500.0)
+        g = Graph(max_value=None)
+        g.set_series([h.series("v")])
+        g.set_show_axes(True)
+        self.assertFalse(g.has_axes())                           # not a percentage
+        gutter = AxisGutter()
+        g.set_axis_format(lambda v: f"{v:g} MHz", gutter)
+        self.assertTrue(g.has_axes())
+        labels = [t for _f, t in g.y_tick_labels(200, 12)]
+        self.assertEqual(labels[0], "0 MHz")
+        self.assertEqual(labels[-1], "2000 MHz")                 # nice_ceiling(1500)
+        x = g.plot_rect(300, 150)[0]
+        other = Graph(max_value=100)
+        other.set_series([flat_history(1.0).series("v")])
+        other.set_show_axes(True)
+        other.set_axis_format(lambda v: f"{v:g}", gutter)
+        self.assertEqual(other.plot_rect(300, 150)[0], x)        # lined up with the wider one
+
     def test_color_offset_skips_accent(self):
         g = Graph()
         g.set_series([flat_history(1.0).series("v")], color_offset=1)
@@ -230,6 +290,13 @@ class DemoPageTest(unittest.TestCase):
         self.assertTrue(page.usage.graph.show_grid)
         settings.set("base", "binary")
         self.assertIn("iB/s", page.io.start.info_label.get_label())
+        # The hover box follows the same unit preferences (M61).
+        read = page.io.start.graph
+        self.assertTrue(read.hover)
+        self.assertEqual(read.format_for(0, 2048.0), "2.0 KiB/s")
+        settings.set("network-bits", True)                # not a network page
+        self.assertEqual(read.format_for(0, 2048.0), "2.0 KiB/s")
+        self.assertEqual(page.usage.graph.format_for(0, 42.0), "42 %")
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")

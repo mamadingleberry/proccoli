@@ -8,7 +8,7 @@ import gi  # noqa: E402
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from proccoli.gpu.intel_gpu_top.grid import split_columns  # noqa: E402
+from proccoli.ui.layout import split_columns  # noqa: E402
 from proccoli.gpu.intel_gpu_top.views import GROUPS  # noqa: E402
 from proccoli.gpu.intel_gpu_top.views import group_meta as _group_meta  # noqa: E402
 
@@ -32,6 +32,16 @@ class GroupMetaTest(unittest.TestCase):
         title, _, _, fixed = _group_meta("thing-gt0", "W")
         self.assertEqual(title, "Thing Gt0")
         self.assertIsNone(fixed)
+
+
+class IntervalMenuTest(unittest.TestCase):
+    def test_nothing_faster_than_a_second(self):
+        # Idea 6: the Update Interval menu has the app's choices.
+        from proccoli.core.ticker import UPDATE_INTERVALS_MS
+        from proccoli.gpu.intel_gpu_top.views import INTERVALS
+        nicks = [n for n, _ in INTERVALS]
+        self.assertEqual(sorted(n for n in nicks if n), sorted(UPDATE_INTERVALS_MS))
+        self.assertIn("", nicks)                                  # follow the app
 
 
 class SplitColumnsTest(unittest.TestCase):

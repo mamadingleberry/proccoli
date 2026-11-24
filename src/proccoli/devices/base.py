@@ -55,7 +55,7 @@ class Snapshot:
     def history_units(self) -> Mapping[str, str]:
         return {"usage": "%"}
 
-    # What the statistics files record (core/statslog.py, M58): the graphed
+    # What the history database records (core/history_store.py): the graphed
     # readings, plus absolute figures a snapshot only graphs as percentages.
     def stats_values(self) -> dict[str, Optional[float]]:
         return self.history_values()
@@ -106,6 +106,17 @@ class Monitor(GObject.Object):
 
     def set_history_points(self, n: int) -> None:
         self.history.set_max_points(n)
+
+    def set_history_plan(self, points: int, every: int = 1,
+                         step_s: Optional[float] = None) -> None:
+        """The graphs' time range: ``points`` points of ``every`` samples
+        (``ticker.graph_plan``)."""
+        self.history.set_plan(points, every, step_s)
+
+    def detail_history(self):
+        """A second history to fill from the database (a GPU's Details
+        tab), or None."""
+        return None
 
     def start(self) -> None:
         """Hook for monitors with background work (streams, helpers)."""

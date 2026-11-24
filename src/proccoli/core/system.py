@@ -35,6 +35,33 @@ class AppInfo:
     description: str = ""
 
 
+# Apps whose org.freedesktop.Application.Activate opens a new window rather
+# than showing the one they have.
+NEW_WINDOW_ON_ACTIVATE = frozenset({
+    "org.gnome.Terminal", "org.gnome.Console", "org.gnome.Ptyxis",
+    "com.raggesilver.BlackBox", "org.gnome.Nautilus",
+})
+
+
+def activation_token(launch_context, info=None) -> str:
+    """The token that lets GNOME raise another app's window (from the
+    window's ``Gdk.AppLaunchContext``), or "" without one."""
+    if launch_context is None:
+        return ""
+    try:
+        return launch_context.get_startup_notify_id(info, []) or ""
+    except (TypeError, AttributeError):
+        return ""
+
+
+def restart_argv(argv0: str) -> list[str]:
+    """How to start Proccoli again: ``-m proccoli`` when it was started as a
+    module (argv[0] is the package's ``__main__.py``), else the launcher."""
+    if os.path.basename(argv0) == "__main__.py":
+        return ["-m", "proccoli"]
+    return [argv0]
+
+
 class System:
     def __init__(self) -> None:
         self._user_names: dict[int, str] = {}
@@ -49,6 +76,13 @@ class System:
         may be run through pkexec (``core.trust``)."""
         from .trust import is_trusted_path
         return is_trusted_path(path)
+
+    def restart_self(self, args) -> None:
+        """Replace this process with a fresh Proccoli (*Restart Now*),
+        started the way this one was: the installed launcher, or
+        ``python3 -m proccoli`` from a checkout."""
+        import sys
+        os.execv(sys.executable, [sys.executable, *restart_argv(sys.argv[0]), *args])
 
     def geteuid(self) -> int:
         return os.geteuid()
@@ -155,22 +189,144 @@ class System:
             return "dbus"
         if info.get_boolean("SingleMainWindow"):
             return "launch"
+        # A running GApplication owns its app ID on the bus even when its
+        # .desktop file doesn't say so (Idea 5); terminals open a new
+        # window on Activate, so they're left out.
+        if app_id not in NEW_WINDOW_ON_ACTIVATE and self.bus_name_owned(app_id):
+            return "dbus"
         return None
 
-    def activate_app(self, app_id: str) -> bool:
-        """Ask the app to show its window (see ``app_switch_method``)."""
+    def activate_app(self, app_id: str, launch_context=None) -> bool:
+        """Ask the app to show its window (see ``app_switch_method``).
+        ``launch_context`` (``Gdk.AppLaunchContext``) gives the activation
+        token that lets GNOME bring it to the front (Idea 5)."""
         method = self.app_switch_method(app_id)
         if method == "dbus":
             from gi.repository import Gio, GLib
+            data = {}
+            token = activation_token(launch_context, self._desktop_info(app_id))
+            if token:
+                data = {"activation-token": GLib.Variant("s", token),
+                        "desktop-startup-id": GLib.Variant("s", token)}
             path = "/" + app_id.replace(".", "/").replace("-", "_")
             Gio.bus_get_sync(Gio.BusType.SESSION, None).call(
                 app_id, path, "org.freedesktop.Application", "Activate",
-                GLib.Variant("(a{sv})", ({},)), None, Gio.DBusCallFlags.NONE, 5000,
+                GLib.Variant("(a{sv})", (data,)), None, Gio.DBusCallFlags.NONE, 5000,
                 None, None, None)
             return True
         if method == "launch":
-            return bool(self._desktop_info(app_id).launch([], None))
+            return bool(self._desktop_info(app_id).launch([], launch_context))
         return False
+
+    # -- windows (Idea 5; core.windows decides) ------------------------------------
+
+    def _session_call(self, dest: str, path: str, iface: str, method: str, args=None,
+                      reply: Optional[str] = None, timeout_ms: int = 1000):
+        """A session-bus call; its unpacked reply, or None on any error."""
+        from gi.repository import Gio, GLib
+        try:
+            result = Gio.bus_get_sync(Gio.BusType.SESSION, None).call_sync(
+                dest, path, iface, method, args,
+                GLib.VariantType(reply) if reply else None,
+                Gio.DBusCallFlags.NO_AUTO_START, timeout_ms, None)
+        except GLib.Error:
+            return None
+        return result.unpack() if result is not None else ()
+
+    def bus_name_owned(self, name: str) -> bool:
+        from gi.repository import GLib
+        reply = self._session_call("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                                   "org.freedesktop.DBus", "NameHasOwner",
+                                   GLib.Variant("(s)", (name,)), "(b)")
+        return bool(reply and reply[0])
+
+    def shell_windows(self) -> Optional[list[tuple]]:
+        """Every window, from Proccoli's Shell extension, or None when it
+        isn't running: ``(id, pid, app id, title, last used)``."""
+        from .windows import EXTENSION_INTERFACE, EXTENSION_PATH, LIST_SIGNATURE
+        reply = self._session_call("org.gnome.Shell", EXTENSION_PATH, EXTENSION_INTERFACE,
+                                   "List", None, LIST_SIGNATURE)
+        return None if reply is None else [tuple(row) for row in reply[0]]
+
+    def shell_activate_window(self, window_id: int) -> bool:
+        from gi.repository import GLib
+        from .windows import EXTENSION_INTERFACE, EXTENSION_PATH
+        reply = self._session_call("org.gnome.Shell", EXTENSION_PATH, EXTENSION_INTERFACE,
+                                   "Activate", GLib.Variant("(t)", (window_id,)), "(b)")
+        return bool(reply and reply[0])
+
+    def shell_extension_info(self, uuid: str) -> Optional[dict]:
+        """GNOME Shell's view of an extension: ``{}`` if it doesn't know
+        it, None if this isn't GNOME Shell."""
+        from gi.repository import GLib
+        reply = self._session_call("org.gnome.Shell", "/org/gnome/Shell",
+                                   "org.gnome.Shell.Extensions", "GetExtensionInfo",
+                                   GLib.Variant("(s)", (uuid,)), "(a{sv})")
+        return None if reply is None else dict(reply[0])
+
+    def enable_shell_extension(self, uuid: str) -> bool:
+        from gi.repository import GLib
+        reply = self._session_call("org.gnome.Shell", "/org/gnome/Shell",
+                                   "org.gnome.Shell.Extensions", "EnableExtension",
+                                   GLib.Variant("(s)", (uuid,)), "(b)", timeout_ms=5000)
+        return bool(reply and reply[0])
+
+    @staticmethod
+    def _user_extensions_dir():
+        from pathlib import Path
+        data = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+        return Path(data) / "gnome-shell" / "extensions"
+
+    def user_extension_installed(self, uuid: str) -> bool:
+        return (self._user_extensions_dir() / uuid / "metadata.json").is_file()
+
+    def install_user_extension(self, uuid: str, source) -> bool:
+        """Copy an extension folder into the user's extensions."""
+        target = self._user_extensions_dir() / uuid
+        try:
+            shutil.copytree(source, target, dirs_exist_ok=True)
+        except OSError:
+            return False
+        return True
+
+    def enable_extension_at_login(self, uuid: str) -> bool:
+        """Add ``uuid`` to GNOME Shell's enabled extensions, so a newly
+        copied extension starts on at the next log-in (what
+        ``gnome-extensions enable`` does for one the Shell hasn't loaded)."""
+        from gi.repository import Gio
+        source = Gio.SettingsSchemaSource.get_default()
+        if source is None or source.lookup("org.gnome.shell", True) is None:
+            return False
+        shell = Gio.Settings.new("org.gnome.shell")
+        enabled = list(shell.get_strv("enabled-extensions"))
+        if uuid not in enabled:
+            shell.set_strv("enabled-extensions", enabled + [uuid])
+        return True
+
+    def session_type(self) -> str:
+        return os.environ.get("XDG_SESSION_TYPE", "")
+
+    def wmctrl_list(self) -> str:
+        """``wmctrl -l -p`` (X11), or "" without wmctrl."""
+        exe = self.which("wmctrl")
+        if exe is None:
+            return ""
+        import subprocess
+        try:
+            return subprocess.run([exe, "-l", "-p"], capture_output=True, text=True,
+                                  timeout=2).stdout
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+    def wmctrl_activate(self, window_id: int) -> bool:
+        exe = self.which("wmctrl")
+        if exe is None:
+            return False
+        import subprocess
+        try:
+            return subprocess.run([exe, "-i", "-a", hex(window_id)], timeout=2).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
 
     def desktop_app(self, app_id: str) -> Optional[AppInfo]:
         """Name, icon and description from ``<app_id>.desktop``, or None."""

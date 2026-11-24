@@ -198,8 +198,8 @@ class ManagerTest(unittest.TestCase):
         manager.start()
         settings.set("graph-time-range", "30-seconds")        # 31 points at 1 s
         self.assertEqual(manager.monitor("a").history.max_points, 31)
-        settings.set("refresh-speed", "very-fast")              # same 30 s, 4 a second
-        self.assertEqual(manager.monitor("a").history.max_points, 121)
+        settings.set("update-interval", "2-seconds")            # same 30 s, every 2 s
+        self.assertEqual(manager.monitor("a").history.max_points, 16)
 
     def test_broken_discoverer_does_not_stop_others(self):
         _, manager, d, events = self.make()

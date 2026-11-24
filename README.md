@@ -58,7 +58,7 @@ From the project folder, build a package and install it:
 
 ```sh
 packaging/build-deb.sh
-sudo apt install ./dist/proccoli_0.2.0_all.deb
+sudo apt install ./dist/proccoli_0.3.0_all.deb
 ```
 
 Proccoli then appears in your app grid. To install without a package
@@ -76,13 +76,15 @@ and activity.
 ## Using Proccoli
 
 - **Sidebar:**
-  - The top-left corner always holds the Proccoli logo (click it for
-    *About*) and the main menu (≡).
-  - Choose how the sidebar looks from ≡ → *Sidebar*: *Full*, *Icons
+  - The Proccoli logo in the top-left corner is the main menu: click it
+    (or press F10) for *About Proccoli*, *Go To*, the sidebar's look,
+    *Preferences* and more.
+  - Choose how the sidebar looks from the logo → *Sidebar*: *Full*, *Icons
     Only* (a slim strip of icons; hover over one to see its name and
     usage) or *Hidden*. F9 hides it and shows it again as it was.
     Proccoli remembers your choice.
-  - Without the sidebar, switch panes from the main menu: ≡ → *Go To*.
+  - Without the sidebar, switch panes from the main menu: the logo →
+    *Go To*.
   - Go back and forward through the panes you've visited with your mouse's
     back and forward buttons, or Alt+Left and Alt+Right.
   - Right-click an entry (or press the Menu key) to move it, minimise it
@@ -93,17 +95,53 @@ and activity.
   - Right-click a row for *Information*, *End*, *Kill*, *Halt* and
     *Continue*. Processes also has *Options*, for priority and which
     processor cores the process may use.
-  - On Apps, *Switch To* brings the app's window to the front, for apps
-    that support it.
+  - On Apps, *Switch To* brings the app's window to the front. GNOME lets
+    an app bring only its own windows forward, so for apps that can't be
+    asked to show themselves (Firefox, VS Code and many others) Proccoli
+    needs its small GNOME Shell extension: Preferences → General →
+    *Window Switching* → *Install* (or *Turn On* if Proccoli was installed
+    as a package). After installing, log out and back in once. The
+    extension can only list windows and bring one to the front. On an X11
+    session, installing `wmctrl` works too.
   - Click a column header to sort by it, and type Ctrl+F to search.
+- **Charts:** hover over a chart on a page or the Overview to see each
+  line's value at that moment, and how long ago it was. With *Show Graph
+  Axes* on, every chart has a value scale on its left: percentages, and
+  speeds, clocks, power and temperatures in your *Data Unit Prefix*,
+  network bits and *Temperature Unit*. Charts start
+  full: when Proccoli starts, or you choose a longer *Graph Time Range*,
+  they show the readings it kept before (with a gap for the time it
+  wasn't running), and so do the GPU *Details* charts. Ranges of 30
+  minutes or more show each point as the average of several readings,
+  so a day takes no more memory than ten minutes; a short spike looks
+  smaller there than at a shorter range.
+- **Exporting statistics:** the logo → *Export Statistics…* (or
+  Preferences → General → *History* → *Export…*) saves every reading
+  since Proccoli started to a folder you choose. Proccoli makes a new
+  folder there (`proccoli-statistics-20261124T101530Z`), so nothing is
+  overwritten. It holds one CSV file per device, which opens in any
+  spreadsheet: the first column is the time in UTC (for example
+  `2026-11-24T05:05:15.244Z`) and the others name the reading and its
+  unit (`usage_percent`, `temperature_celsius`, `read_bytes_per_second`,
+  `used_bytes`). If Proccoli has been running longer than it keeps every
+  reading (a day, by default), the earlier part is in a
+  `…-minutes.csv` file with each minute's average, minimum and maximum.
+  `export.json` lists the files, devices and units.
 - **Graphics details:** on an Intel GPU, open the *Details* tab for
-  per-engine charts, frequency, power and memory bandwidth, and the
-  *Processes* tab for each app's graphics use. On an NVIDIA GPU, the
-  *Details* tab shows what NVIDIA's tools report; its first line says
-  which tool is in use. The GPU page's *Detailed Statistics* property says
+  per-engine charts, frequency, power, memory bandwidth and interrupts,
+  and the *Processes* tab for each app's graphics use. In a chart's
+  legend, click a line to hide or show it, or right-click it to show only
+  that line (right-click again for all). ⋮ → *Update Interval* sets how
+  often `intel_gpu_top` takes a reading. On an NVIDIA GPU, the *Details*
+  tab shows what NVIDIA's tools report, laid out the same way; its first
+  line says which tool is in use. On both, the charts fill the window in
+  columns, start in the GPU's sidebar colour, show their readings in your
+  units, and follow every chart preference (axes, grids, *Graph Time
+  Range*) as soon as you change it. A chart with one line has no legend;
+  its value is under its title. The GPU page's *Detailed Statistics* property says
   what Proccoli found for that card, or why there's nothing more.
 - **Narrow and portrait windows:** the sidebar folds away and opens over
-  the page with ≡ → *Sidebar* → *Full* or *Icons Only* (or F9). Charts
+  the page with the logo → *Sidebar* → *Full* or *Icons Only* (or F9). Charts
   rearrange to fit tall screens.
   On the Overview, the charts form a grid that fills as much of the
   window as it can without any chart becoming taller than it is wide.
@@ -115,6 +153,7 @@ and activity.
 | Keys | Action |
 |---|---|
 | F9 | Show or hide the sidebar |
+| F10 | Open the main menu |
 | Alt+Left / Alt+Right | Back / forward to the panes you visited |
 | Ctrl+, | Preferences |
 | Ctrl+? | Keyboard shortcuts |
@@ -149,41 +188,70 @@ off, because its files can be changed without administrator rights.
 Open with Ctrl+, or from the main menu.
 
 - **General:**
+  - *Memory Use:* *Lightweight Mode* (see *Lightweight mode* above).
   - *Appearance:* style (Follow System, Light, Dark, Sand, Sky, Twilight,
     Midnight) and colour palette for the charts.
   - *Units:* data units, network speeds in bits, temperature unit.
-  - *User Interface:* refresh speed, chart grids and axes, *Graph Time
-    Range* (how much time charts show: 30 seconds to 10 minutes, whatever
-    the refresh speed), and *Normalize Processor Usage*: on, each app's or
+  - *User Interface:* *Update Interval* (how often Proccoli takes
+    readings: every 1, 2, 3, 5 or 10 seconds; 1 by default. It replaced
+    *Refresh Speed*, whose fastest choices went too fast; a choice you made
+    there carries over), chart grids and axes, *Graph Time Range* (how
+    much time charts show: 30 seconds to a day, whatever the update
+    interval), and *Normalize Processor Usage*: on, each app's or
     process's processor use is its share of the whole processor (the
     column adds up to the total); off, one fully busy core is 100 %, as in
     `top`.
   - *Diagnostics:* the log's detail level and size, with a button to
     open its folder.
-  - *Statistics Files:* keep files of every reading (on by default), and
-    their size.
+  - *Window Switching:* whether the extension that lets *Switch To*
+    reach every app is on, with a button to install or turn it on.
+  - *History:* keep a history of every reading (on by default), how many
+    hours every reading is kept, the most it may take on disk (512 MiB by
+    default), how much it takes now, *Delete History…* and *Export…*.
 - **Sidebar:** full entries or icons only, the chart style, and for each
   entry, what it shows and where it sits.
 - **Apps** and **Processes:** which columns to show.
 - **Devices:** whether to list virtual drives and network connections.
-- **GPU:** detailed statistics on or off per graphics card, and their
-  refresh speed and history length.
+- **GPU:** detailed statistics on or off per graphics card, and how
+  often `intel_gpu_top` takes a reading. How much time their charts show is the *Graph Time
+  Range*.
+
+## Lightweight mode
+
+For older machines, or to leave Proccoli running all day: Preferences →
+General → *Memory Use* → *Lightweight Mode*, then *Restart Now* (or start
+it once with `proccoli --lightweight`). Proccoli then uses about half the
+memory while it shows the Overview:
+
+- pages are built when you open them, and let go a minute after you leave;
+- the Overview is a list of every device's readings, without charts or
+  the busiest apps and processes;
+- each device page draws only its main chart; the others show their
+  figures as text;
+- the sidebar shows a usage bar instead of a chart;
+- charts show at most a minute, without axes or grids;
+- Apps and Processes show name, ID, processor and memory, without icons;
+- the system style and colours are used, the log keeps only warnings,
+  and GPU detailed statistics aren't started.
+
+Your own choices for all of these are kept and come back when you turn
+the mode off. Preferences shows the ones the mode fixes greyed out.
 
 ## Files Proccoli keeps
 
 - **Settings:** in your desktop's settings store (dconf), under
   `/io/github/mamadingleberry/Proccoli/`. To reset everything:
   `dconf reset -f /io/github/mamadingleberry/Proccoli/`
-- **Statistics files:** `~/.local/state/proccoli/stats/`, one file per
-  device (`cpu.csv`, `memory.csv`, `gpu-….csv`, …), readable only by you.
-  Every reading Proccoli shows, once per refresh: a CSV file (opens in any
-  spreadsheet) whose first column is the time in UTC (for example
-  `2026-11-24T05:05:15.244Z`) and whose other columns name the reading
-  and its unit (`usage_percent`, `temperature_celsius`,
-  `read_bytes_per_second`, `used_bytes`). Each file is capped at 4 MiB
-  by default (about 8 hours of a 24-core processor at one reading a
-  second), plus one older file. Turn them off or change the size in
-  Preferences → General → *Statistics Files*.
+- **History:** `~/.local/state/proccoli/history.sqlite3`, readable only
+  by you. Every reading Proccoli shows, with times in UTC: every reading
+  for a day (*Keep Every Reading For*), then each minute's average,
+  minimum and maximum for 30 days, then each hour's for as long as there's
+  room. That's typically 40–50 MiB after a year and about 120 MiB after
+  ten; it never grows past *Maximum Size* (512 MiB by default), dropping
+  the oldest hours first. Turn it off, change the limits, or delete it in
+  Preferences → General → *History*. Older versions of Proccoli kept CSV
+  files in `~/.local/state/proccoli/stats/`; they're moved into the
+  history the first time this version starts, and the folder is removed.
 - **Diagnostics log:** `~/.local/state/proccoli/proccoli.log`, readable
   only by you. By default it records everything (*Everything (Debug)*),
   with times in UTC (for example `2026-11-23T21:41:25.154Z`). It's capped

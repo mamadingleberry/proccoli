@@ -178,6 +178,9 @@ class FakeSystem:
     def geteuid(self):
         return self.euid
 
+    def restart_self(self, args):
+        self.restarts = getattr(self, "restarts", []) + [list(args)]
+
     def has_file_capabilities(self, path):
         return self.capabilities
 
@@ -229,9 +232,53 @@ class FakeSystem:
     def app_switch_method(self, app_id):
         return self.switchable.get(app_id)
 
-    def activate_app(self, app_id):
+    def activate_app(self, app_id, launch_context=None):
         self.activated.append(app_id)
+        self.launch_contexts = getattr(self, "launch_contexts", []) + [launch_context]
         return app_id in self.switchable
+
+    # Windows (Idea 5): set ``windows`` to a list of (id, pid, app id, title,
+    # last used) for a running extension; None means it isn't running.
+    windows = None
+    extension_info = None          # None: not GNOME Shell; {}: unknown
+    session = "wayland"
+    wmctrl = ""
+
+    def shell_windows(self):
+        return self.windows
+
+    def shell_activate_window(self, window_id):
+        self.raised = getattr(self, "raised", []) + [window_id]
+        return True
+
+    def shell_extension_info(self, uuid):
+        return self.extension_info
+
+    def enable_shell_extension(self, uuid):
+        self.extension_info = {"state": 1.0, "enabled": True}
+        return True
+
+    def user_extension_installed(self, uuid):
+        return getattr(self, "user_extension", False)
+
+    def install_user_extension(self, uuid, source):
+        self.user_extension = True
+        self.installed_from = source
+        return True
+
+    def enable_extension_at_login(self, uuid):
+        self.enabled_at_login = uuid
+        return True
+
+    def session_type(self):
+        return self.session
+
+    def wmctrl_list(self):
+        return self.wmctrl
+
+    def wmctrl_activate(self, window_id):
+        self.raised = getattr(self, "raised", []) + [window_id]
+        return True
 
 
 class FakeStreamReader:

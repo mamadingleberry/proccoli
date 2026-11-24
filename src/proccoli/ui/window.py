@@ -9,11 +9,13 @@ from typing import Optional
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from .. import APP_NAME, MEMORY_ICON, PROCESSOR_ICON
-from .page import (PageContainer, PageKind, PlaceholderPage, ResourcePage, app_logo_button,
+from .page import (PageContainer, PageKind, PlaceholderPage, ResourcePage,
                    main_menu_button)
 from .compat import ensure_font_dpi
 from .navigation import (GOTO_ACTION, GOTO_LABEL, NavigationHistory, fill_goto_menu,
                          mouse_direction)
+from ..core.profile import Profile
+from .lazy import LazyPages, StubPage
 from .sidebar import StackSidebar
 from .sidebar_style import MODE_ACTION, MODE_LABELS, SECTION_LABEL, Mode, SidebarStyle, rail_width
 from .sidebar_visibility import ACTION as SIDEBAR_ACTION, SidebarVisibility
@@ -37,10 +39,15 @@ def placeholder_reason(demo: bool) -> str:
 
 
 def primary_menu(goto: Optional[Gio.Menu] = None) -> Gio.Menu:
-    """The main menu. ``goto``: the *Go To* submenu (§9.2), filled by the
-    window as panes come and go. Then the *Sidebar* section: *Full*, *Icons
-    Only* and *Hidden* (M54)."""
+    """The main menu, opened from the logo. First *About Proccoli* (M61),
+    then ``goto``: the *Go To* submenu (§9.2), filled by the window as
+    panes come and go. Then the *Sidebar* section: *Full*, *Icons Only*
+    and *Hidden* (M54)."""
     menu = Gio.Menu()
+    about = Gio.Menu()
+    # The actions live on the application (proccoli.app.Application).
+    about.append(f"About {APP_NAME}", "app.about")
+    menu.append_section(None, about)
     if goto is not None:
         nav = Gio.Menu()
         nav.append_submenu(GOTO_LABEL, goto)
@@ -54,11 +61,10 @@ def primary_menu(goto: Optional[Gio.Menu] = None) -> Gio.Menu:
         modes.append_item(item)
     menu.append_section(SECTION_LABEL, modes)
     section = Gio.Menu()
-    # The actions live on the application (proccoli.app.Application).
     section.append("Show All Details…", "win.authenticate")
+    section.append("Export Statistics…", "app.export-statistics")
     section.append("Preferences", "app.preferences")
     section.append("Keyboard Shortcuts", "app.shortcuts")
-    section.append(f"About {APP_NAME}", "app.about")
     menu.append_section(None, section)
     return menu
 
@@ -94,6 +100,12 @@ class MainWindow(Adw.ApplicationWindow):
             ctx.pages = standard_page_factory(ctx)
         self.pages = ctx.pages
         self._handlers: list[tuple[object, int]] = []
+        # Lightweight Mode (Idea 1): pages built on first visit, dropped later.
+        self.profile = getattr(ctx, "profile", None) or Profile.full()
+        self.lazy: Optional[LazyPages] = None
+        if self.profile.lazy_pages:
+            self.lazy = LazyPages(self.profile.page_drop_s)
+            self.lazy.on_drop = self._drop_page
         if ctx.theme is None:
             from .theme import Theme
             ctx.theme = Theme(settings, Adw.StyleManager.get_default())
@@ -105,7 +117,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.set_size_request(*self.MIN_SIZE)
         restore_window_state(self, settings)
 
-        # Sidebar. The main menu ("burger") always sits at the window's top
+        # Sidebar. The main menu (the logo) always sits at the window's top
         # left: here while the sidebar is beside the content, otherwise in
         # every page header (DESIGN.md §9.2).
         self.goto_menu = Gio.Menu()
@@ -120,9 +132,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.split_view = Adw.OverlaySplitView(sidebar=sidebar_view,
                                                content=self.stack)
         self.sidebar_header = Adw.HeaderBar(show_title=False)
-        self.logo_button = app_logo_button()           # the corner: logo, then burger
-        self.sidebar_header.pack_start(self.logo_button)
-        self.menu_button = main_menu_button(self.menu_model)
+        self.menu_button = main_menu_button(self.menu_model)   # the corner: the logo
         self.sidebar_header.pack_start(self.menu_button)
         sidebar_view.add_top_bar(self.sidebar_header)
         self.toast_overlay = Adw.ToastOverlay(child=self.split_view)
@@ -173,7 +183,8 @@ class MainWindow(Adw.ApplicationWindow):
 
         # Overview (DESIGN.md §9.6): cards for the sidebar's charted entries.
         from .pages.overview import OverviewPage
-        self.overview = OverviewPage(settings, self.select_page, processes, ctx.grouper)
+        self.overview = OverviewPage(settings, self.select_page, processes, ctx.grouper,
+                                     profile=self.profile)
         self.add_page(self.overview)
         self.sidebar.connect("entries-changed",
                              lambda *_: self.overview.sync(self.sidebar.entries()))
@@ -227,6 +238,8 @@ class MainWindow(Adw.ApplicationWindow):
             if rest:
                 self.select_page(rest[0])
         container = self.containers.pop(page_id)
+        if self.lazy is not None:
+            self.lazy.remove(page_id)
         self.history.remove(page_id)
         self._update_nav_actions()
         container.release()
@@ -296,7 +309,12 @@ class MainWindow(Adw.ApplicationWindow):
     # -- providers -----------------------------------------------------------------
 
     def _on_device_added(self, _devices, monitor) -> None:
-        page = self.pages.create(monitor)
+        from ..devices.base import FailedMonitor
+        if self.lazy is not None and not isinstance(monitor, FailedMonitor):
+            page = self.lazy.add(monitor.info.id, lambda: self.pages.create(monitor),
+                                 lambda: StubPage.for_monitor(monitor, self.settings))
+        else:
+            page = self.pages.create(monitor)
         was_visible = self.visible_page_id() == page.page_id
         if page.page_id in self.containers:      # replaces a placeholder (or an error page)
             self.remove_page(page.page_id)
@@ -327,21 +345,33 @@ class MainWindow(Adw.ApplicationWindow):
         from .pages.apps import AppsPage
         from .pages.processes import ProcessesPage
 
-        self.add_page(AppsPage(self.processes, self.settings, self.ctx.grouper,
-                               self.ctx.actions, self.ctx.system))
-        self.add_page(ProcessesPage(self.processes, self.settings, self.ctx.actions,
-                                    self.ctx.system, self.ctx.helper,
-                                    self.processes.cpu_count(), self.ctx.grouper))
+        def apps() -> ResourcePage:
+            return AppsPage(self.processes, self.settings, self.ctx.grouper,
+                            self.ctx.actions, self.ctx.system,
+                            getattr(self.ctx, "windows", None))
+
+        def processes() -> ResourcePage:
+            return ProcessesPage(self.processes, self.settings, self.ctx.actions,
+                                 self.ctx.system, self.ctx.helper,
+                                 self.processes.cpu_count(), self.ctx.grouper)
+
+        for page_id, kind, title, icon in PLACEHOLDERS[:2]:
+            build = apps if page_id == "apps" else processes
+            if self.lazy is not None:
+                stub = (lambda p=page_id, k=kind, t=title, i=icon: StubPage(p, k, t, i))
+                self.add_page(self.lazy.add(page_id, build, stub))
+            else:
+                self.add_page(build())
 
     # -- events -------------------------------------------------------------------
 
     def _apply_sidebar_style(self, style: SidebarStyle) -> None:
         """Icons only: every row just its icon, the sidebar as narrow as its
-        header (logo and burger) allows. Full: the split view's own widths."""
+        header (the logo) allows. Full: the split view's own widths."""
         compact = style == SidebarStyle.ICONS
         self.sidebar.set_compact(compact)
         if compact:
-            # The minimum: logo, burger and padding (the natural width adds
+            # The minimum: the logo and padding (the natural width adds
             # room for a title the sidebar header never shows).
             header = self.sidebar_header.measure(Gtk.Orientation.HORIZONTAL, -1)[0]
             width = rail_width(header)
@@ -350,6 +380,11 @@ class MainWindow(Adw.ApplicationWindow):
         else:
             self.split_view.set_min_sidebar_width(self._full_widths[0])
             self.split_view.set_max_sidebar_width(self._full_widths[1])
+
+    def _drop_page(self, page_id: str) -> None:
+        """A lazily built page left a while ago: back to its stub."""
+        if page_id in self.containers:
+            self.replace_page(self.lazy.stub(page_id))
 
     def show_overview(self) -> None:
         """Every launch opens on the Overview (M55), whatever was shown last
@@ -362,6 +397,10 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_visible_page(self, *_a) -> None:
         page_id = self.visible_page_id()
+        if self.lazy is not None:
+            built = self.lazy.shown(page_id)
+            if built is not None:
+                self.replace_page(built)
         if page_id:
             self.goto_action.set_state(GLib.Variant("s", page_id))
             if not self._navigating:

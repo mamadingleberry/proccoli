@@ -381,8 +381,10 @@ class IntelGpuTopTest(unittest.TestCase):
     def test_command(self):
         b = self.backend()
         self.assertEqual(b.command("igt"), ["igt", "-J", "-s", "1000", "-d", "drm:/dev/dri/card1"])
-        b.settings.set("intel-gpu-top-interval", "fast")
-        self.assertIn("500", b.command("igt"))
+        b.settings.set("intel-gpu-top-interval", "2-seconds")
+        self.assertIn("2000", b.command("igt"))
+        b.settings.set("intel-gpu-top-interval", "fast")          # an old nick: 1 s now
+        self.assertIn("1000", b.command("igt"))
 
     def test_summary_and_processes_from_records(self):
         b = self.backend()

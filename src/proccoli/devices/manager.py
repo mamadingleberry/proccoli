@@ -20,7 +20,7 @@ from gi.repository import GObject
 
 from ..core.sysroot import SysRoot
 from .base import DeviceInfo, DeviceKind, FailedMonitor, Monitor
-from ..core.ticker import graph_points
+from ..core.ticker import graph_plan
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class DeviceManager(GObject.Object):
         self.started = False
         # Graphs keep their time range: the number of points follows both
         # the range and the refresh speed (M58).
-        for key in ("graph-time-range", "refresh-speed"):
+        for key in ("graph-time-range", "update-interval"):
             settings.connect_changed(key, lambda *_: self._on_points_changed())
 
     def register(self, discoverer: Discoverer) -> None:
@@ -123,6 +123,7 @@ class DeviceManager(GObject.Object):
 
     def _add(self, discoverer: Discoverer, info: DeviceInfo) -> None:
         monitor = self._build(discoverer, info)
+        monitor.set_history_plan(*graph_plan(self.settings))
         self._monitors[info.id] = monitor
         self._owner[info.id] = discoverer
         log.debug("device added: %s%s", info.id,
@@ -170,6 +171,6 @@ class DeviceManager(GObject.Object):
         self.emit("device-removed", device_id)
 
     def _on_points_changed(self) -> None:
-        points = graph_points(self.settings)
+        plan = graph_plan(self.settings)
         for m in self._monitors.values():
-            m.set_history_points(points)
+            m.set_history_plan(*plan)

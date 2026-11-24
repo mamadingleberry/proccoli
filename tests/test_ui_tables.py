@@ -132,12 +132,24 @@ class ContextMenuTest(unittest.TestCase):
         page.action_group.activate_action("switch-to", None)
         self.assertEqual(self.system.activated, ["org.gnome.Terminal"])
 
-    def test_no_switch_to_when_the_app_cant_be_asked(self):
+    def test_unreachable_apps_offer_window_switching(self):
+        # Idea 5: Switch To is there for every app; one Proccoli can't reach
+        # says how to set up window switching instead.
         page = self.apps_page({})                                    # e.g. Firefox
         self.select(page, "org.gnome.Terminal")
-        self.assertNotIn("Switch To", self.labels(page.context_menu()))
-        self.assertFalse(page.action_group.lookup_action("switch-to").get_enabled())
+        self.assertIn("Switch To", self.labels(page.context_menu()))
         page.switch_to()
+        self.assertEqual(self.system.activated, [])
+        self.assertIn("window switching", page.last_message)
+
+    def test_the_extension_raises_any_app(self):
+        page = self.apps_page({})
+        key = "org.gnome.Terminal"
+        pids = next(a for a in page.items().values() if a.id == key).pids
+        self.system.windows = [(41, pids[0], key, "Terminal", 7)]
+        self.select(page, key)
+        page.switch_to()
+        self.assertEqual(self.system.raised, [41])
         self.assertEqual(self.system.activated, [])
 
     def test_system_processes_and_multiple_rows_cant_switch(self):

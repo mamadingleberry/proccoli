@@ -20,7 +20,7 @@ from gi.repository import Gdk, Gio, GLib, GObject, Gtk, Pango
 from . import sidebar_order
 from .sidebar_fields import FIELD_LABELS, Field, hidden, set_shown, visible
 from .sidebar_style import compact_tooltip
-from .axes import history_span_s
+from .chart_settings import ChartKind, ChartSettings
 from .page import PageKind, ResourcePage, SidebarSummary
 from .widgets.meter import Meter, MeterType
 
@@ -206,9 +206,10 @@ class StackSidebar(Gtk.ScrolledWindow):
         self.list_box.connect("row-selected", self._on_row_selected)
         self.set_child(self.list_box)
 
+        # The meters' axes and time span (Idea 4).
+        self.charts = ChartSettings(settings) if settings is not None else None
         if settings is not None:
-            for key in ("sidebar-details", "sidebar-description", "sidebar-meter-type",
-                        "show-graph-axes", "graph-time-range", "refresh-speed"):
+            for key in ("sidebar-details", "sidebar-description", "sidebar-meter-type"):
                 settings.connect_changed(key, lambda *_: self._apply_style())
             settings.connect_changed("sidebar-order", lambda *_: self._rearrange())
             settings.connect_changed("sidebar-minimized", lambda *_: self._apply_minimized())
@@ -233,6 +234,8 @@ class StackSidebar(Gtk.ScrolledWindow):
 
     def remove_item(self, page_id: str) -> None:
         item = self.items.pop(page_id)
+        if self.charts is not None:
+            self.charts.unbind(item.meter.graph)
         self.list_box.remove(item)
         self._rearrange()
         self.assign_colors()
@@ -526,8 +529,9 @@ class StackSidebar(Gtk.ScrolledWindow):
         item.set_style(self.settings.get("sidebar-details"),
                        self.settings.get("sidebar-description"),
                        self.settings.get("sidebar-meter-type"))
-        item.meter.set_show_axes(self.settings.get("show-graph-axes"))
-        item.meter.graph.set_time_span(history_span_s(self.settings))
+        if item.meter.graph not in self.charts.bound():
+            self.charts.bind(item.meter.graph, ChartKind.METER,
+                             show_axes=item.meter.set_show_axes)
 
     def _apply_style(self) -> None:
         for item in self.items.values():

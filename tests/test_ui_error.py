@@ -145,14 +145,17 @@ class NvidiaViewTest(unittest.TestCase):
         from proccoli.gpu.backend import DetailServices, GpuDeps
         from proccoli.gpu.info import GpuInfo, GpuVendor
         from proccoli.gpu.nvidia.backend import NvidiaBackend
-        settings = Settings.for_tests()
+        from proccoli.ui.chart_settings import ChartSettings
+        settings = self.settings = Settings.for_tests()
         system = FakeSystem(programs=programs)
         system.run_results = [(0, read_file(os.path.join(FIXTURES, "nvidia", f)), "")
                               for f in fixture]
         gpu = GpuInfo("card1", "0000:02:00.0", GpuVendor.NVIDIA, 0x10de, 1, "nvidia",
                       "NVIDIA GPU", False, None)
         backend = NvidiaBackend(gpu, GpuDeps(SysRoot("/nonexistent"), settings, system))
-        views = backend.create_views(None, DetailServices(settings))
+        self.charts = ChartSettings(settings)
+        self.addCleanup(self.charts.release)
+        views = backend.create_views(None, DetailServices(settings, charts=self.charts))
         self.addCleanup(lambda: [backend.disconnect(h) for h in views.handlers])
         return backend, views.views[0].widget
 
@@ -169,11 +172,52 @@ class NvidiaViewTest(unittest.TestCase):
         legend = view.legends["GPU Utilization"]
         self.assertFalse(legend.items[2].get_parent().get_visible())   # no PCIe from smi
         self.assertFalse(view.boxes["GPU Utilization"].graph.series_shown(2))
-        self.assertEqual(view.boxes["Video Memory"].pane.info_label.get_label(),
+        self.assertEqual(view.boxes["Video Memory"].info,
                          "598.7 MB of 8.5 GB")
-        self.assertTrue(view.boxes["Clocks"].pane.info_label.get_label().endswith("P5"))
+        self.assertTrue(view.boxes["Clocks"].info.endswith("P5"))
         texts = [w.get_label() for w in descendants(legend) if isinstance(w, Gtk.Label)]
         self.assertIn("19 %", texts)
+
+    def test_one_chart_family(self):
+        # Idea 4: cards in a grid, the legend rule, units, live preferences.
+        from proccoli.ui.widgets.chart_card import ChartCard
+        backend, view = self.make(["smi-rtx5060-laptop.csv"],
+                                  {"nvidia-smi": "/usr/bin/nvidia-smi"})
+        with self.assertLogs("proccoli.gpu.nvidia.backend", "INFO"):
+            backend.start()
+        self.assertTrue(all(isinstance(c, ChartCard) for c in view.boxes.values()))
+        self.assertTrue(view.boxes["Clocks"].legend.get_visible())         # two lines
+        self.assertFalse(view.boxes["Temperature"].legend.get_visible())   # one line
+        self.assertEqual(view.boxes["Temperature"].info, "39 °C")
+        clocks = view.boxes["Clocks"].graph
+        self.assertEqual(clocks.series[0].unit, "Hz")                    # base units
+        self.assertEqual(clocks.axis_format(1.5e9), "1.5 GHz")
+        self.assertTrue(clocks.has_axes())
+        self.assertFalse(clocks.show_grid)
+        self.settings.set("show-graph-grids", True)                      # live, every card
+        self.settings.set("graph-time-range", "5-minutes")
+        self.settings.set("show-graph-axes", False)
+        for card in view.boxes.values():
+            self.assertTrue(card.graph.show_grid)
+            self.assertEqual(card.graph.time_span_s, 300.0)
+            self.assertFalse(card.graph.has_axes())
+        self.settings.set("temperature-unit", "fahrenheit")
+        backend.emit("updated")
+        self.assertEqual(view.boxes["Temperature"].info, "102 °F")
+
+    def test_fills_the_window_in_columns(self):
+        backend, view = self.make(["smi-rtx5060-laptop.csv"],
+                                  {"nvidia-smi": "/usr/bin/nvidia-smi"})
+        with self.assertLogs("proccoli.gpu.nvidia.backend", "INFO"):
+            backend.start()
+        win = Gtk.Window(default_width=1024, default_height=768, child=view)
+        self.addCleanup(win.destroy)
+        win.present()
+        self.assertTrue(pump(lambda: view.grid.get_height() > 0, timeout=3))
+        self.assertGreaterEqual(view.grid.columns, 2)
+        bottom = max(c.get_allocation().y + c.get_allocation().height
+                     for c in view.grid.sections)
+        self.assertGreater(bottom, view.grid.get_height() * 0.9)          # fills it
 
     def test_nvidia_gpu_card_readings(self):
         # M57: the Overview card of an NVIDIA GPU: temperature and memory.
@@ -206,7 +250,7 @@ class NvidiaViewTest(unittest.TestCase):
         self.assertIn("from nvidia-settings, GPU 1", view.caption.get_label())
         self.assertFalse(view.groups["Power"].get_visible())        # not reported
         self.assertTrue(view.legends["GPU Utilization"].items[2].get_parent().get_visible())
-        self.assertEqual(view.boxes["Video Engines"].pane.info_label.get_label(), "4.0 %")
+        self.assertEqual(view.boxes["Video Engines"].info, "4.0 %")
 
 
 if __name__ == "__main__":

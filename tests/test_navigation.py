@@ -221,7 +221,7 @@ class GotoWindowTest(unittest.TestCase):
 
     def goto_submenu(self, win):
         menu = win.menu_model
-        section = menu.get_item_link(0, Gio.MENU_LINK_SECTION)
+        section = menu.get_item_link(1, Gio.MENU_LINK_SECTION)   # after About (M61)
         label = section.get_item_attribute_value(0, "label", GLib.VariantType("s"))
         self.assertEqual(label.get_string(), GOTO_LABEL)
         return section.get_item_link(0, Gio.MENU_LINK_SUBMENU)

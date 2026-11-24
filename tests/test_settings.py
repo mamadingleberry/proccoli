@@ -35,7 +35,7 @@ class SchemaFileTest(unittest.TestCase):
 
     def test_defaults_are_valid(self):
         spec = SchemaSpec.parse(source_schema_path())
-        self.assertIn("refresh-speed", spec.keys)
+        self.assertIn("update-interval", spec.keys)
         for key in spec.keys.values():
             self.assertEqual(key.check(key.default), key.default, key.name)
 
@@ -61,7 +61,7 @@ class SettingsBehaviour:
         self.s = self.make()
 
     def test_defaults(self):
-        self.assertEqual(self.s.get("refresh-speed"), "normal")
+        self.assertEqual(self.s.get("update-interval"), "1-second")
         self.assertEqual(self.s.get("graph-time-range"), "1-minute")
         self.assertEqual(self.s.get("gpu-details-disabled"), [])
         self.assertIs(self.s.get("is-maximized"), False)
@@ -124,8 +124,36 @@ class DictSettingsTest(SettingsBehaviour, unittest.TestCase):
         self.assertFalse(self.s.persistent)
 
     def test_overrides(self):
-        s = Settings.for_tests({"refresh-speed": "fast"})
-        self.assertEqual(s.get("refresh-speed"), "fast")
+        s = Settings.for_tests({"update-interval": "5-seconds"})
+        self.assertEqual(s.get("update-interval"), "5-seconds")
+
+
+class MigrateTest(unittest.TestCase):
+    """Idea 6: an old Refresh Speed carries over to Update Interval, once."""
+
+    def test_each_old_speed(self):
+        from proccoli.core.settings import migrate
+        cases = [("very-slow", "5-seconds"), ("slow", "2-seconds"),
+                 ("fast", "1-second"), ("very-fast", "1-second")]
+        for old, new in cases:
+            s = Settings.for_tests({"refresh-speed": old, "update-interval": "10-seconds"})
+            self.assertEqual(len(migrate(s)), 1, old)
+            self.assertEqual(s.get("update-interval"), new, old)
+            self.assertEqual(s.get("refresh-speed"), "normal")          # reset: only once
+            s.set("update-interval", "3-seconds")
+            self.assertEqual(migrate(s), [])
+            self.assertEqual(s.get("update-interval"), "3-seconds")
+
+    def test_fresh_install_and_the_intel_interval(self):
+        from proccoli.core.settings import migrate
+        s = Settings.for_tests()
+        self.assertEqual(migrate(s), [])
+        self.assertEqual(s.get("update-interval"), "1-second")
+        s = Settings.for_tests({"intel-gpu-top-interval": "very-fast"})
+        self.assertEqual(migrate(s), ["intel-gpu-top-interval very-fast -> 1-second"])
+        self.assertEqual(s.get("intel-gpu-top-interval"), "1-second")
+        s.set("intel-gpu-top-interval", "")
+        self.assertEqual(migrate(s), [])
 
 
 @unittest.skipUnless(HAVE_COMPILER, "glib-compile-schemas not installed")

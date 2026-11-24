@@ -11,6 +11,7 @@ from typing import Callable, Iterable, Optional
 
 from gi.repository import GObject
 
+from ..core.profile import profile_of
 from ..core.sysroot import SysRoot
 from .apps import app_id_for_cgroup
 from .model import ProcessInfo, RawProc, containerization, read_proc
@@ -47,6 +48,12 @@ class ProcessMonitor(GObject.Object):
 
     def release(self) -> None:
         self.users = max(0, self.users - 1)
+        if not self.users and not profile_of(self.settings).keep_process_data:
+            # Lightweight Mode: nobody's looking, so nothing is kept (the
+            # next scan starts fresh; its first processor figures are 0).
+            self.processes = {}
+            self._prev = {}
+            self._prev_time = None
 
     def follow(self, ticker) -> None:
         self._ticker = ticker

@@ -5,8 +5,9 @@ from __future__ import annotations
 
 from gi.repository import Adw, Gtk
 
-from ...core.units import (device_facts, format_duration, format_frequency, format_percent,
+from ...core.units import (format_duration, format_frequency, format_percent,
                            format_temperature)
+from ...core.profile import is_pinned
 from ...devices.cpu import CpuMonitor, CpuSnapshot, busiest_thread
 from ..page import PageKind
 from .device import DevicePage
@@ -21,6 +22,9 @@ class CpuPage(DevicePage):
         self.logical_switch = Adw.SwitchRow(title="Show Usages of Logical CPUs")
         options.add(self.logical_switch)
         settings.bind("show-logical-cpus", self.logical_switch, "active")
+        if is_pinned(settings, "show-logical-cpus"):
+            self.logical_switch.set_sensitive(False)
+            self.logical_switch.set_subtitle("Off in Lightweight Mode")
 
         # Total usage, or one chart with a line per logical CPU and a legend
         # (M55; it replaced a grid of small graphs).
@@ -65,13 +69,6 @@ class CpuPage(DevicePage):
         self.thread_names = [f"CPU {i}" for i in range(count)]
         self.threads.set_lines([self.monitor.history.define(f"cpu{i}", "%")
                                 for i in range(count)], self.thread_names)
-
-    def sidebar_summary(self):
-        summary = super().sidebar_summary()
-        snap = self.monitor.latest
-        if snap is not None:
-            summary.facts = device_facts(snap.temperature_c, self.temperature_unit)
-        return summary
 
     def update_labels(self, snap: CpuSnapshot) -> None:
         self._ensure_threads()

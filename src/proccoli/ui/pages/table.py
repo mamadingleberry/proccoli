@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -12,6 +14,7 @@ gi.require_version("Graphene", "1.0")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Graphene, Gtk, Pango  # noqa: E402
 
 from ...processes.actions import Action
+from ...core.profile import profile_of
 from ..widgets.app_icon import set_app_icon  # noqa: F401  (re-exported)
 from ..page import PageKind, ResourcePage
 
@@ -31,6 +34,14 @@ class Row(GObject.Object):
     def update(self, data) -> None:
         self.data = data
         self.revision += 1
+
+
+def shown_column(spec: "Column", settings) -> "Column":
+    """``spec`` as the running profile shows it: no icon in Lightweight
+    Mode (no icon lookups or textures, Idea 1)."""
+    if spec.icon is not None and not profile_of(settings).app_icons:
+        return dataclasses.replace(spec, icon=None)
+    return spec
 
 
 @dataclass
@@ -133,6 +144,7 @@ class TablePage(ResourcePage):
     # -- columns ------------------------------------------------------------------
 
     def _add_column(self, spec: Column) -> Gtk.ColumnViewColumn:
+        spec = shown_column(spec, self.settings)
         factory = Gtk.SignalListItemFactory()
 
         def setup(_f, item):

@@ -84,15 +84,13 @@ class NvidiaSample:
                 "decoder": self.decoder if self.decoder is not None else self.video,
                 "pcie": self.pcie, "vram": self.vram_percent,
                 "temperature": self.temperature_c, "power": self.power_w,
-                "clock": None if self.clock_hz is None else self.clock_hz / 1e6,
-                "memory-clock": None if self.memory_clock_hz is None
-                else self.memory_clock_hz / 1e6,
+                "clock": self.clock_hz, "memory-clock": self.memory_clock_hz,
                 "fan": self.fan}
 
 
 HISTORY_UNITS = {"graphics": "%", "memory-controller": "%", "encoder": "%", "decoder": "%",
                  "pcie": "%", "vram": "%", "temperature": "°C", "power": "W",
-                 "clock": "MHz", "memory-clock": "MHz", "fan": "%"}
+                 "clock": "Hz", "memory-clock": "Hz", "fan": "%"}   # base units (Idea 4)
 
 
 def _number(text: str) -> Optional[float]:

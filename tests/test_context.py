@@ -63,9 +63,9 @@ class ContextTest(unittest.TestCase):
         self.assertEqual(ctx.grouper.info_for("org.x.App").name, "X")
 
     def test_ticker_follows_settings_and_start_connects(self):
-        settings = Settings.for_tests({"refresh-speed": "fast"})
+        settings = Settings.for_tests({"update-interval": "3-seconds"})
         ctx = make_context(self, demo=True, settings=settings)
-        self.assertEqual(ctx.ticker.interval_ms, 500)
+        self.assertEqual(ctx.ticker.interval_ms, 3000)
         ctx.start()
         ticks = []
         ctx.devices.connect("device-added", lambda *a: ticks.append(a))

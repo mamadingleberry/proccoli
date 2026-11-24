@@ -250,21 +250,16 @@ class PlaceholderPage(ResourcePage):
 LOGO_SIZE = 24
 
 
-def app_logo_button() -> Gtk.Button:
-    """The app's logo in the window's top-left corner, beside the main menu
-    (§9.2); clicking it opens *About*."""
-    image = Gtk.Image(icon_name=APP_ID, pixel_size=LOGO_SIZE)
-    button = Gtk.Button(child=image, has_frame=False, action_name="app.about",
-                        tooltip_text=f"About {APP_NAME}")
-    button.add_css_class("app-logo")
-    button.update_property([Gtk.AccessibleProperty.LABEL], [f"About {APP_NAME}"])
-    return button
-
-
 def main_menu_button(menu_model) -> Gtk.MenuButton:
-    """The main menu ("burger"), always at the window's top left (§9.2)."""
-    return Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu_model,
-                          tooltip_text="Main Menu", primary=True)
+    """The main menu, always at the window's top left (§9.2): the app's
+    logo is its button (M61; it replaced the logo-and-burger pair). F10
+    opens it too (``primary``)."""
+    image = Gtk.Image(icon_name=APP_ID, pixel_size=LOGO_SIZE)
+    button = Gtk.MenuButton(child=image, menu_model=menu_model, primary=True,
+                            has_frame=False, tooltip_text="Main Menu")
+    button.add_css_class("app-logo")
+    button.update_property([Gtk.AccessibleProperty.LABEL], [f"{APP_NAME} Main Menu"])
+    return button
 
 
 class PageContainer(Adw.Bin):
@@ -282,13 +277,10 @@ class PageContainer(Adw.Bin):
         self.header = Adw.HeaderBar(title_widget=self.window_title)
         self.header.add_css_class("flat")
 
-        # Start of the header: logo, then burger.
+        # Start of the header: the logo, which opens the main menu.
         self.start_controls = Gtk.Box(spacing=6)
-        self.logo_button: Optional[Gtk.Button] = None
         self.menu_button: Optional[Gtk.MenuButton] = None
         if menu_model is not None:
-            self.logo_button = app_logo_button()
-            self.start_controls.append(self.logo_button)
             self.menu_button = main_menu_button(menu_model)
             self.start_controls.append(self.menu_button)
         self.split_view = split_view

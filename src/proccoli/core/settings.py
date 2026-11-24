@@ -335,3 +335,24 @@ def compile_source_schema() -> Optional[Path]:
         log.warning("could not compile settings schema: %s",
                     getattr(exc, "stderr", None) or exc)
         return None
+
+
+def migrate(settings) -> list[str]:
+    """Carry choices over from keys that were replaced, once (Idea 6:
+    *Refresh Speed* became *Update Interval*). The old key is reset after,
+    so this does nothing on later starts or a fresh install. Returns what
+    it did, for the log."""
+    from .ticker import REFRESH_SPEED_TO_INTERVAL
+    done = []
+    old = settings.get("refresh-speed")
+    if old != settings.default("refresh-speed"):
+        new = REFRESH_SPEED_TO_INTERVAL.get(old, "1-second")
+        settings.set("update-interval", new)
+        settings.reset("refresh-speed")
+        done.append(f"refresh-speed {old} -> update-interval {new}")
+    intel = settings.get("intel-gpu-top-interval")
+    if intel in REFRESH_SPEED_TO_INTERVAL:
+        new = REFRESH_SPEED_TO_INTERVAL[intel]
+        settings.set("intel-gpu-top-interval", new)
+        done.append(f"intel-gpu-top-interval {intel} -> {new}")
+    return done

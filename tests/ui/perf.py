@@ -45,7 +45,7 @@ def main() -> int:
     app = Adw.Application(flags=Gio.ApplicationFlags.NON_UNIQUE)
     app.register(None)
     app.hold()
-    ctx = build_context(Settings.for_tests({"refresh-speed": "normal"}),
+    ctx = build_context(Settings.for_tests({"update-interval": "1-second"}),
                         helper_command=None)
     ctx.start()
     win = MainWindow(app, ctx)

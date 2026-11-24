@@ -5,7 +5,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from proccoli.core.settings import Settings  # noqa: E402
-from proccoli.core.ticker import REFRESH_INTERVALS_MS, Ticker, interval_for  # noqa: E402
+from proccoli.core.ticker import UPDATE_INTERVALS_MS, Ticker, interval_for  # noqa: E402
 
 
 class FakeLoop:
@@ -93,19 +93,26 @@ class TickerTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             t.set_interval(-1)
 
-    def test_follows_refresh_speed_setting(self):
-        settings = Settings.for_tests({"refresh-speed": "slow"})
+    def test_follows_the_update_interval(self):
+        settings = Settings.for_tests({"update-interval": "2-seconds"})
         t, loop, _ = make(1000)
         t.follow(settings)
         self.assertEqual(t.interval_ms, 2000)
-        settings.set("refresh-speed", "very-fast")
-        self.assertEqual(t.interval_ms, 250)
+        settings.set("update-interval", "10-seconds")
+        self.assertEqual(t.interval_ms, 10000)
 
-    def test_every_schema_speed_has_an_interval(self):
+    def test_every_schema_interval_has_milliseconds(self):
         settings = Settings.for_tests()
-        speeds = settings.spec.keys["refresh-speed"].choices
-        self.assertEqual(sorted(speeds), sorted(REFRESH_INTERVALS_MS))
+        nicks = settings.spec.keys["update-interval"].choices
+        self.assertEqual(sorted(nicks), sorted(UPDATE_INTERVALS_MS))
         self.assertEqual(interval_for("bogus"), 1000)
+        self.assertEqual(min(UPDATE_INTERVALS_MS.values()), 1000)     # never faster (Idea 6)
+
+    def test_old_refresh_speeds_map_to_intervals(self):
+        self.assertEqual(interval_for("very-fast"), 1000)
+        self.assertEqual(interval_for("fast"), 1000)
+        self.assertEqual(interval_for("slow"), 2000)
+        self.assertEqual(interval_for("very-slow"), 5000)
 
 
 class TimeRangeTest(unittest.TestCase):
@@ -122,7 +129,21 @@ class TimeRangeTest(unittest.TestCase):
         self.assertEqual(graph_points(s), 61)                    # 1 minute at 1 s
         for nick, seconds in TIME_RANGES_S.items():
             s.set("graph-time-range", nick)                      # every nick is in the schema
-            self.assertEqual(graph_points(s), seconds + 1)
+            if seconds <= 600:
+                self.assertEqual(graph_points(s), seconds + 1)
+            else:
+                self.assertLessEqual(graph_points(s), 1200)        # averaged
+
+    def test_long_ranges_average_samples(self):
+        # History follow-ups: at most MAX_GRAPH_POINTS points per graph.
+        from proccoli.core.settings import Settings
+        from proccoli.core.ticker import graph_plan, history_plan
+        self.assertEqual(history_plan(600, 1000), (601, 1))
+        self.assertEqual(history_plan(600, 250), (801, 3))         # 2401 samples
+        self.assertEqual(history_plan(86400, 1000), (1184, 73))     # a day at 1 s
+        self.assertEqual(history_plan(3600, 1000), (901, 4))
+        s = Settings.for_tests({"graph-time-range": "1-hour", "update-interval": "2-seconds"})
+        self.assertEqual(graph_plan(s), (901, 2, 4.0))
 
     def test_unknown_nick_is_one_minute(self):
         from proccoli.core.ticker import time_range_s

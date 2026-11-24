@@ -543,7 +543,7 @@ class WindowTest(unittest.TestCase):
     def test_narrow_window_collapses(self):
         win = self._sized(700, 600)
         self.assertTrue(win.split_view.get_collapsed())
-        self.assertTrue(win.containers["apps"].start_controls.get_visible())   # logo + burger
+        self.assertTrue(win.containers["apps"].start_controls.get_visible())   # the logo (main menu)
         win.activate_action("win.toggle-sidebar", None)        # ≡ → Show Sidebar
         self.assertTrue(win.split_view.get_show_sidebar())    # the overlay opens
         self.assertTrue(win.get_action_state("toggle-sidebar").get_boolean())

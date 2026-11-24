@@ -19,7 +19,7 @@ MODE_ACTION = "sidebar-mode"         # in the window's "win" group; state: a Mod
 SECTION_LABEL = "Sidebar"
 
 # The narrowest the icons-only sidebar gets; it widens to fit its header
-# (logo and burger).
+# (the logo, which is the main menu).
 MIN_RAIL_WIDTH = 56
 
 
@@ -62,7 +62,7 @@ def choose(mode, style) -> tuple[bool, SidebarStyle]:
 
 
 def rail_width(header_width: int) -> int:
-    """The icons-only sidebar's width: its header must fit (logo, burger)."""
+    """The icons-only sidebar's width: its header must fit (the logo)."""
     return max(MIN_RAIL_WIDTH, header_width)
 
 

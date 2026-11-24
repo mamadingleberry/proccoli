@@ -1,11 +1,12 @@
 """The Intel detail tabs: intel_gpu_top_gui's interface inside the GPU page.
 
-- Details: the device caption and the adaptive grid of graph sections
-  (engines, frequency, power, RC6, memory bandwidth, interrupts), compact on
-  small sizes.
+- Details: the device caption and the adaptive grid of charts (engines,
+  frequency, power, RC6, memory bandwidth, interrupts), compact on small
+  sizes: the shared ``ChartCard``s in a ``ChartGridView`` (Idea 4), with
+  every chart preference and the user's units through ``ChartSettings``.
 - Processes: per-client engine-class utilisation.
-- Header (both tabs): pause, and the menu with Update Interval, History
-  Length, Export as CSV and Clear History.
+- Header (both tabs): pause, and the menu with Update Interval, Export as
+  CSV and Clear History.
 """
 
 from __future__ import annotations
@@ -19,11 +20,13 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
+from ...ui.axes import AxisGutter  # noqa: E402
+from ...ui.chart_settings import ChartSettings  # noqa: E402
+from ...ui.widgets.chart_card import ChartCard  # noqa: E402
+from ...ui.widgets.chart_grid import ChartGridView  # noqa: E402
 from ..backend import DetailView, DetailViews  # noqa: E402
-from .backend import HISTORY_LENGTHS  # noqa: E402
 from .clients import ClientsView  # noqa: E402
-from .graph import AxisGroup, GraphSection  # noqa: E402
-from .grid import GraphGrid  # noqa: E402
+from .labels import display_name  # noqa: E402
 
 # group -> (title, subtitle, relative graph height, fixed y max or None)
 GROUPS = {
@@ -36,13 +39,15 @@ GROUPS = {
 }
 GROUP_ORDER = list(GROUPS)
 
-# The Update Interval and History Length menus (intel_gpu_top_gui's choices;
-# intervals are refresh-speed nicks, "" follows the app's refresh speed).
-INTERVALS = [("very-fast", "0.25 Seconds"), ("fast", "0.5 Seconds"), ("normal", "1 Second"),
-             ("slow", "2 Seconds"), ("very-slow", "4 Seconds"), ("", "Same as Refresh Speed")]
-HISTORY_S = HISTORY_LENGTHS
+# The Update Interval menu (update-interval nicks, Idea 6: never faster
+# than once a second; "" follows the app's Update Interval). How much time
+# the charts show is the app's Graph Time Range (Idea 3).
+INTERVALS = [("1-second", "1 Second"), ("2-seconds", "2 Seconds"), ("3-seconds", "3 Seconds"),
+             ("5-seconds", "5 Seconds"), ("10-seconds", "10 Seconds"),
+             ("", "Same as Update Interval")]
 
-COMPACT_CONDITIONS = ("max-height: 720sp", "max-width: 600sp")
+# Automatic scales never zoom in below this (noise on an idle GPU).
+AUTO_MIN_MAX = 1.0
 
 
 def group_meta(group: str, unit: str):
@@ -69,82 +74,49 @@ def caption_text(backend) -> str:
     return " · ".join(parts)
 
 
-class IntelGraphsView(Adw.BreakpointBin):
-    """intel_gpu_top_gui's Resources tab."""
+class IntelGraphsView(ChartGridView):
+    """intel_gpu_top_gui's Resources tab, on the shared charts: a card per
+    metric group, a line per engine or measure."""
 
-    def __init__(self, backend) -> None:
-        super().__init__(width_request=320, height_request=200)
+    def __init__(self, backend, charts: ChartSettings) -> None:
+        super().__init__(Adw.StatusPage(title="Waiting for intel_gpu_top…",
+                                        icon_name="power-profile-performance-symbolic"))
         self.backend = backend
-        self.sections: dict[str, GraphSection] = {}
-        self.axis_group = AxisGroup()
-        self.compact = False
-
-        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
-                           margin_top=6, margin_bottom=18, margin_start=12, margin_end=18)
-        self.caption = Gtk.Label(xalign=0, margin_top=6)
-        for cls in ("dim-label", "caption", "device-caption"):
-            self.caption.add_css_class(cls)
-        self.box.append(self.caption)
-        self.grid = GraphGrid()
-        self.box.append(self.grid)
-        self.waiting = Adw.StatusPage(title="Waiting for intel_gpu_top…",
-                                      icon_name="power-profile-performance-symbolic",
-                                      vexpand=True)
-        self.box.append(self.waiting)
-        self.set_child(Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,
-                                          child=self.box))
-        for cond in COMPACT_CONDITIONS:
-            bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse(cond))
-            bp.connect("apply", lambda *_: self.set_compact(True))
-            bp.connect("unapply", lambda *_: self.set_compact(False))
-            self.add_breakpoint(bp)
+        self.charts = charts
+        self.sections: dict[str, ChartCard] = {}
+        self.gutter = AxisGutter(schedule=GLib.idle_add)
         self.refresh()
-
-    def set_compact(self, compact: bool) -> None:
-        if compact == self.compact:
-            return
-        self.compact = compact
-        if compact:
-            self.box.add_css_class("compact")
-        else:
-            self.box.remove_css_class("compact")
-        self.caption.set_visible(not compact)
-        self.box.set_margin_start(6 if compact else 12)
-        self.box.set_margin_end(6 if compact else 18)
-        for sec in self.sections.values():
-            sec.set_compact(compact)
 
     def _add_section(self, group: str) -> None:
         series = self.backend.history.group_series(group)
         unit = series[0].unit if series else ""
         title, sub, height, fixed = group_meta(group, unit)
-        sec = GraphSection(self.backend.history, group, title, unit, fixed, height, sub,
-                           self.axis_group)
-        sec.set_compact(self.compact)
-        self.sections[group] = sec
-        self.grid.set_sections([self.sections[g] for g in sorted(self.sections,
-                                                                 key=group_rank)])
+        card = ChartCard(title, max_value=fixed, min_max=0.0 if fixed else AUTO_MIN_MAX,
+                         description=sub, weight=height)
+        self.charts.bind(card.graph, gutter=self.gutter)
+        self.sections[group] = card
+        self.set_cards([self.sections[g] for g in sorted(self.sections, key=group_rank)])
 
     def refresh(self) -> None:
         history = self.backend.history
         for group in history.group_order:
             if group not in self.sections:
                 self._add_section(group)
-        interval = self.backend.interval_ms / 1000
-        for sec in self.sections.values():
-            sec.set_interval(interval)
-        self.caption.set_label(caption_text(self.backend))
-        has_data = bool(history.times)
-        self.grid.set_visible(has_data)
-        self.waiting.set_visible(not has_data)
+        self.set_caption(caption_text(self.backend))
+        self.set_has_data(bool(history.times))
         if self.get_mapped():
-            for sec in self.sections.values():
-                sec.refresh()
+            self._redraw()
+
+    def _redraw(self) -> None:
+        for group, card in self.sections.items():
+            series = self.backend.history.group_series(group)
+            card.set_lines(series, [display_name(s.name) for s in series])
+            card.set_values([self.charts.format_value(s.latest(), s.unit) for s in series])
+            card.graph.queue_draw()
 
     def do_map(self) -> None:
-        Adw.BreakpointBin.do_map(self)
-        for sec in self.sections.values():
-            sec.refresh()
+        ChartGridView.do_map(self)
+        self._redraw()
 
 
 class IntelClientsView(Gtk.Box):
@@ -182,15 +154,11 @@ class IntelDetailHeader:
             "interval", GLib.VariantType.new("s"),
             GLib.Variant.new_string(settings.get("intel-gpu-top-interval")))
         interval.connect("change-state", self._on_interval)
-        history = Gio.SimpleAction.new_stateful(
-            "history", GLib.VariantType.new("s"),
-            GLib.Variant.new_string(str(settings.get("intel-gpu-top-history"))))
-        history.connect("change-state", self._on_history)
         export = Gio.SimpleAction.new("export", None)
         export.connect("activate", lambda *_: self.export())
         clear = Gio.SimpleAction.new("clear", None)
         clear.connect("activate", lambda *_: backend.clear())
-        for a in (interval, history, export, clear):
+        for a in (interval, export, clear):
             group.add_action(a)
         self.actions = group
 
@@ -200,10 +168,6 @@ class IntelDetailHeader:
         for nick, label in INTERVALS:
             intervals.append(label, f"igt.interval('{nick}')")
         settings_section.append_submenu("Update Interval", intervals)
-        lengths = Gio.Menu()
-        for seconds, label in HISTORY_S:
-            lengths.append(label, f"igt.history('{seconds}')")
-        settings_section.append_submenu("History Length", lengths)
         menu.append_section(None, settings_section)
         data = Gio.Menu()
         data.append("Export as CSV…", "igt.export")
@@ -228,10 +192,6 @@ class IntelDetailHeader:
     def _on_interval(self, action, value) -> None:
         action.set_state(value)
         self.settings.set("intel-gpu-top-interval", value.get_string())
-
-    def _on_history(self, action, value) -> None:
-        action.set_state(value)
-        self.settings.set("intel-gpu-top-history", int(value.get_string()))
 
     def export(self) -> None:
         dialog = Gtk.FileDialog(title="Export History")
@@ -259,7 +219,7 @@ class IntelDetailHeader:
 
 def create_views(backend, controller, services) -> DetailViews:
     header = IntelDetailHeader(backend, services.settings)
-    graphs = IntelGraphsView(backend)
+    graphs = IntelGraphsView(backend, services.charts or ChartSettings(services.settings))
     clients = IntelClientsView(backend, services.app_icon)
 
     def on_updated(_backend) -> None:

@@ -15,6 +15,13 @@
     <value nick="decimal" value="0"/>
     <value nick="binary" value="1"/>
   </enum>
+  <enum id="io.github.mamadingleberry.Proccoli.UpdateInterval">
+    <value nick="1-second" value="1"/>
+    <value nick="2-seconds" value="2"/>
+    <value nick="3-seconds" value="3"/>
+    <value nick="5-seconds" value="5"/>
+    <value nick="10-seconds" value="10"/>
+  </enum>
   <enum id="io.github.mamadingleberry.Proccoli.RefreshSpeed">
     <value nick="very-slow" value="0"/>
     <value nick="slow" value="1"/>
@@ -28,6 +35,10 @@
     <value nick="2-minutes" value="120"/>
     <value nick="5-minutes" value="300"/>
     <value nick="10-minutes" value="600"/>
+    <value nick="30-minutes" value="1800"/>
+    <value nick="1-hour" value="3600"/>
+    <value nick="6-hours" value="21600"/>
+    <value nick="1-day" value="86400"/>
   </enum>
   <enum id="io.github.mamadingleberry.Proccoli.ColorScheme">
     <value nick="system" value="0"/>
@@ -94,9 +105,20 @@
     </key>
 
     <!-- General: user interface -->
+    <key name="lightweight" type="b">
+      <default>false</default>
+      <summary>Lightweight mode: as little memory as possible</summary>
+      <description>Applies at the next start. Pages are built when visited, the Overview is a list, and charts, icons and GPU detail sources are kept to a minimum.</description>
+    </key>
+    <key name="update-interval" enum="io.github.mamadingleberry.Proccoli.UpdateInterval">
+      <default>'1-second'</default>
+      <summary>How often Proccoli takes readings</summary>
+      <description>Every device, the process list and the history; never faster than once a second.</description>
+    </key>
     <key name="refresh-speed" enum="io.github.mamadingleberry.Proccoli.RefreshSpeed">
       <default>'normal'</default>
-      <summary>How often data is refreshed</summary>
+      <summary>Replaced by update-interval</summary>
+      <description>Read once at start-up to carry an old choice over to update-interval, then reset.</description>
     </key>
     <key name="show-graph-grids" type="b">
       <default>false</default>
@@ -138,15 +160,20 @@
       <default>'debug'</default>
       <summary>What the diagnostics log records (debug: everything)</summary>
     </key>
-    <key name="stats-log" type="b">
+    <key name="history" type="b">
       <default>true</default>
-      <summary>Keep files of every reading</summary>
-      <description>One CSV file per device in ~/.local/state/proccoli/stats, with UTC times.</description>
+      <summary>Keep a history of every reading</summary>
+      <description>In ~/.local/state/proccoli/history.sqlite3, with times in UTC: every reading for history-detail-hours, then averages per minute for 30 days and per hour after that.</description>
     </key>
-    <key name="stats-log-max-size" type="u">
-      <range min="64" max="1048576"/>
-      <default>4096</default>
-      <summary>Size of each device's statistics file in KiB (one older file is kept too)</summary>
+    <key name="history-max-size" type="u">
+      <range min="16" max="4096"/>
+      <default>512</default>
+      <summary>Most the history may take on disk, in MiB (the oldest goes first)</summary>
+    </key>
+    <key name="history-detail-hours" type="u">
+      <range min="1" max="168"/>
+      <default>24</default>
+      <summary>Hours every reading is kept before only per-minute averages remain</summary>
     </key>
     <key name="log-max-size" type="u">
       <range min="64" max="65536"/>
@@ -267,12 +294,7 @@
     <key name="intel-gpu-top-interval" type="s">
       <default>''</default>
       <summary>Update interval of the Intel Details tab</summary>
-      <description>A refresh-speed nick, or empty to follow the general refresh speed.</description>
-    </key>
-    <key name="intel-gpu-top-history" type="u">
-      <range min="60" max="1800"/>
-      <default>120</default>
-      <summary>History length of the Intel Details tab, in seconds</summary>
+      <description>An update-interval nick, or empty to follow the general update interval.</description>
     </key>
   </schema>
 </schemalist>

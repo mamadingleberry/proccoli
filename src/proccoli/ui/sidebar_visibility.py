@@ -1,12 +1,12 @@
 """Showing and hiding the sidebar (DESIGN.md §9.2, Milestone 46).
 
 The sidebar can be hidden at any width, not only on narrow windows, and
-the main menu (the "burger") always stays at the window's top left:
+the main menu (the app's logo, M61) always stays at the window's top left:
 
-- sidebar shown and beside the content: the logo and the burger sit at
-  the start of the sidebar's header;
+- sidebar shown and beside the content: the logo sits at the start of
+  the sidebar's header;
 - sidebar hidden, or folded away on a narrow window: every page header
-  shows them at its start instead.
+  shows it at its start instead.
 
 F9 shows and hides the sidebar through the stateful ``win.toggle-sidebar``
 action made here (Milestone 52). The main menu offers three modes instead
@@ -35,7 +35,7 @@ ACTION = "toggle-sidebar"            # in the window's "win" group; F9
 
 
 def header_controls_visible(show_sidebar: bool, collapsed: bool) -> bool:
-    """Whether a page header shows the logo and the burger: when
+    """Whether a page header shows the logo (the main menu): when
     the sidebar isn't sitting beside the content."""
     return collapsed or not show_sidebar
 

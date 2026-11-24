@@ -24,7 +24,7 @@ import logging
 from typing import Optional
 
 from ...core.history import History
-from ...core.ticker import graph_points
+from ...core.ticker import graph_plan
 from ..backend import (Capability, DetailBackend, GpuDeps, GpuSummary, Probe, SupportLevel,
                        TabSpec)
 from ..info import GpuInfo, GpuVendor
@@ -51,7 +51,12 @@ class NvidiaBackend(DetailBackend):
     def __init__(self, gpu: GpuInfo, deps: GpuDeps) -> None:
         super().__init__(gpu, deps)
         self.system = deps.system
-        self.history = History(graph_points(deps.settings))
+        self.history = History(graph_plan(deps.settings)[0])
+        self.history.set_plan(*graph_plan(deps.settings))
+        # The graphs' time range, as on every page (history follow-ups).
+        self._plan_handlers = [deps.settings.connect_changed(
+            key, lambda *_: self.history.set_plan(*graph_plan(self.settings)))
+            for key in ("graph-time-range", "update-interval")]
         for name, unit in HISTORY_UNITS.items():
             self.history.define(name, unit)
         self.sample: Optional[NvidiaSample] = None
@@ -100,6 +105,18 @@ class NvidiaBackend(DetailBackend):
         self._running = False
         self._generation += 1
         self._busy = False
+        for h in self._plan_handlers:
+            self.settings.disconnect(h)
+        self._plan_handlers = []
+
+    def history_readings(self) -> tuple[dict, dict]:
+        """The Details tab's readings, recorded in the history database."""
+        if self.sample is None:
+            return {}, {}
+        return dict(self.sample.history_values()), dict(HISTORY_UNITS)
+
+    def history_target(self):
+        return self.history
 
     def refresh(self, now: float) -> None:
         self._now = now

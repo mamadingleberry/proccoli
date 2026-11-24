@@ -72,12 +72,58 @@ def time_ticks(span_s: float, plot_width: float,
     return ticks
 
 
-def history_span_s(settings) -> float:
-    """Seconds a full graph shows: the *Graph Time Range* (M58)."""
-    from ..core.ticker import time_range_s
-    return float(time_range_s(settings.get("graph-time-range")))
-
-
 def is_percent_graph(units: list[str], max_value: Optional[float]) -> bool:
     """Axes are for graphs of percentages on a fixed 0–100 scale."""
     return bool(units) and all(u == "%" for u in units) and max_value == 100.0
+
+
+def value_divisions(plot_height: float, label_height: float) -> int:
+    """Grid intervals on a value (non-percentage) axis: 4, 2 or 1, as
+    many as fit without crowding their labels (Idea 3)."""
+    for d in (4, 2):
+        if plot_height / d >= max(label_height * 1.6, 24):
+            return d
+    return 1
+
+
+def value_ticks(y_max: float, plot_height: float, label_height: float) -> list[float]:
+    """Tick values from 0 to ``y_max``, bottom first."""
+    d = value_divisions(plot_height, label_height)
+    return [y_max * i / d for i in range(d + 1)]
+
+
+class AxisGutter:
+    """One y-axis label width shared by several graphs, so their plots
+    line up in a column whatever their units (Idea 3; was the Intel
+    Details tab's ``AxisGroup``). Graphs ``report()`` the width they need;
+    when the widest grows, ``redraw(graph)`` runs for every graph, once,
+    through ``schedule`` (``GLib.idle_add`` in the app)."""
+
+    def __init__(self, schedule=None, redraw=None) -> None:
+        self._widths: dict[int, tuple[object, float]] = {}
+        self._schedule = schedule
+        self._redraw = redraw or (lambda graph: graph.queue_draw())
+        self._pending = False
+
+    @property
+    def width(self) -> float:
+        return max((w for _g, w in self._widths.values()), default=0.0)
+
+    def report(self, graph, width: float) -> bool:
+        """Record ``graph``'s own width; True if the shared width grew."""
+        before = self.width
+        self._widths[id(graph)] = (graph, width)
+        grew = self.width > before
+        if grew and before and self._schedule is not None and not self._pending:
+            self._pending = True
+            self._schedule(self._redraw_all)
+        return grew
+
+    def forget(self, graph) -> None:
+        self._widths.pop(id(graph), None)
+
+    def _redraw_all(self) -> bool:
+        self._pending = False
+        for graph, _w in list(self._widths.values()):
+            self._redraw(graph)
+        return False

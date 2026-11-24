@@ -61,8 +61,8 @@ class DependencyInjectionTest(unittest.TestCase):
 class LayeringTest(unittest.TestCase):
     DOMAIN = ("core/", "devices/", "gpu/", "processes/", "context.py")
     # Views shipped with the Intel backend (imported lazily by create_views).
-    UI_IN_DOMAIN = {"gpu/intel_gpu_top/views.py", "gpu/intel_gpu_top/graph.py",
-                    "gpu/intel_gpu_top/grid.py", "gpu/intel_gpu_top/clients.py",
+    UI_IN_DOMAIN = {"gpu/intel_gpu_top/views.py",
+                    "gpu/intel_gpu_top/clients.py",
                     "gpu/nvidia/views.py"}
 
     def test_domain_modules_import_no_gtk_at_module_level(self):
@@ -78,6 +78,49 @@ class LayeringTest(unittest.TestCase):
                 if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
                         ("ui", ".ui", "..ui", "...ui")) and node.level:
                     offenders.append(rel)
+        self.assertEqual(offenders, [])
+
+    def test_graphs_are_drawn_only_by_the_shared_chart_code(self):
+        """One chart family (Idea 3): no module outside ui/ draws its own
+        graph (a Gtk.DrawingArea subclass or a draw function)."""
+        offenders = []
+        for rel, text in modules():
+            if rel.startswith("ui/"):
+                continue
+            for n, line in enumerate(text.splitlines(), 1):
+                code = line.split("#", 1)[0]
+                if "DrawingArea" in code or "set_draw_func" in code:
+                    offenders.append(f"{rel}:{n}: {line.strip()}")
+        self.assertEqual(offenders, [])
+
+    def test_graph_preferences_come_through_chart_settings(self):
+        """One chart family (Idea 4): only ui/chart_settings.py applies the
+        graph preferences to graphs (Preferences sets them; domain code may
+        read the time range to size histories)."""
+        keys = re.compile(r"[\"'](show-graph-axes|show-graph-grids|graph-time-range)[\"']")
+        allowed = {"ui/chart_settings.py", "ui/dialogs/preferences.py"}
+        offenders = []
+        for rel, text in modules():
+            is_view = rel.startswith("ui/") or (rel.startswith("gpu/")
+                                                and rel.endswith("views.py"))
+            if not is_view or rel in allowed:
+                continue
+            for n, line in enumerate(text.splitlines(), 1):
+                if keys.search(line.split("#", 1)[0]):
+                    offenders.append(f"{rel}:{n}: {line.strip()}")
+        self.assertEqual(offenders, [])
+
+    def test_vendor_views_build_only_chart_cards(self):
+        """GPU detail tabs build charts from ChartCard and ChartGrid only
+        (Idea 4), so every tab looks and behaves the same."""
+        widgets = re.compile(r"\b(Graph|GraphBox|GraphPane|LegendChart|DoubleGraphBox)\(")
+        offenders = []
+        for rel, text in modules():
+            if not rel.startswith("gpu/"):
+                continue
+            for n, line in enumerate(text.splitlines(), 1):
+                if widgets.search(line.split("#", 1)[0]):
+                    offenders.append(f"{rel}:{n}: {line.strip()}")
         self.assertEqual(offenders, [])
 
     def test_every_module_has_a_docstring(self):

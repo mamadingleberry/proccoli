@@ -7,7 +7,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from proccoli.core.settings import Settings  # noqa: E402
-from proccoli.ui.axes import (format_span, history_span_s, is_percent_graph,  # noqa: E402
+from proccoli.ui.axes import (format_span, is_percent_graph,  # noqa: E402
                              percent_ticks, time_ticks)
 
 
@@ -51,12 +51,15 @@ class TimeTicksTest(unittest.TestCase):
                          ["0 s", "45 s", "1 min", "1.5 min", "10 min", "1.5 h"])
 
     def test_span_follows_settings(self):
-        s = Settings.for_tests({"graph-time-range": "1-minute", "refresh-speed": "normal"})
-        self.assertEqual(history_span_s(s), 60.0)
-        s.set("refresh-speed", "very-fast")
-        self.assertEqual(history_span_s(s), 60.0)        # M58: the time range holds
+        from proccoli.ui.chart_settings import ChartSettings
+        s = Settings.for_tests({"graph-time-range": "1-minute", "update-interval": "1-second"})
+        charts = ChartSettings(s)
+        self.assertEqual(charts.span_s, 60.0)
+        s.set("update-interval", "5-seconds")
+        self.assertEqual(charts.span_s, 60.0)            # M58: the time range holds
         s.set("graph-time-range", "10-minutes")
-        self.assertEqual(history_span_s(s), 600.0)
+        self.assertEqual(charts.span_s, 600.0)
+        charts.release()
 
 
 class WhichGraphsTest(unittest.TestCase):

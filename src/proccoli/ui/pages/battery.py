@@ -11,7 +11,7 @@ from .device import DevicePage
 
 class BatteryPage(DevicePage):
     def __init__(self, monitor: BatteryMonitor, settings) -> None:
-        super().__init__(monitor, settings, PageKind.BATTERY, sort_name=monitor.name)
+        super().__init__(monitor, settings, PageKind.BATTERY)
         usage = self.add_group("Usage")
         self.charge = self.graph_box(usage, "Charge", [("usage", "%")])
         self.power = self.graph_box(usage, "Power Usage", [("power", "W")], max_value=None,

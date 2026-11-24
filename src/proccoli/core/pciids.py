@@ -49,6 +49,67 @@ class PciIds:
         return self.devices.get((vendor_id, device_id))
 
 
+class OnDemandPciIds:
+    """The same lookups as ``PciIds``, without parsing the whole file
+    (about 3.6 MB of Python objects): each vendor's block is scanned for
+    when first asked, and only the answers are kept (lightweight mode)."""
+
+    def __init__(self, path: Optional[str]) -> None:
+        self.path = path
+        self._vendors: dict[int, Optional[str]] = {}
+        self._devices: dict[tuple[int, int], Optional[str]] = {}
+
+    def _scan(self, vendor_id: int, device_id: Optional[int] = None) -> None:
+        self._vendors.setdefault(vendor_id, None)
+        if device_id is not None:
+            self._devices.setdefault((vendor_id, device_id), None)
+        if not self.path:
+            return
+        wanted = f"{vendor_id:04x} "
+        dev = f"\t{device_id:04x} " if device_id is not None else None
+        with open(self.path, encoding="utf-8", errors="replace") as fh:
+            inside = False
+            for line in fh:
+                if line.startswith("C "):
+                    return
+                if not line.startswith("\t") and not line.startswith("#"):
+                    if inside:
+                        return                  # the next vendor: done
+                    if line.startswith(wanted):
+                        self._vendors[vendor_id] = line[5:].strip()
+                        inside = True
+                        if dev is None:
+                            return
+                elif inside and dev is not None and line.startswith(dev):
+                    self._devices[(vendor_id, device_id)] = line[len(dev):].strip()
+                    return
+
+    def vendor(self, vendor_id: Optional[int]) -> Optional[str]:
+        if vendor_id is None:
+            return None
+        if vendor_id not in self._vendors:
+            self._scan(vendor_id)
+        return self._vendors[vendor_id]
+
+    def device(self, vendor_id: Optional[int], device_id: Optional[int]) -> Optional[str]:
+        if vendor_id is None or device_id is None:
+            return None
+        if (vendor_id, device_id) not in self._devices:
+            self._scan(vendor_id, device_id)
+        return self._devices[(vendor_id, device_id)]
+
+
+def find(path: Optional[str] = None) -> Optional[str]:
+    for p in ([path] if path else DEFAULT_PATHS):
+        if p and os.path.isfile(p):
+            return p
+    return None
+
+
+def on_demand(path: Optional[str] = None) -> OnDemandPciIds:
+    return OnDemandPciIds(find(path))
+
+
 @functools.lru_cache(maxsize=4)
 def load(path: Optional[str] = None) -> PciIds:
     """The parsed database (cached), or an empty one if none is installed."""

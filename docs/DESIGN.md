@@ -54,7 +54,7 @@ MainWindow (AdwApplicationWindow, min 360×240)
     └── content: GtkStack #content_stack (one page per sidebar entry)
         └── each page: AdwToolbarView
             ├── AdwHeaderBar (flat; sidebar toggle shown when collapsed —
-            │                 Proccoli: logo + burger instead, M52;
+            │                 Proccoli: the logo (its main menu) instead, M52, M61;
             │                 search toggle on Apps/Processes)
             └── page widget (ResApplications, ResProcesses, ResCPU, ResMemory,
                              ResGPU, ResDrive, ResNetwork, ResBattery, ResNPU)
@@ -87,7 +87,7 @@ edits niceness, priority and CPU affinity.
 
 **Preferences** (backed by GSettings `net.nokyan.Resources`) has four pages:
 
-- *General:* unit prefix, network bits, temperature unit, refresh speed,
+- *General:* unit prefix, network bits, temperature unit, update interval,
   graph grids, graph data points, sidebar details, descriptions and meter
   type, normalize CPU usage
 - *Apps:* column toggles
@@ -141,7 +141,7 @@ swapped for a detailed one when a backend can provide it.
 | Toolkit | GTK ≥ 4.10, libadwaita ≥ 1.5 | `AdwOverlaySplitView`, `AdwBreakpoint`, `AdwToolbarView` (1.4) and `AdwDialog`, `AdwPreferencesDialog`, `AdwAboutDialog` (1.5). Ubuntu 24.04 ships 1.5 (with GTK 4.14 and GLib 2.80). `AdwShortcutsDialog` (1.8) is used when present. |
 | Newer APIs | Only through `ui/compat.py` or a `hasattr` check | Ubuntu 24.04 is the floor and is tested on (M53). `compat` has `spinner` (`Adw.Spinner`, 1.6, else `Gtk.Spinner`), `ensure_font_dpi` (libadwaita 1.5's `sp` breakpoints need a font DPI) and `without_css_variables` (GTK < 4.16 can't read `:root` variables). `app.signal_adder` picks GLib's Unix signal function. `test_static.PlatformFloorTest` rejects unguarded newer libadwaita classes. |
 | UI definitions | Built in Python (not `.ui` files) | Simple to review and test, and avoids a GResource compile step. `.ui` files can be added later. |
-| Graph drawing | Cairo `Gtk.DrawingArea` | Ported from intel_gpu_top_gui's `GraphView` (crisp lines, adaptive axes). |
+| Graph drawing | Cairo `Gtk.DrawingArea`, one chart family in `ui/` | Pixel snapping and the hover crosshair come from intel_gpu_top_gui's `GraphView`; since M60 every graph, the Intel Details tab's included, is the shared `Graph` (§9.1). |
 | Settings | GSettings with an installed schema, plus an in-memory fallback | Mirrors Resources. The fallback makes running from a source checkout and testing easy. |
 | Dependency injection | By hand, in one composition root (`context.py`, §4.2) | No framework needed. Every OS service sits behind `System` and every file read behind `SysRoot`, so tests swap in fakes. |
 | Data collection | `/proc` and `/sys` reads on the main loop, plus subprocess readers for streaming tools | `/proc` reads are cheap. `intel_gpu_top` and the privileged helper stream JSON on a worker thread and hand results to the main loop with `GLib.idle_add`. |
@@ -196,7 +196,7 @@ objects tell the UI about changes through GObject signals (`device-added`,
 `updated`, `detail-changed`, `elevated-io`). They never import Gtk at module
 level, which `tests/test_static.py` enforces. The exceptions are the views
 that ship with a detail backend (`DetailBackend.create_views()` and the
-Intel backend's `views.py`, `graph.py`, `grid.py`, `clients.py`). They're
+Intel backend's `views.py`, `clients.py`, the NVIDIA `views.py`). They're
 imported lazily, so the domain stays testable without a display.
 
 ### 4.1 Package layout
@@ -212,18 +212,22 @@ proccoli/
 │   ├── context.py             # the composition root (§4.2)
 │   ├── core/       system.py  sysroot.py  settings.py  ticker.py  history.py  units.py
 │   │               pciids.py  jsonstream.py  runner.py  privileged.py  palette.py
-│   │               styles.py  applog.py  trust.py  watchdog.py  statslog.py
+│   │               styles.py  applog.py  trust.py  watchdog.py
+│   │               history_db.py  history_store.py  history_export.py   # §13.2
+│   │               profile.py                                            # §13.1
+│   │               windows.py                                            # §13.5
 │   ├── devices/    base.py  manager.py  cpu.py  memory.py  drive.py  network.py  nm.py
 │   │               battery.py  demo.py
 │   ├── gpu/        info.py  backend.py  registry.py  detect.py  controller.py  fdinfo.py
 │   │               generic_drm.py
-│   │               intel_gpu_top/  backend.py  history.py  views.py  graph.py  grid.py  clients.py
+│   │               intel_gpu_top/  backend.py  history.py  views.py  labels.py  clients.py
 │   │               nvidia/         query.py  backend.py  views.py
 │   ├── processes/  model.py  monitor.py  apps.py  actions.py  top.py
 │   ├── helper/     proccoli_helper.py    # installed as libexec/proccoli/proccoli-helper (root)
 │   └── ui/         window.py  window_state.py  sidebar.py  page.py  style.py  theme.py
 │                   layout.py  elevation.py  sidebar_order.py  sidebar_fields.py  axes.py
 │                   sidebar_visibility.py  sidebar_style.py  compat.py  series_visibility.py
+│                   hover.py  export.py  summaries.py  lazy.py
 │       ├── widgets/  graph.py  graph_box.py  double_graph_box.py  info_row.py  meter.py
 │       │             app_icon.py  top_table.py  legend.py  legend_chart.py
 │       ├── pages/    device.py  table.py  factory.py  cpu.py  memory.py  drive.py  network.py
@@ -411,8 +415,9 @@ classDiagram
   (`helper/proccoli_helper.py`) is a standalone script with strict argument
   validation and no shell. Only a root-owned installed helper is used, and
   processes are named by PID *and* start time (§11, *Security*).
-- **`Ticker`:** one app-wide timer at the *Refresh Speed* setting (4 s, 2 s,
-  1 s, 0.5 s or 0.25 s), so all graphs line up in time.
+- **`Ticker`:** one app-wide timer at the *Update Interval* setting
+  (`update-interval`: 1, 2, 3, 5 or 10 s; M65 replaced *Refresh Speed*,
+  whose 0.5 and 0.25 s went too fast), so all graphs line up in time.
 - **`Settings`:** GSettings when the schema is installed or can be compiled
   from the checkout, otherwise a dictionary with the same defaults and
   validation. A source checkout always uses its own compiled schema first.
@@ -748,8 +753,9 @@ classDiagram
   - `gpu-details-disabled` lists PCI slots whose details are turned off.
   - `gpu-elevate` starts details with pkexec at launch instead of waiting
     for the user.
-  - `intel-gpu-top-interval` and `intel-gpu-top-history` are the Details
-    tab's update interval and history length, as in intel_gpu_top_gui.
+  - `intel-gpu-top-interval` is the Details tab's update interval, as in
+    intel_gpu_top_gui. How much time its charts show is the app's
+    `graph-time-range`, like every other graph (M60).
 
 **Detail lifecycle.** A password prompt never appears unless the user asks
 for it, either by clicking, or by turning on "Start with administrator
@@ -804,7 +810,9 @@ classDiagram
     }
     class IntelGraphsView {
         <<Adw.BreakpointBin>>
-        caption + GraphGrid of GraphSections
+        <<ChartGridView>>
+        caption + ChartGrid of ChartCards
+        (a LegendChart per group, M60; cards M63)
         compact below 720sp high / 600sp wide
     }
     class IntelClientsView {
@@ -812,7 +820,7 @@ classDiagram
     }
     class IntelDetailHeader {
         pause toggle + menu: Update Interval,
-        History Length, Export as CSV, Clear History
+        Export as CSV, Clear History
     }
     GpuPage *-- GpuOverview
     GpuPage *-- "0..n" DetailHost : one per TabSpec
@@ -1060,9 +1068,14 @@ classDiagram
   (`System.activate_app`): D-Bus-activatable apps (most GNOME apps) get
   `org.freedesktop.Application.Activate`; apps declaring
   `SingleMainWindow=true` are relaunched, which shows their window. Others
-  (e.g. Firefox, VS Code) would open a second window if relaunched, so the
-  item isn't offered for them, nor for System Processes or a multi-row
-  selection.
+  (e.g. Firefox, VS Code) would open a second window if relaunched. Since
+  M67 (§13.5) `core.windows.WindowSwitcher` decides: Proccoli's GNOME
+  Shell extension first (any app with a window), then asking the app
+  (now with an activation token, and also for running GApplications that
+  own their app ID on the bus), then `wmctrl` in an X11 session. The item
+  is offered for every single real app; one nothing can reach gets a
+  toast with *Set Up…* (Preferences). Not for System Processes or a
+  multi-row selection.
 - **Actions:** `ProcessActions` acts directly first (the user's own
   processes). Only what was denied with EPERM goes to the helper, which asks
   for authentication once. Messages name the app ("Ended Firefox"), not the
@@ -1113,7 +1126,7 @@ classDiagram
         +create(monitor) ResourcePage
     }
     class PageContainer {
-        header bar (logo + burger when the sidebar isn't beside it) around a page;
+        header bar (the logo, i.e. the main menu, when the sidebar isn't beside it) around a page;
         the page's title_widget() replaces the title
     }
     class MainWindow {
@@ -1183,6 +1196,14 @@ classDiagram
         +plot_rect(w, h)
         +set_aspect(ratio, min, max)
         +set_entry_color(i) / set_entry_base(i)
+        +set_hover(on, value_format)
+        +set_names(names)
+        +set_axis_format(fmt, gutter)
+        +nice_max
+    }
+    class AxisGutter {
+        shared y-label width (ui/axes.py)
+        +report(graph, width)
     }
     class GraphPane {
         graph + title + info line
@@ -1203,11 +1224,74 @@ classDiagram
         <<Gtk.Stack>>
         area chart (default) | progress bar
     }
+    class LegendChart {
+        <<GraphBox>>
+        +set_lines(series, names)
+        +set_values(texts)
+        +legend: Legend
+    }
+    class ChartCard {
+        <<Gtk.Box .card>>
+        +set_lines / set_values / set_info
+        +set_compact(on)
+        +graph, min_height
+        legend only for two or more lines
+    }
+    class ChartGrid {
+        <<Gtk.Widget>>
+        columns from the width (ui/layout.py)
+    }
+    class ChartGridView {
+        <<Adw.BreakpointBin>>
+        caption + ChartGrid + placeholder
+        compact on short or narrow windows
+    }
+    class ChartSettings {
+        <<ui/chart_settings.py>>
+        +bind(graph, PAGE|CARD|METER, rates_in_bits, gutter)
+        +unbind(graph) / release()
+        +set_entry_base(i)
+        +format_value(v, unit) / format_reading(graph, i, v)
+        axes, grids, time span, units: live
+    }
     GraphPane *-- Graph
     GraphBox *-- GraphPane
+    LegendChart --|> GraphBox
+    ChartCard *-- LegendChart
+    ChartGridView *-- ChartGrid
+    ChartGrid o-- "n" ChartCard
     DoubleGraphBox *-- "2" GraphPane
     Meter *-- Graph
+    Graph o-- AxisGutter
+    ChartSettings ..> Graph : applies preferences
 ```
+
+- **One chart family (M63, Idea 4):** every graph gets its preferences
+  from a `ChartSettings` (`ui/chart_settings.py`): *Show Graph Axes*,
+  *Show Graph Grids*, *Graph Time Range* and the unit preferences, now
+  and on every change. Each owner has its own and releases it with its
+  graphs: `DevicePage` (`add_graph` binds `PAGE` graphs, with the page's
+  `AxisGutter` and, on network pages, *Show Network Speeds in Bits*),
+  `OverviewPage` (`CARD`: axes, span, hover; no grid), the sidebar
+  (`METER`: axes through `Meter.set_show_axes`, span) and each GPU page's
+  Details tabs (`DetailServices.charts`, made per set of views and
+  released when they're dropped; it carries the GPU entry's colour, so
+  the tabs start at it like the Overview tab). `PAGE` graphs also get a
+  value axis and `nice_max` in the user's units, the hover box in them
+  (`format_reading`), and the owner's entry colour (`set_entry_base`).
+  Legends and info lines format through `ChartSettings.format_value`, so
+  *Data Unit Prefix* and *Temperature Unit* apply everywhere. The GPU
+  Details tabs build only `ChartCard`s in a `ChartGridView`; detail
+  sources keep readings in base units (B/s, Hz, W, °C) at their history
+  boundary (`intel_gpu_top.history.to_base_unit`, the NVIDIA sample's
+  `history_values`). `tests/test_static.py` checks that only
+  `chart_settings.py` (and Preferences) name the graph keys in views, and
+  that `gpu/` builds no `Graph`, `GraphBox` or `LegendChart` itself.
+- **One rule for legends:** a chart of two or more lines has a legend
+  (`LegendChart`, `ChartCard`); a one-line card has none, and its value
+  goes in the info line. Device pages keep Resources' look: graph rows in
+  preference groups (`GraphBox`, `DoubleGraphBox`, `LegendChart` for the
+  per-CPU chart).
 
 - **Graph:** rounded corners, a fill under the line in the first palette
   colour, an optional grid, and lines snapped to device pixels. Colours
@@ -1221,12 +1305,25 @@ classDiagram
   far as they fit, always 0 and 100) with tick marks, and a bottom row of
   time labels with ticks: round steps (`nice_step`: 10 s, 1 min, …) back
   from "now" at the right edge, one unit per axis. The span is the
-  *Graph Time Range* (`graph-time-range`, `history_span_s`; M58), followed
-  live. Small
+  *Graph Time Range* (`graph-time-range`; M58), followed
+  live through `ChartSettings` (below). Small
   graphs use a smaller font, and sidebar charts grow from 36 to 52 px to
   fit the labels. `show-graph-axes` (Preferences → *Show Graph Axes*, on
-  by default) turns them off. Graphs of rates and temperatures have no
-  axes. The Intel Details tab keeps intel_gpu_top_gui's own axes.
+  by default) turns them off. Since M63 every page graph with a unit has
+  a value axis too (an `axis_format`, M60: drive and network speeds,
+  power, temperatures, GPU clocks, bandwidth): the y labels are values
+  (`value_ticks`: 0 to the maximum in 4, 2 or 1 steps, as many as fit) in
+  the user's units (`core.units.format_axis_label`: "2 GB/s", "1.5 GHz",
+  "60 °C"). An `AxisGutter` shared by a page's graphs (or a Details tab's)
+  gives them one y-label width, so the plots line up whatever their
+  units; `nice_max` rounds an automatic maximum in the unit its labels
+  show (`nice_max_in_units`: "5 GiB/s", not "4.88").
+- **Hover** (M60; `ui/hover.py` holds the arithmetic): page graphs and
+  Overview cards (every `NORMAL` graph; not the sidebar's) draw a
+  crosshair at the pointer, a marker on each shown line, and a box with
+  the time ("12 s ago", from the *Graph Time Range*) and each line's name
+  and value (`value_format`, or by unit). `set_hover(False)` turns it
+  off. Ported from intel_gpu_top_gui's `GraphView._draw_hover`.
 - **Graphs fill the page** (`ui/layout.py` holds the arithmetic), on
   landscape and portrait screens alike (M36):
   - *Width:* the content column is clamped at `MAX_CONTENT_WIDTH` (1600
@@ -1272,10 +1369,13 @@ classDiagram
     name, the value on hover. The area doesn't depend on the legend, so
     the choice settles; the full legend's height is measured once per
     width.
-  - *GPU Details:* intel_gpu_top_gui's `GraphGrid` shares out the spare
-    height and picks its column count from the width; spare height now
-    stops at `graph_cap(column width)` (same limits), passing what a
-    capped graph can't take to the others.
+  - *GPU Details:* `ChartGrid` (`ui/widgets/chart_grid.py`, M63; was
+    intel_gpu_top_gui's `GraphGrid`, now used by both Details tabs)
+    shares out the spare height and picks its column count from the
+    width (`ui/layout.py`: `split_columns`, `extra_heights`,
+    `layout_quality`, `choose_columns`); spare height stops at
+    `graph_cap(column width)` (same limits), passing what a capped graph
+    can't take to the others.
 
 ```mermaid
 flowchart TD
@@ -1390,24 +1490,26 @@ classDiagram
 
 - Minimum size 360×240. The `AdwBreakpoint` at `max-width: 780sp` collapses
   the split view: the sidebar becomes an overlay.
-- **Sidebar modes, burger top left (M46, M52, M54):** the sidebar is
+- **Sidebar modes, main menu top left (M46, M52, M54, M61):** the sidebar is
   *Full*, *Icons Only* or *Hidden*, at any width, picked from the main
   menu's *Sidebar* section (radio items of the stateful `win.sidebar-mode`
   action). F9 shows and hides it (`win.toggle-sidebar`), keeping the
-  style. (Until M52 a toggle button beside the burger did this, and until
-  M54 a *Show Sidebar* check item.) The main menu ("burger") always stays
-  at the window's top left:
-  - *The corner (M47):* the app's logo (`app_logo_button`, 24 px, a flat
-    button for `app.about`) sits in the top-left corner, with the burger
-    right beside it: *logo, burger*, and nothing else, in both places
-    below.
+  style. (Until M52 a toggle button beside the main menu did this, and
+  until M54 a *Show Sidebar* check item.) The main menu always stays at
+  the window's top left:
+  - *The corner (M47, M61):* the app's logo is the main menu's button
+    (`main_menu_button`: a flat `Gtk.MenuButton` with the 24 px logo as its
+    child, `primary`, so F10 opens it too), alone in the top-left corner
+    in both places below. Until M61 the logo was a separate button for
+    `app.about`, with a "burger" (≡) menu button beside it; *About
+    Proccoli* is now the menu's first item, in a section of its own.
   - *Sidebar beside the content:* the sidebar's header starts with the
-    logo and the burger (`main_menu_button`).
+    logo.
   - *Sidebar hidden, or folded into an overlay on a narrow window:* every
-    `PageContainer` header starts with its own logo and burger
-    (`start_controls`). They show exactly when
-    `header_controls_visible(show_sidebar, collapsed)`, i.e. when the
-    sidebar isn't beside the content. All burgers share one menu model.
+    `PageContainer` header starts with its own logo (`start_controls`).
+    It shows exactly when `header_controls_visible(show_sidebar,
+    collapsed)`, i.e. when the sidebar isn't beside the content. All the
+    logos share one menu model.
   - *F9 (M52):* `SidebarVisibility.action` is a stateful boolean action
     with no parameter. Its state follows `show-sidebar` (any change: menu,
     F9, the overlay closing after a page is picked, the window
@@ -1415,7 +1517,7 @@ classDiagram
     goes through `change-state`, which sets `show-sidebar`).
   - *The modes (M54):* `SidebarVisibility.mode_action` (`sidebar-mode`,
     a string parameter and state) backs the *Sidebar* section's three
-    radio items, after *Go To*. Its state is `mode_of(show-sidebar,
+    radio items, after *About Proccoli* and *Go To*. Its state is `mode_of(show-sidebar,
     sidebar-style)` and follows both; picking a mode applies
     `choose(mode, style)`: *Hidden* only hides, so the style survives
     and F9 brings it back. Two settings rather than one three-way key
@@ -1426,8 +1528,9 @@ classDiagram
     `StackSidebar.set_compact` (every row shows just its icon, centred,
     with no minimise button; its tooltip is `compact_tooltip`: name,
     description, usage line) and sets the split view's minimum and
-    maximum sidebar width to `rail_width(header minimum)`, so the logo and
-    burger still fit (about 100 px). *Full* restores the split view's own
+    maximum sidebar width to `rail_width(header minimum)`, so the logo
+    still fits (at least `MIN_RAIL_WIDTH`, 56 px; about 100 px while the
+    burger was there). *Full* restores the split view's own
     widths. Each entry's own choices (minimised, hidden parts) are kept
     for when it's full again. Right-click menus and dragging still work.
     Preferences → Sidebar → *Style* sets the same key.
@@ -1448,16 +1551,16 @@ stateDiagram-v2
     state "Narrow, overlay open" as NO
     [*] --> WS: sidebar-shown = true
     [*] --> WH: sidebar-shown = false
-    WS --> WH: ≡ → Sidebar → Hidden / F9 (saves false)
-    WH --> WS: ≡ → Sidebar → Full or Icons Only / F9 (saves true)
+    WS --> WH: logo → Sidebar → Hidden / F9 (saves false)
+    WH --> WS: logo → Sidebar → Full or Icons Only / F9 (saves true)
     WS --> NC: window narrows
     WH --> NC: window narrows
-    NC --> NO: ≡ → Sidebar → Full or Icons Only / F9
+    NC --> NO: logo → Sidebar → Full or Icons Only / F9
     NO --> NC: pick a page / F9 / click outside
     NC --> WS: widens, sidebar-shown = true
     NC --> WH: widens, sidebar-shown = false
-    note right of WS: logo + burger in the sidebar header; full entries or icons only (sidebar-style)
-    note right of WH: logo + burger in every page header
+    note right of WS: the logo (main menu) in the sidebar header; full entries or icons only (sidebar-style)
+    note right of WH: the logo (main menu) in every page header
 ```
 
 ```mermaid
@@ -1496,9 +1599,10 @@ classDiagram
         F9 → win.toggle-sidebar
     }
     class primary_menu {
+        About Proccoli (first, M61)
         Go To ›
         Sidebar: ◉ Full ○ Icons Only ○ Hidden (win.sidebar-mode)
-        Show All Details… / Preferences / Shortcuts / About
+        Show All Details… / Export Statistics… (M62) / Preferences / Shortcuts
     }
     MainWindow --> SidebarVisibility : on_style = _apply_sidebar_style
     MainWindow --> primary_menu
@@ -1530,7 +1634,7 @@ sequenceDiagram
     participant A as win.go-to (state: page ID)
     S-->>W: entries-changed (add, remove, move, replace)
     W->>M: fill_goto_menu(display_order, titles, descriptions)
-    Note over M: user picks "Memory" in ≡ → Go To
+    Note over M: user picks "Memory" in the logo's menu → Go To
     M->>A: activate("memory")
     A->>W: select_page("memory")
     W->>A: set_state("memory") (from _on_visible_page)
@@ -2128,7 +2232,7 @@ sequenceDiagram
     W->>W: page = ctx.pages.create(monitor) (GPU: GpuPage with the detail TABS)
     W->>W: add PageContainer + StackSidebarItem
     W->>W: show_overview()
-    A->>T: start(refresh speed)
+    A->>T: start(update interval)
 ```
 
 ### 10.2 Each tick
@@ -2165,18 +2269,31 @@ every 5 s.
 
 - **Settings schema** (`io.github.mamadingleberry.Proccoli`) mirrors
   Resources' keys: window size and maximised state, temperature unit, unit
-  base, refresh speed, virtual drives and network interfaces, sidebar
+  base, refresh speed (replaced by `update-interval`, M65), virtual drives
+  and network interfaces, sidebar
   details, description and meter type, network bits, every `apps-show-*` and
   `processes-show-*` column, logical CPUs, graph grids, sort column and
   order, normalize CPU usage, detailed priority. Proccoli adds:
   - `graph-time-range` (M58, replacing Resources' *graph data points*):
-    how much time graphs show (30 s, 1, 2, 5 or 10 minutes; default 1
-    minute). `core.ticker.graph_points(settings)` turns it into a number
-    of samples at the current refresh speed, so changing the speed no
-    longer changes the time a graph covers; `DeviceManager` resizes every
-    history when either changes
-  - `stats-log` (on) and `stats-log-max-size` (KiB, default 4096): the
-    statistics files (below)
+    how much time graphs show (30 s; 1, 2, 5, 10 or 30 minutes; 1 or 6
+    hours; 1 day; default 1 minute). `core.ticker.graph_plan(settings)`
+    turns it into a number of points at the current update interval (at
+    most 1200, averaging samples for long ranges, M64), so changing the
+    speed no longer changes the time a graph covers; `DeviceManager`
+    resizes every history when either changes
+  - `lightweight` (M66, Idea 1): Lightweight Mode at the next start
+    (§13.1); `--lightweight` turns it on for one run
+  - `update-interval` (M65, Idea 6): how often Proccoli takes readings,
+    `1-second` (default), `2-seconds`, `3-seconds`, `5-seconds` or
+    `10-seconds` (`core.ticker.UPDATE_INTERVALS_MS`). It replaced
+    `refresh-speed`, which stays in the schema only so `settings.migrate`
+    can carry an old choice over once at start-up (very slow → 5 s, slow →
+    2 s, the rest → 1 s; then it's reset). Old nicks in
+    `intel-gpu-top-interval` are migrated the same way, and
+    `ticker.interval_for` reads either kind
+  - `history` (on), `history-max-size` (MiB, default 512, 16–4096) and
+    `history-detail-hours` (default 24, 1–168): the history database
+    (§13.2, M62). They replaced M58's `stats-log` and `stats-log-max-size`
   - `color-scheme`: the style: `system` (follow the desktop), `light`,
     `dark`, `sand`, `sky`, `twilight` or `midnight`
   - `palette`: one of the eight colour palettes (§9.3), `system` by default
@@ -2189,15 +2306,17 @@ every 5 s.
     processes, `cpu` (default) or `memory` (§9.6)
   - `sidebar-order`, `sidebar-minimized` and `sidebar-hidden-fields`: the
     user's sidebar (§9.2)
-  - `show-graph-axes`: axes on percentage graphs (§9.1), on by default
+  - `show-graph-axes`: axes on graphs (§9.1; percentages, and since M63
+    every page graph with a unit), on by default
   - `log-level`, `log-max-size`, `log-performance-interval`: the
     diagnostics log (below)
   - `gpu-details-disabled`: PCI slots whose detailed statistics are off
   - `gpu-view`: the GPU page's last tab (overview, details, processes)
   - `gpu-elevate`: start the detail source through pkexec at launch
     instead of waiting for the user to ask
-  - `intel-gpu-top-interval` and `intel-gpu-top-history`: the Details tab's
-    own update interval (empty = the refresh speed) and history length
+  - `intel-gpu-top-interval`: the Details tab's own update interval
+    (an `update-interval` nick; empty = the app's). Its history length was
+    `intel-gpu-top-history` until M60; it now follows `graph-time-range`
 - **Diagnostics log** (`core/applog.py`): standard practice on Linux, a
   rotating file at `$XDG_STATE_HOME/proccoli/proccoli.log`
   (`~/.local/state/proccoli/`). `FileLog` attaches a `RotatingFileHandler`
@@ -2215,37 +2334,15 @@ every 5 s.
   sets all three and opens the log folder. `Application(log_file=...)`
   and `PreferencesDialog(launcher=...)` are injectable, so tests never
   write to the real home. Log files are private (0600, folder 0700).
-- **Statistics files** (`core/statslog.py`, M58): every reading Proccoli
-  shows, kept on disk. (To be replaced by a SQLite history with summaries
-  and an export command: §13.2, an idea not built yet.) `StatsLog(devices, settings, directory, wall_clock)`
-  follows each monitor's `updated` signal and writes one row per refresh
-  and device to `$XDG_STATE_HOME/proccoli/stats/<device>.csv`:
-
-  ```
-  time_utc,usage_percent,swap_percent,used_bytes,total_bytes,swap_used_bytes,swap_total_bytes
-  2026-11-24T05:05:15.244Z,18.588,0,6141931520,33042542592,0,8589930496
-  ```
-
-  - **Standards:** RFC 4180 CSV (UTF-8, `\r\n`, one header row);
-    ISO 8601 UTC times with milliseconds (`core.units.iso_utc`, shared
-    with the log); SI units spelled out in the column names
-    (`column_name`: `%` → `percent`, `B/s` → `bytes_per_second`, `°C` →
-    `celsius`); an empty field for no reading; plain decimals.
-  - **What:** `Snapshot.stats_values()` / `stats_units()`, by default the
-    graphed readings (`history_values`); Memory adds used/total bytes of
-    memory and swap, GPUs their memory bytes and memory clock.
-  - **Size:** `RotatingCsv` caps each file at `stats-log-max-size` KiB and
-    keeps one older file (`.csv.1`), so a device never takes more than
-    twice that. When a device's columns change (its per-CPU readings
-    appear), a new file starts, so every file has one valid header; a
-    file from an earlier run is continued when its header matches.
-  - **Privacy:** files 0600, folder 0700. **Cost:** rows are buffered (10
-    per file) and written on quit; at 1 s, 24 CPUs make ~140 bytes a
-    second, so 4 MiB is about 8 hours.
-  - **Wiring:** `Application(stats_dir=...)` starts it after the context
-    (never in `--demo`); Preferences → General → *Statistics Files* has
-    the switch, the size and *Open Folder*. The clock and folder are
-    injected, so tests write to a temporary folder at fixed times.
+- **History database** (`core/history_db.py`, `core/history_store.py`,
+  M62): every reading Proccoli shows, kept in
+  `$XDG_STATE_HOME/proccoli/history.sqlite3` and summarised as it ages;
+  §13.2 has the design. It replaced M58's statistics files (one CSV per
+  device in `stats/`), which are imported once and removed. Their format
+  lives on as the export format. `Snapshot.stats_values()` /
+  `stats_units()` say what's recorded: by default the graphed readings
+  (`history_values`); Memory adds used/total bytes of memory and swap,
+  GPUs their memory bytes and memory clock.
 - **Stall watchdog** (`core/watchdog.py`, M44): a frozen window logs
   nothing, because the main loop that would write is the thing that's
   stuck. `Application` starts a `StallWatchdog`: the main loop beats every
@@ -2391,8 +2488,46 @@ becomes the next milestone when picked up.
 
 ### 13.1 Lightweight mode (minimal memory)
 
-*Was the planned Milestone 56. PLAN.md, Idea 1, has the steps and the
-measurements behind them.*
+*Built in Milestone 66 (PLAN.md has the steps, the measurements and the
+deviations). As built:*
+
+- **`core/profile.py`:** `Profile.full()` / `Profile.lightweight()`,
+  chosen once by `Application` (`lightweight` setting or
+  `--lightweight`). Everything gets `ProfileSettings`: the same store, with
+  the profile's **pins** answering some keys (time range ≤ 1 minute, no
+  axes or grids, no per-CPU chart, progress-bar meters, Follow System and
+  the System palette, log ≤ warnings, no performance lines, table columns
+  cut to name, ID, processor and memory), including in change
+  notifications. So pages, charts, the theme and the log follow the mode
+  without knowing it; Preferences greys pinned rows out. The user's own
+  choices stay in the store and come back when the mode is off.
+- **Flags** for what has no preference: `lazy_pages` (the window adds a
+  `StubPage` per device and for Apps and Processes; `LazyPages` builds
+  the real page on first visit and drops it 60 s after it's left,
+  through `replace_page`), `overview_charts`/`overview_tables` (a list of
+  names and readings), `extra_graphs` (`DevicePage.add_graph` draws only
+  the first graph; the others keep title and figures as text),
+  `app_icons` (`ctx.app_icons = None`, `table.shown_column`),
+  `gpu_details` (`GpuController` doesn't start the source and says why),
+  `pci_on_demand` (`pciids.OnDemandPciIds`), `theme_css`,
+  `keep_process_data` (`ProcessMonitor.release` drops the list).
+- **Summaries from monitors** (`ui/summaries.py`): an entry's usage,
+  detail, series and facts come from its monitor alone, so a stub's entry
+  and Overview card look like the built page's (device pages use it too).
+- **Measured** (`tests/ui/mem.py`): about 55 % less private memory at
+  start, about 35 % after visiting every page (freed memory isn't given
+  back by glibc and GTK).
+
+```mermaid
+flowchart LR
+    S["Settings (the store)"] --> P["ProfileSettings<br/>(pins in lightweight)"]
+    F["Profile flags"] --> C["build_context: pci.ids, app icons"]
+    F --> W["MainWindow: LazyPages, Overview list"]
+    P --> Pages["pages, charts, theme, log:<br/>read settings as usual"]
+    W --> L["StubPage ⇄ real page<br/>(replace_page; 60 s after leaving)"]
+```
+
+*The design as planned (Idea 1):*
 
 **Aim:** the basic figures (every device's usage, the process list) with
 as little memory as possible. Measured on Ubuntu 24.04, Proccoli's private
@@ -2476,104 +2611,195 @@ classDiagram
 
 ### 13.2 Metrics history in a SQLite database
 
-*PLAN.md, Idea 2, has the steps and the measurements.* When built, it
-replaces the statistics files (§11, M58): Proccoli no longer writes metric
-files on its own; files appear only when the user exports.
+*Built in Milestone 62 (PLAN.md has the steps, the measurements and the
+deviations from Idea 2).* It replaced the statistics files (§11, M58):
+Proccoli no longer writes metric files on its own; files appear only when
+the user exports.
 
 **Why SQLite** (Python's `sqlite3`, nothing to install), measured on the
-development laptop (61 readings per refresh):
+development laptop (61 readings per refresh) for Idea 2, and again on
+another machine with `tests/ui/history_size.py` (37 readings, M62):
 
 | | Disk at full detail | Private memory | Reading 10 min of 3 devices |
 |---|---|---|---|
 | CSV files (M58) | 452 B/s | ~1 MiB (`csv`) | parse the file tails |
-| SQLite, table per device, scaled integers | **239 B/s** | ~0.9 MiB (512 KiB cache; the library is shared) | **6 ms**, indexed |
+| SQLite, table per device, scaled integers | **239 B/s** (207 B/s with 37 readings) | ~0.9 MiB (512 KiB cache; the library is shared) | **6 ms** (1.5 ms), indexed |
 
 It can also summarise old data in place, which files can't.
 
 ```mermaid
 classDiagram
     direction LR
+    class HistoryDb {
+        <<core.history_db>>
+        +HistoryDb(path, readonly)
+        +ensure_device(id, name, kind) table
+        +ensure_columns(table, readings) columns
+        +insert(table, time_ms, values)
+        +start_session() / end_session()
+        +roll_up(now) / expire() / enforce_cap() / vacuum()
+        +rows(table, columns, start, end, level)
+        +series(table, columns, start, end)
+    }
     class HistoryStore {
         <<core.history_store>>
-        +HistoryStore(devices, settings, path, wall_clock)
-        +record(device_id, snapshot)
+        +HistoryStore(devices, settings, path, version, wall_clock, idle, import_dir)
+        +record(monitor, snapshot)
         +commit()  every 10 s
-        +housekeep()  every 10 min
-        +query(device_id, since, until, level) rows
-        +session_start: int
+        +housekeeping()  every 10 min
+        +backfill(monitor) int
+        +delete() / size_on_disk()
+        +session: int
         +shutdown()
     }
-    class Exporter {
-        +export_session(folder, progress)
-        per-device CSV + export.json
+    class export_session {
+        <<core.history_export>>
+        per-device CSV, minutes CSV, export.json
     }
-    class Backfiller {
-        on graph-time-range / start-up
-        +fill(monitor) on idle
+    class StatisticsExport {
+        <<ui.export>>
+        +start(window)
+        choose_folder, run, launcher injected
     }
+    HistoryStore --> HistoryDb : owns one connection
     HistoryStore ..> DeviceManager : follows updated
-    Exporter ..> HistoryStore : query this session
-    Backfiller ..> HistoryStore : query the range
-    Backfiller ..> History : backfill(rows)
+    HistoryStore ..> History : backfill(times, values)
+    export_session ..> HistoryDb : its own read-only connection
+    StatisticsExport ..> HistoryStore : commit(), session
+    StatisticsExport ..> export_session : on a worker thread
 ```
 
-**Schema** (`$XDG_STATE_HOME/proccoli/history.sqlite3`, 0600; WAL,
-`auto_vacuum=INCREMENTAL`, 512 KiB cache):
+`HistoryDb` is the SQL only (no GObject, no settings, no timers), so the
+roll-ups and the cap are tested on their own. `HistoryStore` decides when:
+it has no timers of its own. Each reading checks whether 10 s have passed
+since the last commit and 10 minutes since the last housekeeping, so tests
+drive it with a fake wall clock and no main loop. It's started by
+`Application` after the context (never in `--demo`); errors are logged
+once and recording stops, never raised into the main loop.
+
+**Schema** (`$XDG_STATE_HOME/proccoli/history.sqlite3`, 0600 in a 0700
+folder; WAL, `synchronous=NORMAL`, `auto_vacuum=INCREMENTAL`, 512 KiB
+cache). All times are UTC epoch milliseconds:
 
 ```sql
-CREATE TABLE device  (id TEXT PRIMARY KEY, tbl TEXT, name TEXT, kind TEXT);
-CREATE TABLE session (start INTEGER PRIMARY KEY, end INTEGER);    -- UTC seconds
+CREATE TABLE meta    (key TEXT PRIMARY KEY, value TEXT);          -- schema version
+CREATE TABLE device  (tbl TEXT PRIMARY KEY, id TEXT, name TEXT, kind TEXT,
+                      minutes_done INTEGER, hours_done INTEGER);  -- roll-up marks
+CREATE TABLE reading (tbl TEXT, col TEXT, name TEXT, unit TEXT, scale INTEGER,
+                      PRIMARY KEY (tbl, col)) WITHOUT ROWID;
+CREATE TABLE session (start INTEGER PRIMARY KEY, end INTEGER, version TEXT);
 -- per device: detail, then the two summary levels
-CREATE TABLE "cpu"   (time INTEGER PRIMARY KEY, usage INTEGER, temperature INTEGER,
-                      cpu0 INTEGER, …);                           -- fixed-point integers
-CREATE TABLE "cpu_m" (time INTEGER PRIMARY KEY, n INTEGER,
-                      usage_avg INTEGER, usage_min INTEGER, usage_max INTEGER, …);
-CREATE TABLE "cpu_h" (…same as cpu_m…);
+CREATE TABLE "d_cpu"   (time INTEGER PRIMARY KEY, usage_percent INTEGER,
+                        temperature_celsius INTEGER, cpu0_percent INTEGER, …);
+CREATE TABLE "d_cpu_m" (time INTEGER PRIMARY KEY, n INTEGER, usage_percent_avg INTEGER,
+                        usage_percent_min INTEGER, usage_percent_max INTEGER, …);
+CREATE TABLE "d_cpu_h" (…same as d_cpu_m…);
 ```
 
-Readings are stored as integers in fixed units (hundredths of a percent
-and of a degree, milliwatts, kHz, bytes): SQLite stores small integers in
-1–2 bytes and zero in none, which is most of the saving. A reading that
-appears later (a GPU's details starting) is `ALTER TABLE … ADD COLUMN`.
+- **Names:** a device's table is `d_` plus its ID in snake case
+  (`gpu-0000:02:00.0` → `d_gpu_0000_02_00_0`; the M58 file name of the
+  same device gives the same table, which is how the import finds it).
+  Columns are the M58 CSV columns (`column_name`: `usage_percent`,
+  `read_bytes_per_second`), so the export header is the column list.
+- **Values** are integers in fixed units (`SCALES`: hundredths of a
+  percent and of a degree, milliwatts, kHz for MHz, bytes, hertz; other
+  units thousandths). SQLite stores small integers in 1–2 bytes and zero
+  in none, which is most of the saving. `reading.scale` keeps the scale,
+  so the file describes itself.
+- **A reading that appears later** (a GPU's details starting, per-CPU
+  readings after the first sample) is `ALTER TABLE … ADD COLUMN` on all
+  three tables, which SQLite does without rewriting them.
+- **A clock set back** overwrites only rows at the same times
+  (`INSERT OR REPLACE`); the roll-ups start from the earlier of their mark
+  and now, so they redo those minutes.
+- **Sessions:** a row per run; each commit moves its end forward, so a
+  crash loses at most 10 s.
 
-**Retention** (rolled up every 10 minutes, so it holds for a Proccoli that
-never quits):
+**Retention** (housekeeping every 10 minutes, so it holds for a Proccoli
+that never quits):
 
 ```mermaid
 flowchart LR
-    R["every refresh"] --> D["detail: 24 h<br/>~20 MiB"]
-    D -->|"each finished minute:<br/>avg / min / max"| M["minutes: 30 days<br/>~25 MiB"]
-    M -->|"each finished hour:<br/>avg / min / max"| H["hours: until the cap<br/>~7.5 MiB a year"]
-    H -->|"over history-max-size (512 MiB)"| X["oldest hours dropped first"]
+    R["every refresh<br/>(buffered, committed every 10 s)"] --> D["detail: history-detail-hours<br/>(24 h, ~17–20 MiB)"]
+    D -->|"each finished minute:<br/>avg / min / max"| M["minutes: 30 days<br/>~20–25 MiB"]
+    M -->|"each finished hour:<br/>avg (weighted by n) / min / max"| H["hours: until the cap<br/>~4–7.5 MiB a year"]
+    H -->|"over history-max-size (512 MiB)"| X["oldest hours first, then minutes,<br/>then detail (never the last hour)"]
 ```
 
-Typical steady state: about 52 MiB after a year, 120 MiB after ten.
-Worst case (64 logical CPUs, busy, 0.25 s refresh): about 260 MiB after a
-year, 420 MiB after ten, still under the 512 MiB default cap, which stays
-a safety net (the oldest hours go first, then minutes; detail never below
-an hour). Without levels, a year at full detail would be 7 GiB.
+Each level is deleted only once it has been rolled up (`expire` stops at
+each device's mark). Typical steady state: about 40–52 MiB after a year,
+120 MiB after ten. Worst case (64 logical CPUs, busy, 0.25 s refresh):
+about 260 MiB after a year, 420 MiB after ten, still under the 512 MiB
+default cap, which stays a safety net. Without levels, a year at full
+detail would be 6–7 GiB. Tests simulate a week and three years.
 
-**Reading it back:**
-- *Graphs:* on a wider *Graph Time Range* or at start-up, `Backfiller`
-  queries each device's range (minute averages beyond the detail level),
-  converts UTC to the monitor's monotonic clock, resamples to the refresh
-  interval and marks gaps where Proccoli wasn't running; on idle, one
-  device at a time.
-- *Export* (main menu → *Export Statistics…*): for the running session
-  (`time >= session.start`), into a folder the user picks
-  (`Gtk.FileDialog`, portal-friendly): one RFC 4180 CSV per device
-  (`time_utc` ISO 8601 UTC, `<reading>_<unit>` columns in real units),
-  `<device>-minutes.csv` for any part older than the detail level, and
-  `export.json` (version, session start and end, devices, columns and
-  units). Off the main loop; never overwrites without asking.
+**Long ranges** (M64): *Graph Time Range* goes up to a day (30 s; 1,
+2, 5, 10, 30 minutes; 1 and 6 hours; 1 day). A graph never keeps more
+than `MAX_GRAPH_POINTS` (1200) points: `ticker.history_plan(span,
+interval)` gives `(points, every)`, and `History.set_plan(points, every,
+step_s)` makes each point the average of `every` samples
+(`core.history.Averager`; a gap drops a half-made point). A day at 1 s is
+1184 points of 73 samples; 10 minutes at 1 s is unchanged (601 of 1),
+and 10 minutes at 0.25 s drops from 2401 points to 801 of 3. So a day
+costs no more memory or drawing than ten minutes did. `DeviceManager`
+gives every monitor the plan (`Monitor.set_history_plan`) when it's
+added and when the range or speed changes; the Intel and NVIDIA detail
+histories follow it too, at their own interval.
 
-**Settings:** `history` (on), `history-max-size` (MiB, 512),
-`history-detail-hours` (24). `stats-log*` go; existing `stats/*.csv`
-are imported once and removed. Nothing in `--demo`.
+**Graphs from history** (`HistoryStore.backfill`):
+
+```mermaid
+flowchart TB
+    A["a device's first reading this run,<br/>a Details tab starting,<br/>or graph-time-range / update-interval changed"] --> Q["queue it; one device per idle call"]
+    Q --> P["point slots before the oldest point held<br/>(or before now, if none yet), history.step_s apart"]
+    P --> C["the monitor's clock → UTC<br/>(offset = wall time − snapshot.time; 0 for wall-clock histories)"]
+    C --> B["HistoryDb.buckets: one grouped query per level,<br/>the average of the rows in each slot<br/>(minute averages where detail is gone)"]
+    B --> F["backfill: put in front, only what fits, only keys it has;<br/>empty slots stay gaps"]
+```
+
+The rows still buffered never need to be read back while the history
+holds points: they're newer than its oldest. A history with no point yet
+(the first `every` samples of a long range) commits first.
+
+**The Details tabs** (M64): a running detail source's readings go into
+the GPU's table too, as `detail/<key>` columns (`DetailBackend.
+history_readings()`, added by `GpuController.sample` to the
+`GpuSnapshot`: Intel's `group/name`, NVIDIA's series names, in base
+units). `Monitor.detail_history()` (the controller: the running source's
+`history_target()`) is filled the same way, once per Details tab and
+again after a range or speed change: the Intel history keeps wall-clock
+times (`WALL_TIMES`), the NVIDIA one the monitors' clock. *Clear History*
+on the Intel tab isn't undone by a refill.
+
+**Export** (main menu → *Export Statistics…*, or Preferences → *History*):
+`StatisticsExport` asks for a folder (`Gtk.FileDialog`, portal-friendly),
+commits what's buffered, and runs `export_session` on a worker thread with
+its own read-only connection; a toast shows progress per device, then
+*Open Folder*. It writes a new folder `proccoli-statistics-<UTC>Z` (with
+` (2)` if taken, so nothing is overwritten) holding, for the running
+session (`time >= session.start`):
+
+- one RFC 4180 CSV per device (`time_utc` ISO 8601 UTC with milliseconds,
+  `<reading>_<unit>` columns in real units, empty for no reading);
+- `<device>-minutes.csv` (`_avg`/`_min`/`_max`) for the part older than
+  the detail kept;
+- `export.json`: the version, the session's start and end, and each
+  file's device, name, kind, level and columns with units.
+
+**Preferences → General → *History*:** *Keep History* (turning it off
+closes the database and offers to delete it), *Keep Every Reading For*,
+*Maximum Size*, *Size on Disk* with *Delete History…* (an
+`Adw.AlertDialog`), and *Export…*.
+
+**The M58 files** (`stats/*.csv`, `.csv.1`) are imported on the first
+start with the database, one file per idle call, as detail rows; the next
+housekeeping summarises and expires them like any others. Then the folder
+is removed and one line is logged.
 
 ### 13.3 Intel Details graphs on the shared chart code
 
-*PLAN.md, Idea 3.* The Intel *Details* tab still draws with the classes
+**Done in Milestone 60** (PLAN.md). Kept here as the record of the
+design; §9.1 describes the result. Before it, the Intel *Details* tab drew with the classes
 ported from intel_gpu_top_gui (Milestone 9): `GraphView`, `GraphSection`,
 `LegendItem`, `Swatch`, `AxisGroup`, and copies of `nice_ceiling`,
 `snap_to_device` and the rounded-rectangle helper. Everything else uses
@@ -2582,7 +2808,7 @@ the shared family: `Graph`, `GraphBox`, `Legend`, `LegendChart`,
 
 ```mermaid
 flowchart LR
-    subgraph Now["Intel Details tab today"]
+    subgraph Now["Intel Details tab before M60"]
         GV[GraphView] --- GS[GraphSection]
         GS --- LI["LegendItem / Swatch"]
         GV --- AG[AxisGroup]
@@ -2604,8 +2830,183 @@ flowchart LR
   and compact rules, and the *Graph Time Range* (open question in PLAN:
   its own *History Length* goes; its *Update Interval*, intel_gpu_top's
   sampling rate, stays).
-- **Kept in the Intel views:** `GraphGrid`'s column choice, per-GT
+- **Kept in the Intel views** (until M63 moved the grid to `ui/` as
+  `ChartGrid`, §9.1): `GraphGrid`'s column choice, per-GT
   groups, the compact layout, and the header (pause, export, clear).
 - **Enforced afterwards:** `test_static` checks that no module outside
   `ui/` defines its own graph drawing area.
+
+### 13.4 One chart family everywhere
+
+*Built in Milestone 63; §9.1 describes it as built (PLAN.md lists the
+deviations). Kept as the design record.* M60 made every graph the shared `Graph`. What's
+still done several ways is what surrounds it: settings (five ways, one
+of them never live), layout (three fitting systems, none on the NVIDIA
+tab), the card (three), number formats (three), colours (four
+mechanisms) and when a legend appears. The design gives each concern
+one owner in `ui/`:
+
+```mermaid
+classDiagram
+    direction LR
+    class ChartSettings {
+        +bind(graph, kind)
+        +release()
+        axes, grids, time range,
+        unit preferences, hover format
+    }
+    class ChartCard {
+        title + info line
+        Graph or LegendChart body
+        +set_compact(on)
+    }
+    class ChartGrid {
+        <<Gtk.Widget>>
+        columns + height sharing
+        (arithmetic in ui/layout.py)
+    }
+    class Graph
+    class LegendChart
+    class FormatReading["core.units.format_reading"]
+    ChartGrid o-- "n" ChartCard
+    ChartCard *-- Graph
+    ChartCard *-- LegendChart
+    ChartSettings ..> Graph : configures
+    ChartSettings ..> FormatReading : hover and axis text
+    DevicePage ..> ChartSettings
+    OverviewPage ..> ChartSettings
+    StackSidebar ..> ChartSettings
+    IntelGraphsView ..> ChartGrid
+    NvidiaDetailsView ..> ChartGrid
+```
+
+- Detail sources record readings in base units at the history boundary,
+  so `format_reading` (and *Data Units*, *Temperature Unit*) formats
+  every number, including axis labels (a short form).
+- Device pages keep Resources' preference-group rows (`GraphBox`);
+  the Overview and the Details tabs use `ChartCard`s. Both use
+  `GraphPane`, so spacing matches.
+- `test_static` enforces it: only `ChartSettings` reads the chart keys
+  for graphs; `Graph(` is built only in `ui/widgets/`.
+
+### 13.5 Switch To any running app
+
+*Built in Milestone 67 (PLAN.md has the steps). As built:*
+
+- `data/gnome-shell/extensions/proccoli-windows@mamadingleberry.github.io/`
+  (installed to `share/gnome-shell/extensions/`, off until turned on):
+  an ES-module extension for GNOME Shell 45–50 that exports
+  `io.github.mamadingleberry.Proccoli.Windows` at
+  `/io/github/mamadingleberry/Proccoli/Windows` on the Shell's session
+  connection: `List() → a(tussu)` (window id, pid, app id, title, last
+  used) and `Activate(t) → b`. That's all it can do. `tests/test_windows.py`
+  checks its XML against `core.windows` and that `gjs` parses it.
+- `core/windows.py`: `windows_for(pids, windows, app_id)` (by process, or
+  by app ID for helper processes; most recently used first),
+  `parse_wmctrl`, `WindowSwitcher.way(app)` / `switch(app,
+  launch_context)` (extension → ask the app → X11), `extension_state()`
+  (enabled, turned off, needs a log-in, not installed, not GNOME),
+  `install(source)` (copies to `~/.local/share/gnome-shell/extensions`
+  and adds it to `org.gnome.shell enabled-extensions`, so it starts on at
+  the next log-in), `enable()`.
+- `System`: `shell_windows`, `shell_activate_window`,
+  `shell_extension_info`, `enable_shell_extension`,
+  `enable_extension_at_login`, `install_user_extension`,
+  `bus_name_owned`, `session_type`, `wmctrl_list`, `wmctrl_activate`;
+  `activate_app(app_id, launch_context)` puts the activation token in
+  `platform-data` and passes the context to relaunches.
+- Apps → *Switch To* for every app (a toast with *Set Up…* when nothing
+  reaches it); Preferences → General → *Window Switching* shows the state
+  with *Install* (from a source checkout) or *Turn On*.
+
+*The design as planned (Idea 5):* GNOME on Wayland doesn't let one app focus another's
+window: `org.gnome.Shell.FocusApp` and `Eval` are refused to ordinary
+clients (checked on GNOME Shell 50.1), and there is no
+`_NET_ACTIVE_WINDOW` outside X11. M32 therefore asks apps to raise
+themselves, which only some can. The design adds a `WindowSwitcher`
+(behind `System`) that tries, in order:
+
+```mermaid
+flowchart TD
+    A[Switch To app] --> E{Proccoli's Shell extension enabled?}
+    E -->|yes| L["List() windows; match the app's PIDs"] --> W["Activate(window)"]
+    E -->|no| D{D-Bus activatable, or owns its app ID on the bus?}
+    D -->|yes| T["Activate with an activation token<br/>(the app raises itself)"]
+    D -->|no| S{SingleMainWindow?}
+    S -->|yes| R["Relaunch with the launch context's token"]
+    S -->|no| X{X11 window and wmctrl?}
+    X -->|yes| N[_NET_ACTIVE_WINDOW]
+    X -->|no| G["Greyed: hover text says how to enable the extension"]
+```
+
+- The extension (`proccoli-windows@mamadingleberry.github.io`, shipped
+  in the `.deb`) exports `List()` and `Activate(id)` on the session bus;
+  it can't read window contents or act on anything else. It's opt-in:
+  the user enables it once.
+- Activation tokens come from `Gdk.Display.get_app_launch_context()`, so
+  GNOME's focus-stealing prevention lets the target raise its window.
+
+### 13.6 Export any part of the history
+
+*PLAN.md, Idea 7.* *Export Statistics…* (M62) writes only the running
+session. The database holds more: detail for `history-detail-hours`,
+minutes for 30 days, hours until the cap. The design lets the user pick
+a scope first, then splits the range by level, so each moment is
+exported once, from the most detailed level that still holds it:
+
+```mermaid
+flowchart LR
+    D["Export Statistics dialog<br/>scope: This Session · Last Hour/Day/Week · All Saved History<br/>+ estimate"] --> F["folder picker<br/>(Gtk.FileDialog)"]
+    F --> W["worker thread: export_range(start, end)"]
+    W --> L{"per device, per level"}
+    L -->|"where detail is kept"| C1["device.csv"]
+    L -->|"older, where minutes are kept"| C2["device-minutes.csv"]
+    L -->|"older still"| C3["device-hours.csv"]
+    W --> J["export.json: scope, range, sessions, files"]
+    W -. "Cancel (threading.Event between hour chunks)" .-> X["folder removed"]
+```
+
+- `scope_range(scope, now, session_start, oldest)` gives `(start, end)`;
+  `HistoryDb.oldest(table, level)` per level gives the split points.
+- `estimate()` counts rows per level in one query and multiplies by an
+  average CSV row width per device. A free-space check through `System`
+  warns before a large export.
+- The existing pieces stay: its own read-only connection, hour-sized
+  chunks, a new `proccoli-statistics-<UTC>Z` folder (never overwriting),
+  and the toast with *Open Folder*, which gains progress and *Cancel*.
+
+### 13.7 Lightweight Mode: small charts on the Overview, a minimal sidebar
+
+*PLAN.md, Idea 8.* It changes §13.1 (Milestone 66): in Lightweight Mode
+the trend moves from the sidebar to the Overview, and the Overview keeps
+the busiest apps and processes.
+
+```mermaid
+flowchart LR
+    subgraph M66["Milestone 66"]
+        S1["sidebar: Full / Icons Only / Hidden<br/>full entries with progress bars"]
+        O1["Overview: list of readings,<br/>no charts, no busiest tables"]
+    end
+    subgraph I8["Idea 8"]
+        S2["sidebar: Icons Only / Hidden only<br/>(sidebar-style pinned; Full left out of the menu)"]
+        O2["Overview: readings + the small chart<br/>(Graph SMALL, 36 px, entry colour, ChartKind.METER)<br/>+ busiest apps and processes, no icons"]
+    end
+    M66 --> I8
+```
+
+- `ProfileSettings` pins `sidebar-style` to `icons`; `sidebar-shown`
+  still chooses between the rail and *Hidden*. `primary_menu` gets the
+  allowed modes, and `SidebarVisibility` maps *Full* to *Icons Only*.
+- `OverviewCard(chart="small")` builds the same graph as `Meter`: no
+  axes, no hover, at most the pinned 1-minute range. The page keeps the
+  3-column list (no grid fitting).
+- The busiest apps and processes (`TopTables`) stay below the cards,
+  without icons (`profile.app_icons` off; `TopTable` builds no image).
+  `Profile.overview_tables` is true in Lightweight Mode. The process scan
+  still runs only while the Overview, Apps or Processes is shown, and the
+  list is dropped when none is (`keep_process_data`), so the tables cost
+  only while visible.
+- An icons-only sidebar never shows meters, so `StackSidebarItem` builds
+  its `Meter` only when first needed. The two changes together should
+  leave memory where Milestone 66 had it; `tests/ui/mem.py` checks.
 
