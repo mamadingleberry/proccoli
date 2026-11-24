@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.mamadingleberry.Proccoli</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>0BSD</project_license>
+  <name>Proccoli</name>
+  <summary>Keep an eye on your system's resources</summary>
+  <description>
+    <p>
+      A system monitor for processors, memory, GPUs, drives, network
+      interfaces and batteries, with tables of running apps and processes.
+    </p>
+    <p>
+      The GPU page adapts to the GPU: on Intel GPUs it shows per-engine
+      utilisation, frequency, power, RC6 residency, memory bandwidth and
+      per-process engine usage from intel_gpu_top.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.mamadingleberry.Proccoli.desktop</launchable>
+  <developer id="io.github.mamadingleberry">
+    <name>The Proccoli contributors</name>
+  </developer>
+  <url type="homepage">https://github.com/mamadingleberry</url>
+  <content_rating type="oars-1.1"/>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <releases>
+    <release version="0.1.0" date="2026-11-23">
+      <description><p>First prototype.</p></description>
+    </release>
+  </releases>
+</component>

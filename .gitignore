@@ -1,0 +1,6 @@
+build/
+dist/
+__pycache__/
+*.pyc
+# Screenshots written by the UI test harness (Milestone 1)
+tests/ui/out/

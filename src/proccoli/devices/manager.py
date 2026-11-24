@@ -1,0 +1,136 @@
+"""Discovers devices, owns their monitors and refreshes them on each tick.
+
+Each device type contributes a ``Discoverer``. Types that can appear and
+disappear at runtime (drives, network interfaces) set ``rescan = True`` and
+are re-discovered every few seconds, or immediately when one of their
+``settings_keys`` changes (e.g. *Show Virtual Drives*).
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Optional
+
+from gi.repository import GObject
+
+from ..core.sysroot import SysRoot
+from .base import DeviceInfo, DeviceKind, Monitor
+
+log = logging.getLogger(__name__)
+
+
+class Discoverer:
+    """Base class: find the devices of one kind and build their monitors."""
+    kind: DeviceKind
+    rescan = False                  # re-discover periodically (hotplug)
+    settings_keys: tuple[str, ...] = ()  # settings that change what's found
+
+    def discover(self, sysroot: SysRoot, settings) -> list[DeviceInfo]:
+        raise NotImplementedError
+
+    def create_monitor(self, info: DeviceInfo, sysroot: SysRoot, settings) -> Monitor:
+        raise NotImplementedError
+
+
+class DeviceManager(GObject.Object):
+    __gsignals__ = {
+        "device-added": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        "device-removed": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+    }
+
+    def __init__(self, sysroot: SysRoot, settings, rescan_interval_s: float = 5.0) -> None:
+        super().__init__()
+        self.sysroot = sysroot
+        self.settings = settings
+        self.rescan_interval_s = rescan_interval_s
+        self.discoverers: list[Discoverer] = []
+        self._monitors: dict[str, Monitor] = {}
+        self._owner: dict[str, Discoverer] = {}
+        self._last_rescan: Optional[float] = None
+        self._ticker_handler = 0
+        self.started = False
+        settings.connect_changed("graph-data-points", self._on_points_changed)
+
+    def register(self, discoverer: Discoverer) -> None:
+        self.discoverers.append(discoverer)
+        for key in discoverer.settings_keys:
+            self.settings.connect_changed(key, lambda *_: self.rescan())
+
+    # -- access ----------------------------------------------------------------
+
+    def monitors(self, kind: Optional[DeviceKind] = None) -> list[Monitor]:
+        return [m for m in self._monitors.values() if kind is None or m.info.kind == kind]
+
+    def monitor(self, device_id: str) -> Optional[Monitor]:
+        return self._monitors.get(device_id)
+
+    # -- lifecycle -----------------------------------------------------------------
+
+    def start(self, ticker=None) -> None:
+        """Discover everything once, then refresh on each tick."""
+        for d in self.discoverers:
+            self._scan(d)
+        self.started = True
+        if ticker is not None:
+            self._ticker = ticker
+            self._ticker_handler = ticker.connect("tick", lambda _t, now: self.refresh(now))
+
+    def stop(self) -> None:
+        if self._ticker_handler:
+            self._ticker.disconnect(self._ticker_handler)
+            self._ticker_handler = 0
+        for m in self._monitors.values():
+            m.stop()
+
+    def refresh(self, now: float) -> None:
+        for m in list(self._monitors.values()):
+            m.refresh(now)
+        if self._last_rescan is None:
+            self._last_rescan = now
+        elif now - self._last_rescan >= self.rescan_interval_s:
+            self._last_rescan = now
+            self.rescan()
+
+    def rescan(self) -> None:
+        for d in self.discoverers:
+            if d.rescan or d.settings_keys:
+                self._scan(d)
+
+    # -- internals ---------------------------------------------------------------------
+
+    def _scan(self, discoverer: Discoverer) -> None:
+        try:
+            found = discoverer.discover(self.sysroot, self.settings)
+        except Exception:  # noqa: BLE001 - one broken type must not stop the rest
+            log.exception("discovering %s devices failed", discoverer.kind.value)
+            return
+        found_ids = {info.id for info in found}
+        for device_id, owner in list(self._owner.items()):
+            if owner is discoverer and device_id not in found_ids:
+                self._remove(device_id)
+        for info in found:
+            if info.id not in self._monitors:
+                self._add(discoverer, info)
+
+    def _add(self, discoverer: Discoverer, info: DeviceInfo) -> None:
+        try:
+            monitor = discoverer.create_monitor(info, self.sysroot, self.settings)
+        except Exception:  # noqa: BLE001
+            log.exception("creating the monitor for %s failed", info.id)
+            return
+        self._monitors[info.id] = monitor
+        self._owner[info.id] = discoverer
+        monitor.start()
+        log.debug("device added: %s", info.id)
+        self.emit("device-added", monitor)
+
+    def _remove(self, device_id: str) -> None:
+        monitor = self._monitors.pop(device_id)
+        self._owner.pop(device_id, None)
+        monitor.stop()
+        log.debug("device removed: %s", device_id)
+        self.emit("device-removed", device_id)
+
+    def _on_points_changed(self, _key, points: int) -> None:
+        for m in self._monitors.values():
+            m.set_history_points(points)

@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Keys mirror Resources' preferences (DESIGN.md §2.1 and §11).
+     Keys marked "Proccoli" are additions for the swappable GPU page. -->
+<schemalist>
+  <enum id="io.github.mamadingleberry.Proccoli.TemperatureUnit">
+    <value nick="celsius" value="0"/>
+    <value nick="fahrenheit" value="1"/>
+    <value nick="kelvin" value="2"/>
+  </enum>
+  <enum id="io.github.mamadingleberry.Proccoli.TopMetric">
+    <value nick="cpu" value="0"/>
+    <value nick="memory" value="1"/>
+  </enum>
+  <enum id="io.github.mamadingleberry.Proccoli.Base">
+    <value nick="decimal" value="0"/>
+    <value nick="binary" value="1"/>
+  </enum>
+  <enum id="io.github.mamadingleberry.Proccoli.RefreshSpeed">
+    <value nick="very-slow" value="0"/>
+    <value nick="slow" value="1"/>
+    <value nick="normal" value="2"/>
+    <value nick="fast" value="3"/>
+    <value nick="very-fast" value="4"/>
+  </enum>
+  <enum id="io.github.mamadingleberry.Proccoli.ColorScheme">
+    <value nick="system" value="0"/>
+    <value nick="light" value="1"/>
+    <value nick="dark" value="2"/>
+    <value nick="sand" value="3"/>
+    <value nick="sky" value="4"/>
+    <value nick="twilight" value="5"/>
+    <value nick="midnight" value="6"/>
+  </enum>
+  <enum id="io.github.mamadingleberry.Proccoli.Palette">
+    <value nick="system" value="0"/>
+    <value nick="gnome" value="1"/>
+    <value nick="tango" value="2"/>
+    <value nick="solarized" value="3"/>
+    <value nick="linux" value="4"/>
+    <value nick="xterm" value="5"/>
+    <value nick="rxvt" value="6"/>
+    <value nick="nord" value="7"/>
+  </enum>
+  <enum id="io.github.mamadingleberry.Proccoli.LogLevel">
+    <value nick="off" value="0"/>
+    <value nick="error" value="1"/>
+    <value nick="warning" value="2"/>
+    <value nick="info" value="3"/>
+    <value nick="debug" value="4"/>
+  </enum>
+  <enum id="io.github.mamadingleberry.Proccoli.MeterType">
+    <value nick="progress-bar" value="0"/>
+    <value nick="graph" value="1"/>
+  </enum>
+
+  <schema id="io.github.mamadingleberry.Proccoli" path="/io/github/mamadingleberry/Proccoli/">
+    <!-- Window -->
+    <key name="window-width" type="i">
+      <default>1000</default>
+      <summary>Window width</summary>
+    </key>
+    <key name="window-height" type="i">
+      <default>700</default>
+      <summary>Window height</summary>
+    </key>
+    <key name="is-maximized" type="b">
+      <default>false</default>
+      <summary>Window is maximized</summary>
+    </key>
+    <key name="last-viewed-page" type="s">
+      <default>''</default>
+      <summary>ID of the page shown when the app was closed</summary>
+    </key>
+
+    <!-- General: units -->
+    <key name="base" enum="io.github.mamadingleberry.Proccoli.Base">
+      <default>'decimal'</default>
+      <summary>Data unit prefix</summary>
+    </key>
+    <key name="network-bits" type="b">
+      <default>false</default>
+      <summary>Show network speeds in bits per second</summary>
+    </key>
+    <key name="temperature-unit" enum="io.github.mamadingleberry.Proccoli.TemperatureUnit">
+      <default>'celsius'</default>
+      <summary>Temperature unit</summary>
+    </key>
+
+    <!-- General: user interface -->
+    <key name="refresh-speed" enum="io.github.mamadingleberry.Proccoli.RefreshSpeed">
+      <default>'normal'</default>
+      <summary>How often data is refreshed</summary>
+    </key>
+    <key name="show-graph-grids" type="b">
+      <default>false</default>
+      <summary>Show graph grids</summary>
+    </key>
+    <key name="graph-data-points" type="u">
+      <range min="10" max="600"/>
+      <default>60</default>
+      <summary>Number of data points shown in graphs</summary>
+    </key>
+    <key name="sidebar-details" type="b">
+      <default>true</default>
+      <summary>Show usage details in the sidebar</summary>
+    </key>
+    <key name="sidebar-description" type="b">
+      <default>true</default>
+      <summary>Show device descriptions in the sidebar</summary>
+    </key>
+    <key name="color-scheme" enum="io.github.mamadingleberry.Proccoli.ColorScheme">
+      <default>'system'</default>
+      <summary>Style: light, dark or tinted</summary>
+      <description>"system" follows the desktop's light/dark preference; sand and sky are tinted light styles, twilight and midnight tinted dark ones.</description>
+    </key>
+    <key name="sidebar-order" type="as">
+      <default>[]</default>
+      <summary>Order of the sidebar entries below Apps and Processes</summary>
+      <description>Page IDs; entries not listed go to their default place.</description>
+    </key>
+    <key name="sidebar-minimized" type="as">
+      <default>[]</default>
+      <summary>Sidebar entries shown with only their icon and name</summary>
+    </key>
+    <key name="sidebar-hidden-fields" type="a{sas}">
+      <default>{}</default>
+      <summary>Parts each sidebar entry hides</summary>
+      <description>Page ID to hidden parts: name, description, usage, chart.</description>
+    </key>
+    <key name="log-level" enum="io.github.mamadingleberry.Proccoli.LogLevel">
+      <default>'info'</default>
+      <summary>What the diagnostics log records</summary>
+    </key>
+    <key name="log-max-size" type="u">
+      <range min="64" max="65536"/>
+      <default>1024</default>
+      <summary>Size of the log file in KiB (one older file is kept too)</summary>
+    </key>
+    <key name="log-performance-interval" type="u">
+      <range min="0" max="1440"/>
+      <default>10</default>
+      <summary>Minutes between performance lines in the log (0: none)</summary>
+    </key>
+    <key name="show-graph-axes" type="b">
+      <default>true</default>
+      <summary>Axis labels and ticks on percentage graphs</summary>
+    </key>
+    <key name="sidebar-shown" type="b">
+      <default>true</default>
+      <summary>Show the sidebar on wide windows</summary>
+      <description>Hidden with the sidebar button or F9. Narrow windows always start with the sidebar folded away.</description>
+    </key>
+    <key name="overview-top-by" enum="io.github.mamadingleberry.Proccoli.TopMetric">
+      <default>'cpu'</default>
+      <summary>What ranks the Overview's top apps and processes</summary>
+      <description>Processor use or memory.</description>
+    </key>
+    <key name="auth-at-launch" type="b">
+      <default>true</default>
+      <summary>Offer to authenticate at start-up</summary>
+      <description>Ask once at start-up whether to unlock everything that needs administrator rights. Every page keeps its own button either way.</description>
+    </key>
+    <key name="palette" enum="io.github.mamadingleberry.Proccoli.Palette">
+      <default>'system'</default>
+      <summary>Colour palette for graphs, meters and the accent colour</summary>
+    </key>
+    <key name="sidebar-meter-type" enum="io.github.mamadingleberry.Proccoli.MeterType">
+      <default>'graph'</default>
+      <summary>Sidebar meter type</summary>
+    </key>
+    <key name="normalize-cpu-usage" type="b">
+      <default>true</default>
+      <summary>Divide the total usage of all cores by the number of cores</summary>
+    </key>
+    <key name="show-logical-cpus" type="b">
+      <default>false</default>
+      <summary>Show usage of each logical CPU</summary>
+    </key>
+
+    <!-- Devices -->
+    <key name="show-virtual-drives" type="b">
+      <default>false</default>
+      <summary>Show virtual drives</summary>
+    </key>
+    <key name="show-virtual-network-interfaces" type="b">
+      <default>false</default>
+      <summary>Show virtual network interfaces</summary>
+    </key>
+
+    <!-- Apps columns -->
+    <key name="apps-show-memory" type="b"><default>true</default><summary>Apps: Memory column</summary></key>
+    <key name="apps-show-cpu" type="b"><default>true</default><summary>Apps: Processor column</summary></key>
+    <key name="apps-show-drive-read-speed" type="b"><default>true</default><summary>Apps: Drive Read column</summary></key>
+    <key name="apps-show-drive-read-total" type="b"><default>false</default><summary>Apps: Drive Read Total column</summary></key>
+    <key name="apps-show-drive-write-speed" type="b"><default>true</default><summary>Apps: Drive Write column</summary></key>
+    <key name="apps-show-drive-write-total" type="b"><default>false</default><summary>Apps: Drive Write Total column</summary></key>
+    <key name="apps-show-gpu" type="b"><default>true</default><summary>Apps: GPU column</summary></key>
+    <key name="apps-show-gpu-memory" type="b"><default>true</default><summary>Apps: Video Memory column</summary></key>
+    <key name="apps-show-encoder" type="b"><default>false</default><summary>Apps: Video Encoder column</summary></key>
+    <key name="apps-show-decoder" type="b"><default>false</default><summary>Apps: Video Decoder column</summary></key>
+    <key name="apps-show-swap" type="b"><default>false</default><summary>Apps: Swap column</summary></key>
+    <key name="apps-show-combined-memory" type="b"><default>false</default><summary>Apps: Combined Memory column</summary></key>
+    <key name="apps-sort-by" type="u"><default>0</default><summary>Apps: sort column</summary></key>
+    <key name="apps-sort-by-ascending" type="b"><default>false</default><summary>Apps: sort ascending</summary></key>
+
+    <!-- Processes -->
+    <key name="detailed-priority" type="b"><default>false</default><summary>Show niceness values instead of priority names</summary></key>
+    <key name="processes-show-id" type="b"><default>true</default><summary>Processes: Process ID column</summary></key>
+    <key name="processes-show-user" type="b"><default>true</default><summary>Processes: User column</summary></key>
+    <key name="processes-show-memory" type="b"><default>true</default><summary>Processes: Memory column</summary></key>
+    <key name="processes-show-cpu" type="b"><default>true</default><summary>Processes: Processor column</summary></key>
+    <key name="processes-show-drive-read-speed" type="b"><default>false</default><summary>Processes: Drive Read column</summary></key>
+    <key name="processes-show-drive-read-total" type="b"><default>false</default><summary>Processes: Drive Read Total column</summary></key>
+    <key name="processes-show-drive-write-speed" type="b"><default>false</default><summary>Processes: Drive Write column</summary></key>
+    <key name="processes-show-drive-write-total" type="b"><default>false</default><summary>Processes: Drive Write Total column</summary></key>
+    <key name="processes-show-gpu" type="b"><default>true</default><summary>Processes: GPU column</summary></key>
+    <key name="processes-show-gpu-memory" type="b"><default>false</default><summary>Processes: Video Memory column</summary></key>
+    <key name="processes-show-encoder" type="b"><default>false</default><summary>Processes: Video Encoder column</summary></key>
+    <key name="processes-show-decoder" type="b"><default>false</default><summary>Processes: Video Decoder column</summary></key>
+    <key name="processes-show-total-cpu-time" type="b"><default>false</default><summary>Processes: Total CPU Time column</summary></key>
+    <key name="processes-show-user-cpu-time" type="b"><default>false</default><summary>Processes: User CPU Time column</summary></key>
+    <key name="processes-show-system-cpu-time" type="b"><default>false</default><summary>Processes: System CPU Time column</summary></key>
+    <key name="processes-show-priority" type="b"><default>false</default><summary>Processes: Priority column</summary></key>
+    <key name="processes-show-swap" type="b"><default>false</default><summary>Processes: Swap column</summary></key>
+    <key name="processes-show-combined-memory" type="b"><default>false</default><summary>Processes: Combined Memory column</summary></key>
+    <key name="processes-show-commandline" type="b"><default>false</default><summary>Processes: Commandline column</summary></key>
+    <key name="processes-sort-by" type="u"><default>0</default><summary>Processes: sort column</summary></key>
+    <key name="processes-sort-by-ascending" type="b"><default>false</default><summary>Processes: sort ascending</summary></key>
+
+    <!-- GPU (Proccoli) -->
+    <key name="gpu-details-disabled" type="as">
+      <default>[]</default>
+      <summary>GPUs whose detailed statistics are turned off</summary>
+      <description>PCI slots (for example "0000:00:02.0") of GPUs whose Details and Processes tabs should not start their vendor tool.</description>
+    </key>
+    <key name="gpu-view" type="s">
+      <default>'overview'</default>
+      <summary>The GPU page tab shown last</summary>
+    </key>
+    <key name="gpu-elevate" type="b">
+      <default>false</default>
+      <summary>Start detailed GPU statistics with administrator rights at launch</summary>
+    </key>
+    <key name="intel-gpu-top-interval" type="s">
+      <default>''</default>
+      <summary>Update interval of the Intel Details tab</summary>
+      <description>A refresh-speed nick, or empty to follow the general refresh speed.</description>
+    </key>
+    <key name="intel-gpu-top-history" type="u">
+      <range min="60" max="1800"/>
+      <default>120</default>
+      <summary>History length of the Intel Details tab, in seconds</summary>
+    </key>
+  </schema>
+</schemalist>

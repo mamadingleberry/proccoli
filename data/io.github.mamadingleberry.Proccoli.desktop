@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Proccoli
+GenericName=System Monitor
+Comment=Keep an eye on your system's resources, with detailed GPU statistics
+Exec=proccoli
+Icon=io.github.mamadingleberry.Proccoli
+Terminal=false
+Categories=GTK;GNOME;System;Monitor;
+Keywords=system;monitor;resources;processes;task;manager;gpu;cpu;memory;network;
+StartupNotify=true
+StartupWMClass=io.github.mamadingleberry.Proccoli
+DBusActivatable=false

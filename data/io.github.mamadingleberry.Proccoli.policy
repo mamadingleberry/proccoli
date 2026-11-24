@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!--
+  One action per helper subcommand, so the password prompt says what is
+  about to happen. The helper validates every argument and can't write
+  files, so the authorisation is kept for a few minutes (auth_admin_keep).
+  intel_gpu_top runs through the helper's gpu-top (fixed arguments, no
+  -o, stopped when Proccoli stops reading). Run directly, it can write
+  files (-o), so that fallback action always asks (auth_admin).
+  @LIBEXECDIR@ is replaced at install time.
+-->
+<policyconfig>
+  <vendor>The Proccoli contributors</vendor>
+  <icon_name>io.github.mamadingleberry.Proccoli</icon_name>
+
+  <action id="io.github.mamadingleberry.Proccoli.signal">
+    <description>End, halt or continue processes</description>
+    <message>Authentication is required to control another user's processes</message>
+    <defaults><allow_any>auth_admin</allow_any><allow_inactive>auth_admin</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@LIBEXECDIR@/proccoli-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">signal</annotate>
+  </action>
+
+  <action id="io.github.mamadingleberry.Proccoli.renice">
+    <description>Change the priority of processes</description>
+    <message>Authentication is required to change a process's priority</message>
+    <defaults><allow_any>auth_admin</allow_any><allow_inactive>auth_admin</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@LIBEXECDIR@/proccoli-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">renice</annotate>
+  </action>
+
+  <action id="io.github.mamadingleberry.Proccoli.affinity">
+    <description>Change which processors processes run on</description>
+    <message>Authentication is required to change a process's processor affinity</message>
+    <defaults><allow_any>auth_admin</allow_any><allow_inactive>auth_admin</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@LIBEXECDIR@/proccoli-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">affinity</annotate>
+  </action>
+
+  <action id="io.github.mamadingleberry.Proccoli.dmidecode">
+    <description>Read memory module information</description>
+    <message>Authentication is required to read memory properties</message>
+    <defaults><allow_any>auth_admin</allow_any><allow_inactive>auth_admin</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@LIBEXECDIR@/proccoli-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">dmidecode</annotate>
+  </action>
+
+  <action id="io.github.mamadingleberry.Proccoli.processes">
+    <description>Read drive activity of all processes</description>
+    <message>Authentication is required to see other users' drive activity</message>
+    <defaults><allow_any>auth_admin</allow_any><allow_inactive>auth_admin</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@LIBEXECDIR@/proccoli-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">processes</annotate>
+  </action>
+
+  <action id="io.github.mamadingleberry.Proccoli.gpu-top">
+    <description>Read Intel GPU performance counters</description>
+    <message>Authentication is required to read detailed Intel GPU statistics</message>
+    <defaults><allow_any>auth_admin</allow_any><allow_inactive>auth_admin</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@LIBEXECDIR@/proccoli-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">gpu-top</annotate>
+  </action>
+
+  <!-- Used only with a helper older than gpu-top (protocol < 3). -->
+  <action id="io.github.mamadingleberry.Proccoli.intel-gpu-top">
+    <description>Read Intel GPU performance counters</description>
+    <message>Authentication is required to read detailed Intel GPU statistics</message>
+    <defaults><allow_any>auth_admin</allow_any><allow_inactive>auth_admin</allow_inactive><allow_active>auth_admin</allow_active></defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/intel_gpu_top</annotate>
+  </action>
+</policyconfig>

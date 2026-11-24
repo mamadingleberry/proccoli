@@ -1,0 +1,112 @@
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+from proccoli.core.settings import Settings  # noqa: E402
+from proccoli.core.ticker import REFRESH_INTERVALS_MS, Ticker, interval_for  # noqa: E402
+
+
+class FakeLoop:
+    """Stands in for GLib.timeout_add / source_remove and the clock."""
+
+    def __init__(self):
+        self.now = 100.0
+        self.sources = {}       # id -> (interval_ms, callback)
+        self.next_id = 1
+
+    def timeout_add(self, interval, cb):
+        sid = self.next_id
+        self.next_id += 1
+        self.sources[sid] = (interval, cb)
+        return sid
+
+    def source_remove(self, sid):
+        del self.sources[sid]
+
+    def clock(self):
+        return self.now
+
+    def fire(self):
+        """Advance time by each source's interval and run it."""
+        for sid, (interval, cb) in list(self.sources.items()):
+            self.now += interval / 1000
+            if not cb():
+                del self.sources[sid]
+
+
+def make(interval=1000):
+    loop = FakeLoop()
+    t = Ticker(interval, timeout_add=loop.timeout_add,
+               source_remove=loop.source_remove, clock=loop.clock)
+    ticks = []
+    t.connect("tick", lambda _t, now: ticks.append(now))
+    return t, loop, ticks
+
+
+class TickerTest(unittest.TestCase):
+    def test_start_ticks_immediately_then_every_interval(self):
+        t, loop, ticks = make(1000)
+        t.start()
+        self.assertEqual(ticks, [100.0])
+        loop.fire()
+        loop.fire()
+        self.assertEqual(ticks, [100.0, 101.0, 102.0])
+        self.assertTrue(t.running)
+
+    def test_start_twice_is_harmless(self):
+        t, loop, ticks = make()
+        t.start()
+        t.start()
+        self.assertEqual(len(loop.sources), 1)
+        self.assertEqual(len(ticks), 1)
+
+    def test_stop(self):
+        t, loop, ticks = make()
+        t.start()
+        t.stop()
+        loop.fire()
+        self.assertEqual(len(ticks), 1)
+        self.assertFalse(t.running)
+        self.assertEqual(loop.sources, {})
+
+    def test_set_interval_rearms_a_running_timer(self):
+        t, loop, ticks = make(1000)
+        t.start()
+        t.set_interval(250)
+        self.assertEqual([i for i, _ in loop.sources.values()], [250])
+        loop.fire()
+        self.assertEqual(ticks[-1], 100.25)
+
+    def test_set_interval_when_stopped(self):
+        t, loop, _ = make(1000)
+        t.set_interval(500)
+        self.assertEqual(loop.sources, {})
+        t.start()
+        self.assertEqual([i for i, _ in loop.sources.values()], [500])
+
+    def test_invalid_interval(self):
+        with self.assertRaises(ValueError):
+            Ticker(0)
+        t, _, _ = make()
+        with self.assertRaises(ValueError):
+            t.set_interval(-1)
+
+    def test_follows_refresh_speed_setting(self):
+        settings = Settings.for_tests({"refresh-speed": "slow"})
+        t, loop, _ = make(1000)
+        t.follow(settings)
+        self.assertEqual(t.interval_ms, 2000)
+        settings.set("refresh-speed", "very-fast")
+        self.assertEqual(t.interval_ms, 250)
+
+    def test_every_schema_speed_has_an_interval(self):
+        settings = Settings.for_tests()
+        speeds = settings.spec.keys["refresh-speed"].choices
+        self.assertEqual(sorted(speeds), sorted(REFRESH_INTERVALS_MS))
+        self.assertEqual(interval_for("bogus"), 1000)
+
+
+if __name__ == "__main__":
+    unittest.main()
