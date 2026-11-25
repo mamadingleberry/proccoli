@@ -3898,6 +3898,24 @@ flowchart LR
 - **C:** a system-wide recorder and history; pairs with the Web GUI
   ideas (§13.15, §13.16).
 
+### 13.22 Icons Only on narrow windows
+
+*PLAN.md, Idea 23.* Proposed (B with C): the window's width picks how the
+sidebar shows; the user's choice is never overwritten.
+
+```mermaid
+flowchart TB
+    W["window width"] --> F{"≥ 780 sp?"}
+    F -- yes --> U["the user's mode:<br/>Full · Icons Only · Hidden"]
+    F -- no --> N{"≥ 400 sp?"}
+    N -- yes --> I["Full → icons only, beside the content<br/>Icons Only → as chosen<br/>Hidden → hidden"]
+    N -- no --> O["overlay, closed until asked<br/>(today's behaviour, below 780 sp)"]
+    U & I & O --> M["menu marks the user's mode<br/>(+ a note when folded away)"]
+```
+
+- `sidebar_style.effective_layout(width, mode)` is pure; the window only
+  applies it, and `SidebarVisibility` never saves a style the width chose.
+
 ## 14. Known bugs
 
 Found but not fixed. PLAN.md's *Bugs* section has the steps.
@@ -3986,6 +4004,59 @@ command line's second word): `proccoli-metric` →
 *PLAN.md, Bug 9. Fixed in M81.* The collector commits every 10 s and a
 window fills its graphs from the database as it subscribes; `Subscribe`
 now commits first.
+
+### 14.18 A Time Range change shows the last seconds as "not running"
+
+*PLAN.md, Bug 18. Open.*
+
+```mermaid
+sequenceDiagram
+    participant R as proccoli (recorder)
+    participant H as history.sqlite3
+    participant W as proccoli-gui
+    R->>H: commit (every 10 s)
+    Note over R: readings buffered (0–10 s)
+    W->>W: Time Range changed: charts emptied
+    W->>H: refill through now
+    H-->>W: rows up to the last commit; the run "ends" there
+    Note over W: last 0–10 s: no data, shaded "not running"
+    W->>R: (proposed) Flush, then refill
+```
+
+Proposed: the window asks the recorder to commit (`Flush`) before it
+refills; slots after the open run's last commit count as running; live
+points not yet in the file are kept.
+
+### 14.17 Graphs from the history miss a point every few minutes
+
+*PLAN.md, Bug 17. Open.* The recorder's ticks drift ~5 ms each
+(`GLib.timeout_add` counts from the end of the callback), so readings
+are 1004–1006 ms apart and one 1-s graph slot in ~200 is empty when the
+window lays the history out:
+
+```mermaid
+flowchart LR
+    T["Ticker<br/>timeout_add(1000) re-armed<br/>after ~5 ms of reading"] --> R["readings at<br/>.754, .759, .764 …<br/>(+5 ms a tick)"]
+    R --> B["window: 1-s slots<br/>(history_db.buckets)"]
+    B --> G["every ~200 slots<br/>one has no reading → a break in the line"]
+```
+
+Proposed fix: a drift-free ticker (`start + n × interval`), and buckets
+that let a reading which slipped by less than half a step fill the
+empty slot beside it; real gaps (longer than 1½ steps) stay.
+
+### 14.16 A recorder stopped by a signal isn't started again
+
+*PLAN.md, Bug 16. Open.* `Restart=on-failure` doesn't cover a clean exit
+on SIGTERM; proposed `Restart=always` (systemd still honours
+`systemctl --user stop`).
+
+### 14.15 A second recorder waits instead of leaving
+
+*PLAN.md, Bug 15. Open.* Since the window stopped writing (Idea 19)
+there's always one recorder per user, run by systemd; one that finds the
+D-Bus name owned should exit instead of waiting to take over the
+history.
 
 ### 14.14 *Restart Now* renamed the window "python3"
 

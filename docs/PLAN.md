@@ -119,9 +119,11 @@ Class and module names refer to [DESIGN.md](DESIGN.md). Section references
 | Overview pages for groups: GPUs, Drives, Network, Batteries | 💡 Idea | Where a kind can have several devices, a group entry in the sidebar with its devices as children and its own overview page (a card per device, side by side); Network groups Ethernet, Wi-Fi and other connections, with combined throughput; see *Ideas*, Idea 18 |
 | 72 Graph toolbar | ✅ Done | Was Idea 12. A toolbar under each page with charts: a *Time Range* menu, *Graph Axes* and *Graph Grid* switches (and *Logical CPUs* on the Processor page), each titled, each the same setting as Preferences; *Graph Grid* now reaches the Overview cards and sidebar charts too; drag (or Ctrl+Shift+Left/Right) to reorder, ⋮ to show, hide or reset; *Show Toolbar* in the main menu. The sidebar's ordering is now the shared `reorder.py` and `make_reorderable`. Not in Lightweight Mode |
 | The window reads nothing: `proccoli-metrics` serves every reading | 🚧 Started | Idea 19, in three parts approved one at a time: **19a** the collector serves every reading over D-Bus (Milestone 78); **19b** the window reads from it, the history read-only, the collector always on and started on demand, a banner when readings stop (Milestone 79); **19c** the features that need administrator rights, Preferences, the `strace` check and measurements; see *Ideas*, Idea 19 |
+| Icons Only on narrow windows | 💡 Idea | On a narrow window the icons-only sidebar folds away and the menu says *Hidden*; keep the narrow sidebar beside the content, fall back from *Full* to *Icons Only* before hiding, and keep the menu on the user's choice; see *Ideas*, Idea 23 |
 | Recording from boot (lingering) | 💡 Idea | The recorder starts at boot, not only at log-in: lingering offered at the right moments, or turned on by the package, or a system-wide recorder; see *Ideas*, Idea 22 |
 | Refactoring candidates | 💡 Idea (R1–R3 done in M84) | Twelve places to restructure into classes, base classes or helpers (signal connections, a common device-source base, monitors that describe themselves, `System` split, `Graph` axes and hover, …); see *Ideas*, Idea 21 |
 | Preferences in named sections | 💡 Idea | Split Preferences' long *General* page into named pages (Appearance, Graphs, Recording, Access, Performance, Diagnostics…) and move long lists (table columns, per-device options) to subpages; see *Ideas*, Idea 20 |
+| Bugs 15–18 | 🐞 Open | A second recorder waits instead of leaving (Bug 15); a recorder stopped by a signal isn't restarted (Bug 16); one-point gaps every few minutes in graphs loaded from the history (Bug 17); changing the *Time Range* shows the last seconds as "not running" (Bug 18); see *Bugs* |
 | 84 Restart keeps its name; signal connections, device sources, device descriptions | ✅ Done | *Restart Now* runs the launcher itself, so the window isn't listed as `python3` (Bug 14); `Connections` in 17 modules, a `DeviceSource` base for both device managers, monitors that describe themselves (Idea 21: R1, R2, R3) |
 | 83 More styles; the programs renamed; 0.5.0 | ✅ Done | 18 more styles (High Contrast Light and Dark among them); the recorder is now `proccoli` (program, unit, package) and the window `proccoli-gui`; the meta package is gone; version 0.5.0 |
 | 82 Palettes, padlocks, steady tables, no stray collectors | ✅ Done | 13 more palettes (five color-blind safe first after System); Lightweight Mode's fixed settings get a padlock and each page a notice; the Overview's tables keep their size (Bug 13); tests and the window can no longer start a collector by accident (Bug 12) |
@@ -3812,6 +3814,53 @@ collector shows the banner and recovers when it's back.
 3. **Memory module details** (`dmidecode`, the same kind of exception,
    once per run): same three choices.
 
+### Idea 23: Icons Only on narrow windows
+
+**Goal:** a narrow window keeps a sidebar when one fits, and the main
+menu always shows the sidebar mode the user chose.
+
+**Seen:** "the Icon-only sidebar view autohides (ie. forcibly changes the
+sidebar view in the menu to Hidden) when the viewing window isn't wide
+enough" (raised as a bug, kept as an idea to find a solution).
+
+**Today:** below 780 sp (`window.COLLAPSE_CONDITION`, Resources' breakpoint)
+the `Adw.OverlaySplitView` collapses, whatever the sidebar style; a
+collapsed sidebar is an overlay, closed until asked for
+(`SidebarVisibility._on_collapsed`). The menu's mode is worked out from
+what's shown (`mode_of(show_sidebar, style)`), so it reads *Hidden*,
+though the user chose *Icons Only* (or *Full*), and their choice
+(`sidebar-shown`, `sidebar-style`) is untouched and comes back when the
+window widens. The breakpoint was made for the full sidebar (about
+220 px); the icons-only one is about 56 px and would fit beside the
+content far below 780 sp.
+
+**Ways to do it:**
+
+| | How | For | Against |
+|---|---|---|---|
+| A | **Icons Only never collapses:** the 780 sp breakpoint applies to *Full* only; with icons the sidebar stays beside the content down to the window's minimum width | Simple; what the user chose stays on screen | Very narrow windows (phones, tiled quarters) lose ~56 px to it |
+| B | **Step down before hiding:** *Full* becomes icons-only below 780 sp, and only below a second, much narrower breakpoint (about 400 sp) does the sidebar fold into an overlay; widening restores the step above | Uses the room there is; the user still sees a sidebar on half-screen windows | Two breakpoints, and a style the window chose that isn't the user's setting (must not be saved) |
+| C | **Truthful menu:** whatever folds away, the menu keeps the user's mode marked, with a note ("folded away: the window is narrow"), and picking it again opens the overlay | Fixes the confusing *Hidden* alone; small | The sidebar is still gone on narrow windows |
+
+**Recommendation:** B with C: icons-only between the two breakpoints
+(A's benefit for icon users at every width above 400 sp), and the menu
+always showing the user's choice. The width decisions go in a pure,
+display-free function so tests need no window.
+
+| Step | Create / change | Test |
+|---|---|---|
+| I23.1 | `ui/sidebar_style.py`: `effective_layout(width_sp, chosen_mode) -> (shown style, beside or overlay)` | Unit, table-driven: Full above 780; icons 400–780; overlay below 400; Icons Only beside down to 400; Hidden stays hidden |
+| I23.2 | `ui/window.py`: a second `Adw.Breakpoint`; `SidebarVisibility` applies `effective_layout` and never saves a style the window chose | UI: at 1024, 700 and 360 px wide: what's shown, and the settings unchanged |
+| I23.3 | The menu marks the user's mode; folded away, a disabled note under it says why | UI: at 360 px with *Icons Only* chosen, the menu marks *Icons Only* |
+| I23.4 | `shoot.py` scenes for the three widths; README (*Sidebar*), DESIGN | `make ui-test` |
+
+**Open questions for the user:**
+1. A, B, C, or B with C?
+2. For B: is about 400 sp right for the narrow breakpoint, or should the
+   sidebar fold away only at the window's minimum width?
+3. Should a narrow window step *Full* down to icons at all, or keep
+   *Full* until it must fold away (A's rule for both styles)?
+
 ### Idea 22: Recording from boot (lingering)
 
 **Goal:** the history has no gap between boot and log-in, or after
@@ -4261,3 +4310,125 @@ was right: the process stays in Proccoli's app group.
 | Step | Create / change | Test |
 |---|---|---|
 | B14.1 | `core/system.py` (`restart_command`) | `test_profile.RestartTest` |
+
+### Bug 15: A second recorder waits around instead of leaving
+
+*Open.*
+
+**Seen:** "in top i see two `proccoli` and one `proccoli-gui` processes,
+why two of the former?" Two seconds after the 0.5.0 upgrade, GNOME
+Shell launched the dock icon with its cached, pre-0.5.0 entry
+(`Exec=proccoli`, the window's old name), which now starts the
+recorder. That copy found the history and the D-Bus name taken, logged
+"another process writes it; waiting to take over" and "can't serve …
+another collector", and stayed: reading every device a second time, for
+nothing. Bug 12's stray was the same kind.
+
+**Cause:** the recorder still behaves as in the time before Idea 19,
+when the window could be the writer and a recorder had reason to stand
+by. Now systemd runs exactly one per user and restarts it; a second has
+no job.
+
+**Fix (proposed):** a recorder that can't own the D-Bus name because
+another one does exits (status 0) with a log line saying who serves it;
+started from a terminal, it also says the window is `proccoli-gui`.
+`--once`, `--status` and `--watch` are unaffected.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B15.1 | `metrics.py`, `metrics_service.py`: on losing the name to another owner, quit the main loop | Unit, on a private bus: a second recorder exits and leaves the first serving; the first one is unaffected |
+
+### Bug 16: A recorder stopped by a signal isn't started again
+
+*Open.*
+
+**Seen:** after the stray of Bug 15 was stopped, the real recorder was
+stopped too (16:53:28, "stopping on a signal"); nothing recorded until
+the window was opened again 70 s later and D-Bus activation started it.
+That was a gap in the history while the machine ran.
+
+**Cause:** the unit has `Restart=on-failure`; a recorder that exits
+cleanly on SIGTERM (a `kill`, `pkill proccoli`) isn't a failure, so
+systemd leaves it stopped until the next log-in or window.
+
+**Fix (proposed):** `Restart=always` (with `RestartSec=10`): any exit but
+`systemctl --user stop proccoli` (which systemd doesn't restart after)
+brings it back within 10 s.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B16.1 | `data/proccoli.service` | Unit: the installed unit says `Restart=always` |
+
+### Bug 17: One-point gaps every few minutes in graphs from the history
+
+*Open.*
+
+**Seen:** "why are there still gaps in the GUI graphs for while the GUI
+was closed, even though the proccoli background process was still
+running?" Checked: the history had a reading every second through the
+time the window was closed (19 in 18.6 s), and the window loaded them,
+but a window built on a copy of the history showed short breaks in the
+lines: one point missing about every 3½ minutes (two in 5 minutes).
+
+**Cause:** the recorder's ticks are 1004–1006 ms apart, not 1000: the
+ticker re-arms `GLib.timeout_add`, which counts each interval from when
+the previous tick's work *finished* (reading the devices takes ~5 ms).
+The readings drift about 5 ms a tick, a whole second every ~200 ticks.
+The window lays the history out in slots one step wide, so every ~200
+slots one gets no reading: a gap that isn't in the data. Live readings
+don't show it (they're drawn as they arrive).
+
+**Fix (proposed):**
+
+1. **A ticker without drift:** each tick is scheduled for
+   `start + n × interval` on the monotonic clock (a one-shot timeout for
+   the time left), so readings stay one interval apart on average; a
+   late tick is never made up twice.
+2. **Slots that tolerate drift** for what's already recorded: a slot with
+   no reading, between two that have one, takes the nearer neighbor's
+   reading when the readings around it are less than 1½ steps apart
+   (the recorder was running; the reading only slipped into the next
+   slot). A real gap (a stopped recorder) is longer than that and stays.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B17.1 | `core/ticker.py`: drift-free scheduling | Unit, with the injected clock and `timeout_add`: 1000 ticks with 5 ms of work each stay within one interval of `start + n × interval` (drifts 5 s without the fix) |
+| B17.2 | `core/history_db.buckets` (or a pure helper beside it): mend one-slot holes left by drift | Unit: readings 1005 ms apart fill every 1-s slot; a 71-s gap stays a gap; minute averages unaffected |
+| B17.3 | DESIGN §14.17 | — |
+
+### Bug 18: Changing the Time Range shows the last seconds as "not running"
+
+*Open.*
+
+**Seen:** "whenever I adjust the time range to 30s, it restarts new blank
+section where it's 'Proccoli wasn't running'. Seems to only happens
+whenever I adjust the Time Range."
+
+**Cause:** a new range empties the window's charts and refills them
+from the history through *now* (`HistoryStore.backfill`, `through_now`).
+The recorder commits the history every `COMMIT_EVERY_S` (10 s), so the
+file is 0–10 s behind (measured: 1.5–9.6 s). The refill finds no rows for
+those seconds, and `offline_slots` marks them "not running", since the
+recorder's current run ends, in the file, at its last commit. On *30
+Seconds* that's up to a third of the chart; live readings then continue
+after it, so it looks like a restart. Every range does it; on long ones
+10 s is too thin to see. Opening a window doesn't, since Bug 9's fix
+(the recorder commits on `Subscribe`).
+
+**Fix (proposed):**
+
+1. **Ask the recorder to commit before refilling:** a `Flush` method on
+   the D-Bus interface (what `Subscribe` already does first); the
+   window's store refills when it answers (asynchronously, so the window
+   never waits).
+2. **The open run isn't "not running":** while the window receives
+   readings, slots after the newest run's recorded end are gaps at most,
+   never offline.
+3. **Keep what's already on screen:** points the window received live
+   since the last commit are put back after the refill when the file
+   doesn't have them yet.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B18.1 | `metrics_service.py`: `Flush()` (commits, returns the newest time written); `devices/remote.py`: `RemoteDeviceManager.flush(callback)` with `NO_AUTO_START` | Unit, on a private bus: rows buffered before `Flush` are readable after it |
+| B18.2 | `core/history_store.py`: a range change flushes, then refills; `offline_slots` takes "running since" for the open run | Unit: after a range change with uncommitted readings, no slot in the last 10 s is offline; UI: *30 Seconds* after *1 Minute* has no shaded strip |
