@@ -55,7 +55,7 @@ class Meter(Gtk.Stack):
         self.graph.set_content_height(METER_HEIGHT_WITH_AXES if show else METER_HEIGHT)
 
     def set_entry_color(self, index) -> None:
-        """Chart and progress bar in the colour of sidebar entry ``index``
+        """Chart and progress bar in the color of sidebar entry ``index``
         (``.entry-color-<i>`` comes from ``ThemeCss``)."""
         for cls in [c for c in self.progress.get_css_classes() if c.startswith("entry-color-")]:
             self.progress.remove_css_class(cls)

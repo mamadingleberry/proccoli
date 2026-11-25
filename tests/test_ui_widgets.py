@@ -62,7 +62,7 @@ class GraphDrawTest(unittest.TestCase):
         self.assertGreater(px(100, 50)[3], 0)      # tinted
         self.assertEqual(px(0, 0)[3], 0)           # rounded corner left clear
 
-    def test_line_and_fill_in_accent_colour(self):
+    def test_line_and_fill_in_accent_color(self):
         g = Graph(max_value=100)                       # no unit: no axes, full plot
         g.set_series([flat_history(50.0).series("v")])
         px = render(g)
@@ -70,7 +70,7 @@ class GraphDrawTest(unittest.TestCase):
         self.assertLess(above[3], below[3])        # area under the line is filled
         r, gg, b = accent_rgb()
         lr, lg, lb, la = line
-        # The line pixel is (close to) the accent colour.
+        # The line pixel is (close to) the accent color.
         self.assertLess(abs(lr - r * la) + abs(lg - gg * la) + abs(lb - b * la), 60)
 
     def test_auto_scaling(self):
@@ -168,6 +168,40 @@ class GraphDrawTest(unittest.TestCase):
         g.set_hover(False)
         g._on_motion(None, 79, 0)
         self.assertIsNone(g.hover_lines(100))
+
+    def offline_graph(self):
+        # 20 points: 5 recorded, 10 while Proccoli wasn't running, 5 recorded.
+        h = History(20)
+        h.define("u", "%")
+        for t in range(15, 20):
+            h.add(float(t), {"u": 50.0})
+        h.backfill([float(t) for t in range(15)],
+                   {"u": [50.0] * 5 + [None] * 10}, [False] * 5 + [True] * 10)
+        g = Graph(max_value=100)
+        g.set_series([h.series("u")])
+        g.set_time_span(19)
+        return g
+
+    def test_time_not_running_is_dithered(self):
+        # M68: a checker over the offline stretch, none over recorded time.
+        g = self.offline_graph()
+        px = render(g, 190, 60)            # 10 px per point; offline x ≈ 45…145
+        inside = [px(x, 10)[3] for x in range(80, 90)]
+        outside = [px(x, 10)[3] for x in range(160, 170)]
+        self.assertGreater(len(set(inside)), 1)           # alternating pixels
+        self.assertEqual(len(set(outside)), 1)            # flat tint
+        self.assertNotEqual(px(80, 10), px(81, 10))
+        self.assertEqual(px(80, 10), px(81, 11))          # a checker, diagonal repeats
+
+    def test_hover_over_it_says_so(self):
+        g = self.offline_graph()
+        g._on_motion(None, 95, 0)
+        point, rows, heading = g.hover_lines(190)
+        self.assertEqual(rows, [])
+        self.assertEqual(heading, "Proccoli wasn't running (10 s)")
+        render(g, 190, 60)                                # draws without values
+        g._on_motion(None, 185, 0)
+        self.assertEqual(g.hover_lines(190)[1], [(0, "u   50 %")])
 
     def test_hover_skips_hidden_lines_and_uses_the_formatter(self):
         h = History(5)
@@ -313,7 +347,7 @@ class LegendChartTest(unittest.TestCase):
         self.assertIs(chart.legend.get_ancestor(GraphBox), chart)    # inside the card
         return chart, series
 
-    def test_lines_colours_values(self):
+    def test_lines_colors_values(self):
         chart, series = self.make()
         self.assertEqual(chart.graph.series, series)
         self.assertFalse(chart.graph.fill)

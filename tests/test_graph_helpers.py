@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from proccoli.core.history import History  # noqa: E402
 from proccoli.ui.widgets.graph import (  # noqa: E402
-    auto_max, graph_runs, nice_ceiling, snap_to_device)
+    auto_max, dither_pattern, graph_runs, nice_ceiling, offline_spans, snap_to_device)
 
 
 class HelpersTest(unittest.TestCase):
@@ -51,6 +51,55 @@ class GraphRunsTest(unittest.TestCase):
         self.assertEqual(auto_max([h.series("a"), h.series("b")]), 5e6)
         self.assertEqual(auto_max([h.define("empty")], floor=1e6), 1e6)
         self.assertEqual(auto_max([]), 1.0)
+
+
+
+class OfflineSpansTest(unittest.TestCase):
+    """Where the "wasn't running" bars go (M68): under the same points
+    ``graph_runs`` places, half a point wider each side."""
+
+    def test_a_run_in_the_middle(self):
+        # 5 points over 4 steps of 25 px: points at 0, 25, 50, 75, 100.
+        self.assertEqual(offline_spans([False, True, True, False, False], 5, 100.0),
+                         [(12.5, 62.5)])
+
+    def test_clamped_to_the_plot(self):
+        self.assertEqual(offline_spans([True, False, True], 3, 100.0),
+                         [(0.0, 25.0), (75.0, 100.0)])
+
+    def test_partial_history_sits_at_the_right(self):
+        self.assertEqual(offline_spans([True, False], 5, 100.0), [(62.5, 87.5)])
+
+    def test_nothing_to_shade(self):
+        self.assertEqual(offline_spans([], 5, 100.0), [])
+        self.assertEqual(offline_spans([False, False], 5, 100.0), [])
+        self.assertEqual(offline_spans([True], 1, 100.0), [])
+
+
+class DitherPatternTest(unittest.TestCase):
+    def test_a_checker_of_the_color_and_clear(self):
+        import cairo
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 4, 2)
+        cr = cairo.Context(surface)
+        cr.set_source(dither_pattern((0.0, 0.0, 0.0, 1.0), 1.0))
+        cr.paint()
+        surface.flush()
+        data = surface.get_data()
+        stride = surface.get_stride()
+        alpha = [[data[y * stride + x * 4 + 3] for x in range(4)] for y in range(2)]
+        self.assertEqual(alpha, [[255, 0, 255, 0], [0, 255, 0, 255]])
+
+    def test_one_pattern_pixel_per_device_pixel(self):
+        import cairo
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 4, 2)
+        surface.set_device_scale(2, 2)                          # 2 device px per unit
+        cr = cairo.Context(surface)
+        cr.set_source(dither_pattern((0.0, 0.0, 0.0, 1.0), 2.0))
+        cr.paint()
+        surface.flush()
+        data = surface.get_data()
+        stride = surface.get_stride()
+        self.assertEqual([data[x * 4 + 3] for x in range(4)], [255, 0, 255, 0])
 
 
 if __name__ == "__main__":

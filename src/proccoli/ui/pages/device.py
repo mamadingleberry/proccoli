@@ -47,7 +47,7 @@ class DevicePage(FittingPage):
         self.legend_charts: list[LegendChart] = []
         self.limits: GraphLimits = LIMITS
         self.entry_index: Optional[int] = None    # set by the sidebar
-        # Axes, grids, time span, units and colours of every graph (Idea 4);
+        # Axes, grids, time span, units and colors of every graph (Idea 4);
         # one gutter lines up the page's value axes.
         self.charts = ChartSettings(settings)
         self.gutter = AxisGutter(schedule=GLib.idle_add)
@@ -69,14 +69,14 @@ class DevicePage(FittingPage):
         return banner
 
     def set_entry_color(self, index: Optional[int]) -> None:
-        """The sidebar gave this page's entry colour ``index``: the page's
-        graphs start at the same colour (DESIGN.md §9.3)."""
+        """The sidebar gave this page's entry color ``index``: the page's
+        graphs start at the same color (DESIGN.md §9.3)."""
         self.entry_index = index
         self.charts.set_entry_base(index)
 
     def add_graph(self, graph: Graph) -> Graph:
         """A page graph: the chart preferences, a value axis in the user's
-        units, the hover box, the page's colours. In Lightweight Mode only
+        units, the hover box, the page's colors. In Lightweight Mode only
         the page's first graph is drawn; the others keep their title and
         figures as text (Idea 1)."""
         if self.graphs and not profile_of(self.settings).extra_graphs:

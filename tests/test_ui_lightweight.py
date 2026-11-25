@@ -61,7 +61,7 @@ class LightweightWindowTest(unittest.TestCase):
         self.assertEqual(timers[0][0], 60)
         timers[0][1]()
         self.assertIsInstance(win.page("demo"), StubPage)          # dropped
-        self.assertIn("demo", win.sidebar.colors)                  # entry and colour stay
+        self.assertIn("demo", win.sidebar.colors)                  # entry and color stay
 
     def test_overview_list_and_progress_bar_meters(self):
         from proccoli.ui.widgets.meter import MeterType

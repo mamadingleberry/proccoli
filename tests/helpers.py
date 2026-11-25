@@ -395,7 +395,7 @@ class FakeStyleManager:
         return SimpleNamespace(red=r, green=g, blue=b, alpha=1.0)
 
     def set_accent(self, rgb) -> None:
-        """The desktop's accent colour changes."""
+        """The desktop's accent color changes."""
         self.accent = rgb
         self._obj.accent_color += 1
 

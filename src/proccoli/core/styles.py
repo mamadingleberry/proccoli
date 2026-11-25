@@ -1,9 +1,9 @@
 """The app's styles (DESIGN.md §9.3): light/dark plus tinted styles.
 
 ExpressVPN's apps offer *System Default*, *Sand*, *Sky*, *Twilight* and
-*Midnight*; Proccoli offers the same names, with its own colours, next to
+*Midnight*; Proccoli offers the same names, with its own colors, next to
 plain Light and Dark. A style has a base (which ``Adw.ColorScheme`` to
-use) and, for the tinted ones, colours for libadwaita's surfaces. Pure
+use) and, for the tinted ones, colors for libadwaita's surfaces. Pure
 data, no GTK.
 """
 
@@ -14,7 +14,7 @@ from typing import Mapping
 
 from .palette import hex_to_rgb, relative_luminance
 
-# libadwaita colour variables a style may set (``--<name>``, and the
+# libadwaita color variables a style may set (``--<name>``, and the
 # pre-1.6 ``@define-color <name with underscores>``).
 SURFACES = ("window-bg-color", "window-fg-color", "view-bg-color", "view-fg-color",
             "headerbar-bg-color", "headerbar-fg-color", "sidebar-bg-color",
@@ -65,14 +65,14 @@ def style_by_id(style_id: str) -> Style:
 
 
 def contrast_ratio(a: str, b: str) -> float:
-    """WCAG contrast ratio of two hex colours (1 to 21)."""
+    """WCAG contrast ratio of two hex colors (1 to 21)."""
     la, lb = sorted((relative_luminance(hex_to_rgb(a)), relative_luminance(hex_to_rgb(b))),
                     reverse=True)
     return (la + 0.05) / (lb + 0.05)
 
 
 def style_css(style: Style) -> str:
-    """CSS setting libadwaita's surface colours (empty for untinted styles)."""
+    """CSS setting libadwaita's surface colors (empty for untinted styles)."""
     if not style.tinted:
         return ""
     variables = "".join(f" --{k}: {v};" for k, v in style.colors.items())

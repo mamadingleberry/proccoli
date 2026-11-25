@@ -12,9 +12,13 @@ it, and imports the statistics files of Milestone 58 once.
   detail older than ``history-detail-hours`` and minutes older than
   ``MINUTES_KEPT_DAYS``, keep the whole under ``history-max-size`` MiB, and
   give the space back.
-- **Graphs from history:** on a device's first reading of a run, and when
-  the graphs' time range or refresh speed changes, its ``History`` is
-  filled from the database (``backfill``): one device per idle call.
+- **Graphs from history:** on a device's first reading of a run its
+  ``History`` is filled from the database in front of what it holds
+  (``backfill``): one device per idle call. When the graphs' time range
+  or update interval changes, the history is emptied and filled again
+  completely at the new step (M68), so no point is drawn at a spacing
+  it wasn't taken at. Slots outside every recorded session are marked
+  offline (``offline_slots``): Proccoli wasn't running then.
 
 Both timers run off the readings themselves (no timers of their own), and
 the wall clock, the idle scheduler, the path and the old files' folder are
@@ -68,6 +72,22 @@ def ms(epoch_s: float) -> int:
     return int(round(epoch_s * 1000))
 
 
+def offline_slots(starts_ms: list[int], width_ms: int,
+                  sessions: list[tuple[int, int]]) -> list[bool]:
+    """For each slot ``[start, start + width)`` (ascending), whether no
+    recorded session (``(start, end)`` in ms, ascending) touches it:
+    Proccoli wasn't running then. A slot a session only partly covers is
+    online. One pass over both lists."""
+    out: list[bool] = []
+    j = 0
+    for start in starts_ms:
+        end = start + width_ms
+        while j < len(sessions) and sessions[j][1] < start:
+            j += 1                       # sessions that ended before this slot
+        out.append(not (j < len(sessions) and sessions[j][0] < end))
+    return out
+
+
 class HistoryStore:
     """Records every device's readings while ``history`` is on."""
 
@@ -92,6 +112,7 @@ class HistoryStore:
         self._offsets: dict[str, float] = {}     # device -> wall minus monitor clock
         self._clock: dict[str, float] = {}       # device -> its clock at the last reading
         self._detail_filled: set = set()         # (device, id(detail history)) filled
+        self._refill: set[str] = set()           # devices to empty and fill again
         self._backfill_queue: list = []
         self._failed = False
         self._monitor_handlers: dict[str, tuple[object, int]] = {}
@@ -289,11 +310,14 @@ class HistoryStore:
             self._later(self._backfill_next)
 
     def backfill_all(self) -> None:
-        """After the range or speed changed: every device, one at a time."""
+        """After the range or speed changed: every device, one at a time,
+        emptied and filled again at the new step."""
         self._detail_filled.clear()
         for monitor in self.devices.monitors():
-            if monitor.info.id in self._offsets and monitor not in self._backfill_queue:
-                self.backfill_soon(monitor)
+            if monitor.info.id in self._offsets:
+                self._refill.add(monitor.info.id)
+                if monitor not in self._backfill_queue:
+                    self.backfill_soon(monitor)
 
     def _backfill_next(self) -> bool:
         if not self._backfill_queue:
@@ -309,24 +333,37 @@ class HistoryStore:
         offset = self._offsets.get(device_id)
         if offset is None or not self.enabled or self.open() is None:
             return 0
-        tbl = table_name(device_id)
-        added = self._fill(monitor.history, tbl, offset, self._clock.get(device_id, 0.0))
         target = monitor.detail_history()
+        refill = device_id in self._refill
+        if refill:
+            # Its points may be from another step (Bug 1): the database
+            # has them all, at whatever step is asked for.
+            self._refill.discard(device_id)
+            monitor.history.clear()
+            if target is not None:
+                target.clear()
+        tbl = table_name(device_id)
+        added = self._fill(monitor.history, tbl, offset, self._clock.get(device_id, 0.0),
+                           through_now=refill)
         if target is not None:
             self._detail_filled.add((device_id, id(target)))
             wall = self.wall_clock()
             added += self._fill(target, tbl, 0.0 if target.WALL_TIMES else offset,
-                                wall if target.WALL_TIMES else wall - offset, DETAIL_PREFIX)
+                                wall if target.WALL_TIMES else wall - offset, DETAIL_PREFIX,
+                                through_now=refill)
         if added:
             log.debug("history: %d older points for %s", added, device_id)
         return added
 
-    def _fill(self, history, tbl: str, offset: float, now: float, prefix: str = "") -> int:
+    def _fill(self, history, tbl: str, offset: float, now: float, prefix: str = "",
+              through_now: bool = False) -> int:
         """Put the database's points from before ``history``'s oldest (or
         before ``now``, if it has none yet) in front of it: one per point
         slot (``history.step_s`` apart), each the average of the rows in
-        its slot, with gaps where nothing was recorded. ``offset`` turns
-        the history's clock into the wall clock."""
+        its slot, with gaps where nothing was recorded, and offline where
+        no session was. ``through_now``: an emptied history's slots end at
+        ``now``, since the newest reading is only in the database.
+        ``offset`` turns the history's clock into the wall clock."""
         room = history.room()
         if room <= 0:
             return 0
@@ -335,7 +372,7 @@ class HistoryStore:
             if self.db is None:
                 return 0
         step = history.step_s or update_interval_ms(self.settings) / 1000
-        oldest = history.times[0] if history.times else now
+        oldest = history.times[0] if history.times else now + (step if through_now else 0)
         slots = [oldest - step * k for k in range(room, 0, -1)]
         cols = {key: column_name(prefix + key, unit) for key, unit in history.keys()}
         try:
@@ -343,9 +380,10 @@ class HistoryStore:
             wanted = [k for k in cols if cols[k] in known]
             if not wanted:
                 return 0
-            points = self.db.buckets(tbl, [cols[k] for k in wanted],
-                                     ms(slots[0] + offset - step / 2), room,
-                                     max(1, ms(step)))
+            origin = ms(slots[0] + offset - step / 2)
+            width = max(1, ms(step))
+            points = self.db.buckets(tbl, [cols[k] for k in wanted], origin, room, width)
+            sessions = self.db.sessions()
         except ERRORS as exc:
             log.warning("can't read the history of %s: %s", tbl, exc)
             return 0
@@ -357,7 +395,9 @@ class HistoryStore:
             scale = known[cols[key]]
             values[key] = [None if i not in points else from_fixed(points[i][j], scale)
                            for i in range(first, room)]
-        return history.backfill(slots[first:], values)
+        offline = offline_slots([origin + i * width for i in range(first, room)], width,
+                                sessions)
+        return history.backfill(slots[first:], values, offline)
 
     # -- the statistics files of Milestone 58 ------------------------------------------------
 

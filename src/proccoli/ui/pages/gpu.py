@@ -143,7 +143,7 @@ class GpuPage(DevicePage):
         super().shutdown()
 
     def set_entry_color(self, index) -> None:
-        """The Details tabs start at the GPU entry's colour too (Idea 4)."""
+        """The Details tabs start at the GPU entry's color too (Idea 4)."""
         super().set_entry_color(index)
         if self._view_charts is not None:
             self._view_charts.set_entry_base(index)

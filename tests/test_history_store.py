@@ -21,7 +21,7 @@ from proccoli.core.history_export import (export_session, file_stem,  # noqa: E4
                                           folder_name, format_value)
 from proccoli.core import history_store  # noqa: E402
 from proccoli.core.history_store import (HistoryStore, history_path, import_csv,  # noqa: E402
-                                         old_stats_dir)
+                                         offline_slots, old_stats_dir)
 from proccoli.core.settings import Settings  # noqa: E402
 from proccoli.core.sysroot import SysRoot  # noqa: E402
 from proccoli.core.units import iso_utc, parse_iso_utc  # noqa: E402
@@ -523,6 +523,64 @@ class BackfillTest(StoreCase):
         self.assertEqual(values.count(25.0), 30)              # the last run's readings
         self.assertEqual(target.times[0], T0)                 # wall clock times
 
+    def assert_evenly_spaced(self, history, span_s):
+        times = list(history.times)
+        step = history.step_s
+        self.assertTrue(times)
+        for a, b in zip(times, times[1:]):
+            self.assertAlmostEqual(b - a, step, places=6)
+        self.assertLessEqual(times[-1] - times[0], span_s + step)
+
+    def test_range_changes_never_stretch_old_points(self):
+        # Bug 1: 3 hours of readings, then 1 minute → 1 hour → 6 hours →
+        # 1 day. Each graph's points are its own step apart and cover the
+        # 3 hours, not the whole axis.
+        self.make(Device(), **{"update-interval": "10-seconds"})
+        self.tick(1080, step=10.0)                               # 3 hours
+        history = self.monitor("cpu").history
+        for nick in ("1-hour", "6-hours", "1-day"):
+            with self.subTest(range=nick):
+                self.settings.set("graph-time-range", nick)
+                self.assert_evenly_spaced(history, 3 * 3600)
+                self.assertGreater(history.times[-1] - history.times[0], 3 * 3600 - 2 * history.step_s
+                                   if nick != "1-hour" else 3600 - 2 * history.step_s)
+                # The oldest edge may hold the first minute's average a slot
+                # early (it's timed at the minute's start); no gaps after it.
+                self.assertNotIn(None, list(history.series("usage").values)[2:])
+
+    def test_without_the_history_points_are_regrouped(self):
+        self.make(Device(), history=False, **{"update-interval": "10-seconds"})
+        self.settings.set("graph-time-range", "1-hour")
+        self.tick(360, step=10.0)
+        history = self.monitor("cpu").history
+        self.settings.set("graph-time-range", "6-hours")           # 10 s → 20 s points
+        self.assert_evenly_spaced(history, 3600)
+        self.assertEqual(history.step_s, 20.0)
+        self.settings.set("graph-time-range", "1-minute")          # back to 10 s: dropped
+        self.assertEqual(len(history), 0)
+
+    def test_time_between_runs_is_offline(self):
+        self.make(Device())
+        self.tick(40)
+        self.store.shutdown()                                     # ends at T0 + 40
+        self.clock[0] += 5
+        self.make(Device())
+        history = self.monitor("cpu").history
+        self.tick()
+        offline = list(history.offline)
+        self.assertEqual(len(offline), len(history))
+        self.assertEqual(offline[-6:], [False, True, True, True, True, False])
+        self.assertEqual(offline.count(True), 4)
+        self.assertIs(history.series("usage").offline, history.offline)
+
+    def test_a_reading_missing_while_running_is_not_offline(self):
+        self.make(Device(values=lambda now, n: None if 10 <= now - MONO < 20 else 1.0))
+        self.tick(30)
+        self.settings.set("graph-time-range", "2-minutes")
+        history = self.monitor("cpu").history
+        self.assertIn(None, list(history.series("usage").values))
+        self.assertNotIn(True, list(history.offline))
+
     def test_one_device_per_idle_call(self):
         pending = []
         self.make(Device(), MemoryDevice(), idle=pending.append)
@@ -644,6 +702,17 @@ class SnapshotStatsTest(unittest.TestCase):
         self.assertEqual(snap.stats_values()["vram-used"], 1)
         self.assertEqual(snap.stats_units()["vram-total"], "B")
         self.assertEqual(set(snap.stats_values()), set(snap.stats_units()))
+
+
+class OfflineSlotsTest(unittest.TestCase):
+    def test_slots_outside_every_session(self):
+        sessions = [(100, 200), (500, 600)]
+        starts = [0, 100, 190, 250, 400, 450, 600, 700]
+        self.assertEqual(offline_slots(starts, 50, sessions),
+                         [True, False, False, True, True, True, False, True])
+
+    def test_no_sessions_is_all_offline(self):
+        self.assertEqual(offline_slots([0, 10], 10, []), [True, True])
 
 
 class ConstantsTest(unittest.TestCase):

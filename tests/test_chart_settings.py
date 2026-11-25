@@ -102,7 +102,7 @@ class ChartSettingsTest(unittest.TestCase):
         self.settings.set("temperature-unit", "kelvin")
         self.assertEqual(self.charts.format_value(21.5, "°C"), "295 K")
 
-    def test_entry_colour_for_page_graphs(self):
+    def test_entry_color_for_page_graphs(self):
         page, card = FakeGraph(), FakeGraph()
         self.charts.set_entry_base(3)
         self.charts.bind(page)

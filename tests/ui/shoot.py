@@ -65,6 +65,11 @@ SCENES = {
                                               "gpu-view": "details"}, False),
     "palette-solarized-dark": (1024, 768, "demo", {"palette": "solarized",
                                                    "color-scheme": "dark"}, False),
+    # M68: a stretch the history filled in for a time Proccoli wasn't running.
+    "offline-light": (1024, 768, "demo", {"_offline": True, "color-scheme": "light"}, False),
+    "offline-dark": (1024, 768, "demo", {"_offline": True, "color-scheme": "dark"}, False),
+    "offline-nord-dark": (1024, 768, "demo", {"_offline": True, "palette": "nord",
+                                              "color-scheme": "dark"}, False),
     "palette-nord-dark-prefs": (1024, 768, "demo", {"palette": "nord", "color-scheme": "dark"},
                                 "preferences"),
 }
@@ -122,11 +127,31 @@ def snapshot(win: Gtk.Window, path: str, widget=None) -> bool:
     return True
 
 
+def add_earlier_run(ctx) -> None:
+    """What the history database would put in front of the demo's graphs:
+    an earlier run, then a stretch Proccoli wasn't running (M68)."""
+    import math
+    for monitor in ctx.devices.monitors():
+        h = monitor.history
+        room = h.room()
+        if room < 10 or not h.times:
+            continue
+        step = h.step_s or 1.0
+        times = [h.times[0] - step * k for k in range(room, 0, -1)]
+        recorded = room * 2 // 5
+        values = {name: [40 + 25 * math.sin(i / 4) if i < recorded else None
+                         for i in range(room)] for name, _unit in h.keys()}
+        h.backfill(times, values, [i >= recorded for i in range(room)])
+
+
 def shoot(app: Adw.Application, name: str, scene, outdir: str, real: bool = False) -> bool:
     width, height, page, overrides, sidebar_open = scene
     overrides = dict(overrides)
     scroll_end = overrides.pop("_scroll", None) == "end"   # shoot the bottom of the page
     pick_last = overrides.pop("_pick", None) == "last"     # e.g. a second GPU
+    offline = overrides.pop("_offline", False)             # an earlier run, then a gap
+    if offline:
+        overrides.setdefault("graph-time-range", "2-minutes")
     settings = Settings.for_tests({"graph-time-range": "30-seconds", **overrides})
     # Demo scenes never touch the system; --real ones use the real services,
     # minus the privileged helper (nothing here should prompt).
@@ -147,6 +172,8 @@ def shoot(app: Adw.Application, name: str, scene, outdir: str, real: bool = Fals
     win.present()
     ticker.start()
     pump(6.0)                       # let the demo draw a stretch of graph
+    if offline:
+        add_earlier_run(ctx)
     if sidebar_open is True:
         win.split_view.set_show_sidebar(True)
         pump(0.6)                   # overlay animation

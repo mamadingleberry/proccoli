@@ -1,4 +1,4 @@
-"""core.palette and the Theme's colours (Milestone 18)."""
+"""core.palette and the Theme's colors (Milestone 18)."""
 
 import os
 import re
@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from helpers import FakeStyleManager  # noqa: E402
 
 from proccoli.core.palette import (PALETTES, accent_of, entry_colors,  # noqa: E402
-                                  hex_to_rgb, mix, palette_by_id, palette_without,
+                                  hex_to_rgb, mix, offline_rgba, palette_by_id, palette_without,
                                   relative_luminance, rgb_to_hex, secondary, series_colors)
 from proccoli.core.settings import Settings  # noqa: E402
 
@@ -25,7 +25,7 @@ class PaletteDataTest(unittest.TestCase):
         self.assertEqual(ids, Settings.for_tests().spec.keys["palette"].choices)
         self.assertEqual(Settings.for_tests().get("palette"), "system")
 
-    def test_colours_are_valid_and_light_dark_match(self):
+    def test_colors_are_valid_and_light_dark_match(self):
         for p in PALETTES:
             self.assertEqual(len(p.light), len(p.dark), p.id)
             self.assertGreaterEqual(len(p.light), 6, p.id)
@@ -38,7 +38,7 @@ class PaletteDataTest(unittest.TestCase):
                 for a, b in zip(colors, colors[1:]):
                     self.assertNotEqual(a, b, p.id)
 
-    def test_colours_show_on_their_surface(self):
+    def test_colors_show_on_their_surface(self):
         # Light variants avoid near-white, dark variants near-black.
         for p in PALETTES:
             for h in p.light:
@@ -68,7 +68,7 @@ class PaletteDataTest(unittest.TestCase):
         self.assertAlmostEqual(relative_luminance((0.0, 0.0, 0.0)), 0.0)
 
 
-class SeriesColoursTest(unittest.TestCase):
+class SeriesColorsTest(unittest.TestCase):
     def test_system_puts_the_accent_first_and_skips_clashes(self):
         system = palette_by_id("system")
         colors = series_colors(system, False, UBUNTU_ORANGE)
@@ -93,7 +93,7 @@ class SeriesColoursTest(unittest.TestCase):
         self.assertTrue(palette_without((0.5, 0.5, 0.5), ["#808080"], 1.0))  # never empty
 
 
-class EntryColoursTest(unittest.TestCase):
+class EntryColorsTest(unittest.TestCase):
     def test_distinct_for_every_palette_up_to_24_entries(self):
         for p in PALETTES:
             for dark in (False, True):
@@ -101,7 +101,7 @@ class EntryColoursTest(unittest.TestCase):
                 hexes = [rgb_to_hex(c) for c in colors]
                 self.assertEqual(len(set(hexes)), 24, (p.id, dark))
 
-    def test_palette_colours_first_then_shades(self):
+    def test_palette_colors_first_then_shades(self):
         base = series_colors(palette_by_id("tango"), False, UBUNTU_ORANGE)
         colors = entry_colors(base, 8)
         self.assertEqual(colors[:6], base)
@@ -114,7 +114,37 @@ class EntryColoursTest(unittest.TestCase):
         self.assertLess(relative_luminance(secondary(blue, True)), relative_luminance(blue))
 
 
-class ThemeColoursTest(unittest.TestCase):
+class OfflineColorTest(unittest.TestCase):
+    """The "wasn't running" dither (M68)."""
+
+    def test_near_black_in_the_palettes_hue(self):
+        for p in PALETTES:
+            for dark in (False, True):
+                accent = accent_of(p, dark, (0.2, 0.4, 0.9))
+                r, g, b, a = offline_rgba(accent, dark)
+                with self.subTest(palette=p.id, dark=dark):
+                    self.assertLess(relative_luminance((r, g, b)), 0.05)
+                    self.assertGreater(a, 0.0)
+                    self.assertLessEqual(a, 1.0)
+                    # a shade of the accent: same channel order
+                    order = sorted(range(3), key=lambda i: accent[i])
+                    self.assertEqual(order, sorted(range(3), key=lambda i: (r, g, b)[i]))
+
+    def test_denser_on_dark_surfaces(self):
+        self.assertGreater(offline_rgba((1, 0, 0), True)[3], offline_rgba((1, 0, 0), False)[3])
+
+    def test_the_theme_follows_palette_and_style(self):
+        from proccoli.ui.theme import Theme
+        sm = FakeStyleManager()
+        theme = Theme(Settings.for_tests({"palette": "nord"}), sm)
+        self.addCleanup(theme.shutdown)
+        self.assertEqual(theme.accent_rgb(), hex_to_rgb("#5e81ac"))   # Nord's light blue
+        self.assertEqual(theme.offline_rgba(), offline_rgba(theme.accent_rgb(), False))
+        sm.set_system_dark(True)
+        self.assertEqual(theme.offline_rgba(), offline_rgba(hex_to_rgb("#88c0d0"), True))
+
+
+class ThemeColorsTest(unittest.TestCase):
     def setUp(self):
         from proccoli.ui.theme import Theme
         self.settings = Settings.for_tests()
@@ -134,7 +164,7 @@ class ThemeColoursTest(unittest.TestCase):
         self.assertEqual(self.changes, 1)
         self.assertEqual(self.theme.accent_rgb(), ADWAITA_BLUE)
 
-    def test_picking_a_palette_recolours_and_signals(self):
+    def test_picking_a_palette_recolors_and_signals(self):
         self.settings.set("palette", "solarized")
         self.assertEqual(self.changes, 1)
         self.assertEqual(self.theme.series_rgb(0), hex_to_rgb("#268bd2"))
@@ -143,7 +173,7 @@ class ThemeColoursTest(unittest.TestCase):
         self.assertIn("--accent-bg-color: #268bd2", css)
         self.assertRegex(css, re.compile(r"@define-color accent_bg_color #268bd2"))
 
-    def test_entry_colours_and_css(self):
+    def test_entry_colors_and_css(self):
         self.settings.set("palette", "tango")
         self.assertEqual(self.theme.entry_rgb(0), hex_to_rgb("#3465a4"))
         self.assertEqual(self.theme.entry_rgb(1), hex_to_rgb("#cc0000"))
@@ -152,7 +182,7 @@ class ThemeColoursTest(unittest.TestCase):
         self.assertIn(".entry-color-0 > trough > progress { background-color: #3465a4; }", css)
         self.assertIn(".entry-color-23 ", css)
 
-    def test_dark_style_uses_the_bright_colours(self):
+    def test_dark_style_uses_the_bright_colors(self):
         self.settings.set("palette", "gnome")
         self.settings.set("color-scheme", "dark")
         self.assertEqual(self.changes, 2)
@@ -160,19 +190,19 @@ class ThemeColoursTest(unittest.TestCase):
         self.assertIn("#2a7bde", self.theme.accent_css())
 
 
-def css_has_colour(css: str, hex_colour: str) -> bool:
+def css_has_color(css: str, hex_color: str) -> bool:
     """GTK prints a loaded provider back in its own form: GTK 4.14 (Ubuntu
     24.04) drops ``:root`` custom properties it can't parse and writes
     ``@define-color`` as ``rgb(r,g,b)``; newer GTK keeps the hex."""
-    r, g, b = (int(hex_colour[i:i + 2], 16) for i in (1, 3, 5))
-    return hex_colour in css or f"rgb({r},{g},{b})" in css
+    r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    return hex_color in css or f"rgb({r},{g},{b})" in css
 
 
 class ThemeCssTest(unittest.TestCase):
-    def test_colour_match_accepts_both_forms(self):
-        self.assertTrue(css_has_colour("a: #3465a4;", "#3465a4"))
-        self.assertTrue(css_has_colour("@define-color x rgb(52,101,164);", "#3465a4"))
-        self.assertFalse(css_has_colour("rgb(52,101,165)", "#3465a4"))
+    def test_color_match_accepts_both_forms(self):
+        self.assertTrue(css_has_color("a: #3465a4;", "#3465a4"))
+        self.assertTrue(css_has_color("@define-color x rgb(52,101,164);", "#3465a4"))
+        self.assertFalse(css_has_color("rgb(52,101,165)", "#3465a4"))
 
     def test_variables_only_where_gtk_reads_them(self):
         import gi
@@ -186,7 +216,7 @@ class ThemeCssTest(unittest.TestCase):
         self.addCleanup(old.shutdown)
         self.assertIn(":root", theme.css())                       # what newer GTK gets
         self.assertNotIn(":root", old.provider.to_string())
-        self.assertTrue(css_has_colour(old.provider.to_string(), "#3465a4"))
+        self.assertTrue(css_has_color(old.provider.to_string(), "#3465a4"))
 
     def test_provider_follows_the_palette(self):
         import gi
@@ -199,10 +229,10 @@ class ThemeCssTest(unittest.TestCase):
         self.addCleanup(theme.shutdown)
         self.assertNotIn("accent", css.provider.to_string())          # System
         settings.set("palette", "tango")
-        self.assertTrue(css_has_colour(css.provider.to_string(), "#3465a4"))
+        self.assertTrue(css_has_color(css.provider.to_string(), "#3465a4"))
         css.shutdown()
         settings.set("palette", "nord")
-        self.assertFalse(css_has_colour(css.provider.to_string(), "#5e81ac"))  # no longer followed
+        self.assertFalse(css_has_color(css.provider.to_string(), "#5e81ac"))  # no longer followed
 
 
 if __name__ == "__main__":

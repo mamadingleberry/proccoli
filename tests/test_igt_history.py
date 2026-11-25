@@ -190,5 +190,39 @@ class SnapshotDetailTest(unittest.TestCase):
         self.assertNotIn("detail/rc6/value", snap.history_values())     # not graphed twice
 
 
+class IgtSetPlanTest(unittest.TestCase):
+    """The Details tab's history regroups like the shared one (Bug 1)."""
+
+    def make(self):
+        h = History(60)
+        h.set_plan(60, 1, 1.0)
+        for i in range(60):
+            h.add({"engines": {"Render/3D/0": {"busy": float(i)}}}, timestamp=float(i))
+        return h
+
+    def test_a_longer_step_regroups(self):
+        h = self.make()
+        h.set_plan(901, 4, 4.0)
+        times = list(h.times)
+        self.assertTrue(all(b - a == 4.0 for a, b in zip(times, times[1:])))
+        s = h.series[("engines", "Render/3D/0")]
+        self.assertEqual(len(s.values), len(times))
+        self.assertIs(s.offline, h.offline)
+        self.assertEqual(len(h.offline), len(times))
+
+    def test_a_shorter_step_empties_it(self):
+        h = self.make()
+        h.set_plan(901, 4, 4.0)
+        h.set_plan(61, 1, 1.0)
+        self.assertEqual(len(h.times), 0)
+
+    def test_backfill_carries_offline_flags(self):
+        h = History(10)
+        h.set_plan(10, 1, 1.0)
+        h.add({"engines": {"Render/3D/0": {"busy": 1.0}}}, timestamp=10.0)
+        h.backfill([8.0, 9.0], {"engines/Render/3D/0": [None, 2.0]}, [True, False])
+        self.assertEqual(list(h.offline), [True, False, False])
+
+
 if __name__ == "__main__":
     unittest.main()

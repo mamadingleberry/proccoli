@@ -1,13 +1,13 @@
 """A legend for a graph with many lines (used by ``LegendChart``;
 Milestones 55, 58 and 59).
 
-One toggle per series: a colour swatch in the line's colour, its name and
+One toggle per series: a color swatch in the line's color, its name and
 its current value. Left-click an item to hide or show its line; right-click
 it to show only that line (again: all lines), so a busy chart of 16 or
 more lines can be read one line at a time. The rules are
 ``series_visibility``'s, applied to every change, so the chart never shows
 nothing: hiding the last line shown brings them all back. Swatches ask the
-graph for their colour when they draw, so they follow palette and style
+graph for their color when they draw, so they follow palette and style
 changes like the graph does.
 """
 

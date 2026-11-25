@@ -1,8 +1,8 @@
-"""The app's look: light/dark style and colour palette (DESIGN.md §9.3).
+"""The app's look: light/dark style and color palette (DESIGN.md §9.3).
 
 ``Theme`` applies the ``color-scheme`` preference to a style manager
 (``system`` maps to ``Adw.ColorScheme.DEFAULT``, which follows the desktop)
-and resolves the ``palette`` preference into series and accent colours for
+and resolves the ``palette`` preference into series and accent colors for
 the current style. The style manager is injected (the real one is
 ``Adw.StyleManager.get_default()``), so tests use a fake.
 
@@ -19,9 +19,10 @@ from gi.repository import Adw, GObject
 
 from ..core.styles import Style, style_by_id, style_css
 from ..core.palette import (DEFAULT_PALETTE, RGB, Palette, accent_of, entry_colors,
-                            palette_by_id, rgb_to_hex, secondary, series_colors)
+                            offline_rgba, palette_by_id, rgb_to_hex, secondary,
+                            series_colors)
 
-# Sidebar entries that get a progress-bar colour rule (more wrap around).
+# Sidebar entries that get a progress-bar color rule (more wrap around).
 ENTRY_CSS_COUNT = 24
 
 # A style's base -> Adw.ColorScheme ("system" follows the desktop).
@@ -31,13 +32,13 @@ COLOR_SCHEMES = {
     "dark": Adw.ColorScheme.FORCE_DARK,
 }
 
-# libadwaita < 1.6 has no accent colour API: Adwaita blue.
+# libadwaita < 1.6 has no accent color API: Adwaita blue.
 DEFAULT_ACCENT: RGB = (0x35 / 255, 0x84 / 255, 0xE4 / 255)
 
 
 class Theme(GObject.Object):
     """Emits ``changed`` whenever anything that affects drawing changes:
-    the light/dark style, the palette or the desktop's accent colour."""
+    the light/dark style, the palette or the desktop's accent color."""
 
     __gsignals__ = {
         "changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
@@ -80,14 +81,14 @@ class Theme(GObject.Object):
         if self.dark == was_dark:  # a light/dark switch already said "changed"
             self.emit("changed")   # surfaces change even if light/dark doesn't
 
-    # -- colours ----------------------------------------------------------------------
+    # -- colors ----------------------------------------------------------------------
 
     @property
     def palette(self) -> Palette:
         return palette_by_id(self.settings.get("palette"))
 
     def system_accent(self) -> RGB:
-        """The desktop's accent colour."""
+        """The desktop's accent color."""
         if hasattr(self.style_manager, "get_accent_color_rgba"):
             c = self.style_manager.get_accent_color_rgba()
             return (c.red, c.green, c.blue)
@@ -101,34 +102,38 @@ class Theme(GObject.Object):
         return colors[index % len(colors)]
 
     def entry_rgb(self, index: int, series: int = 0) -> RGB:
-        """The colour of the index-th sidebar entry (distinct for every
+        """The color of the index-th sidebar entry (distinct for every
         entry); ``series`` > 0 is its secondary shade."""
         color = entry_colors(self.series_colors(), index + 1)[index]
         return secondary(color, self.dark) if series else color
 
     def entry_css(self) -> str:
-        """Progress bars in their entry's colour (``.entry-color-<i>``)."""
+        """Progress bars in their entry's color (``.entry-color-<i>``)."""
         colors = entry_colors(self.series_colors(), ENTRY_CSS_COUNT)
         return "".join(f".entry-color-{i} > trough > progress {{ background-color: "
                        f"{rgb_to_hex(c)}; }}\n" for i, c in enumerate(colors))
 
     def css(self) -> str:
         """Everything ``ThemeCss`` loads: the style's surfaces, the accent,
-        the sidebar entry colours."""
+        the sidebar entry colors."""
         return style_css(self.style) + self.accent_css() + self.entry_css()
 
     def accent_rgb(self) -> RGB:
         return accent_of(self.palette, self.dark, self.system_accent())
 
+    def offline_rgba(self) -> tuple[float, float, float, float]:
+        """The dither color over time Proccoli wasn't running (graphs)."""
+        return offline_rgba(self.accent_rgb(), self.dark)
+
     def accent_css(self) -> str:
-        """CSS that recolours libadwaita's accent (switches, progress bars,
+        """CSS that recolors libadwaita's accent (switches, progress bars,
         selections) to the palette; empty for System, which keeps the
         desktop's accent."""
         if self.palette.follows_accent:
             return ""
         accent = rgb_to_hex(self.accent_rgb())
         # libadwaita >= 1.6 derives --accent-color (text) from the background
-        # colour; older versions read the named colours.
+        # color; older versions read the named colors.
         return (f":root {{ --accent-bg-color: {accent}; }}\n"
                 f"@define-color accent_bg_color {accent};\n"
                 f"@define-color accent_color {accent};\n")
@@ -143,7 +148,7 @@ class Theme(GObject.Object):
 
 
 def default_theme_colors(dark: bool, accent: RGB = DEFAULT_ACCENT) -> list[RGB]:
-    """Series colours without a Theme (widgets outside a themed window)."""
+    """Series colors without a Theme (widgets outside a themed window)."""
     return series_colors(palette_by_id(DEFAULT_PALETTE), dark, accent)
 
 

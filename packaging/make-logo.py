@@ -4,7 +4,7 @@
 A gauge whose needle is a broccoli: the stalk is the needle's shaft and
 pivot, the crown its head, so the vegetable's awkward shape (thin stem,
 big lumpy top) becomes the most natural part of the gauge. The dial is
-flat (dark face, coloured scale, a sparkline of recent usage under the
+flat (dark face, colored scale, a sparkline of recent usage under the
 pivot); the broccoli sits on top, drawn with some depth.
 
 The florets' buds are placed by a seeded random generator, so the output
@@ -26,7 +26,7 @@ SIZE = 128
 CENTER = (64.0, 64.0)          # dial centre
 DIAL_R = 58.0                  # outer bezel
 FACE_R = 51.0
-SCALE_R = 43.0                 # coloured scale (arc)
+SCALE_R = 43.0                 # colored scale (arc)
 SCALE_W = 6.0
 SWEEP = 240.0                  # degrees, centred on 12 o'clock
 PIVOT = (64.0, 75.0)           # the broccoli turns about its stalk's base
@@ -34,7 +34,7 @@ READING = 0.58                 # where the broccoli points, 0..1 along the scale
 BROCCOLI_SCALE = 0.9
 SEED = 26
 
-# Scale colours (GNOME palette): green most of the way, then yellow, red.
+# Scale colors (GNOME palette): green most of the way, then yellow, red.
 ZONES = ((0.0, 0.66, "#57e389"), (0.66, 0.84, "#f6d32d"), (0.84, 1.0, "#ed333b"))
 
 GREENS_DARK = ("#1f4d1c", "#24581f", "#2a6324")
@@ -73,7 +73,7 @@ def dial() -> list[str]:
         f'<circle cx="{f(cx)}" cy="{f(cy)}" r="{f(DIAL_R)}" fill="url(#bezel)"/>',
         f'<circle cx="{f(cx)}" cy="{f(cy)}" r="{f(FACE_R)}" fill="url(#face)"/>',
     ]
-    # Coloured scale, then ticks across it.
+    # Colored scale, then ticks across it.
     for t0, t1, color in ZONES:
         out.append(f'<path d="{arc_path(cx, cy, SCALE_R, scale_angle(t0), scale_angle(t1))}" '
                    f'fill="none" stroke="{color}" stroke-width="{f(SCALE_W)}"/>')

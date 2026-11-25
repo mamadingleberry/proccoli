@@ -25,7 +25,7 @@ from .page import PageKind, ResourcePage, SidebarSummary
 from .widgets.meter import Meter, MeterType
 
 
-# Pages without a sidebar chart (so without an entry colour), pinned at the
+# Pages without a sidebar chart (so without an entry color), pinned at the
 # top: they can't be moved or minimised.
 UNCHARTED = (PageKind.OVERVIEW, PageKind.APPS, PageKind.PROCESSES)
 PINNED = UNCHARTED
@@ -180,7 +180,7 @@ class StackSidebar(Gtk.ScrolledWindow):
 
     __gsignals__ = {
         "page-selected": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
-        # The charted entries, their order or their colours changed
+        # The charted entries, their order or their colors changed
         # (``entries()``); the Overview page follows it.
         "entries-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
@@ -196,7 +196,7 @@ class StackSidebar(Gtk.ScrolledWindow):
         self._saved_order: list[str] = []
         self._minimized: set[str] = set()
         self._hidden_fields: dict[str, list[str]] = {}
-        self.colors: dict[str, int] = {}      # page ID -> entry colour index
+        self.colors: dict[str, int] = {}      # page ID -> entry color index
         self.compact = False                  # icons only (sidebar_style.py)
         self._install_actions()
 
@@ -256,8 +256,8 @@ class StackSidebar(Gtk.ScrolledWindow):
         return [i for i, _ in sorted(self.items.items(), key=lambda kv: kv[1].page.sort_key())]
 
     def assign_colors(self) -> None:
-        """Give every entry with a chart its own palette colour, numbered
-        in the built-in order, so moving an entry keeps its colour (Apps
+        """Give every entry with a chart its own palette color, numbered
+        in the built-in order, so moving an entry keeps its color (Apps
         and Processes have none)."""
         index = 0
         self.colors = {}
@@ -273,7 +273,7 @@ class StackSidebar(Gtk.ScrolledWindow):
         self.emit("entries-changed")
 
     def entries(self) -> list[tuple[ResourcePage, int]]:
-        """``(page, colour index)`` of every charted entry, in display
+        """``(page, color index)`` of every charted entry, in display
         order (what the Overview page shows)."""
         ids = sorted(self.colors, key=lambda i: self._rank.get(i, len(self._rank)))
         return [(self.items[i].page, self.colors[i]) for i in ids]

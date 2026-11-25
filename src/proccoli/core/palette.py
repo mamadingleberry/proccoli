@@ -1,10 +1,10 @@
-"""Colour palettes for graphs, meters and the accent colour (DESIGN.md §9.3).
+"""Color palettes for graphs, meters and the accent color (DESIGN.md §9.3).
 
 Eight palettes after GNOME Terminal's built-in schemes (and Nord). Each
-has a light variant (the terminal's normal colours, for light surfaces) and
-a dark variant (its bright colours, for dark surfaces), in series order:
+has a light variant (the terminal's normal colors, for light surfaces) and
+a dark variant (its bright colors, for dark surfaces), in series order:
 blue, red, green, yellow, magenta, cyan. *System* keeps the desktop's
-accent colour as the first series, followed by colour-blind-friendly steps.
+accent color as the first series, followed by color-blind-friendly steps.
 
 Pure data and arithmetic: no GTK, so it's testable anywhere.
 """
@@ -22,9 +22,9 @@ RGB = tuple[float, float, float]
 class Palette:
     id: str                       # settings nick
     name: str                     # shown in Preferences
-    light: tuple[str, ...]        # series colours on light surfaces
-    dark: tuple[str, ...]         # series colours on dark surfaces
-    follows_accent: bool = False  # first series = the desktop's accent colour
+    light: tuple[str, ...]        # series colors on light surfaces
+    dark: tuple[str, ...]         # series colors on dark surfaces
+    follows_accent: bool = False  # first series = the desktop's accent color
 
     def colors(self, dark: bool) -> tuple[str, ...]:
         return self.dark if dark else self.light
@@ -84,15 +84,15 @@ def relative_luminance(rgb: RGB) -> float:
 
 def palette_without(accent: RGB, palette: Sequence[str],
                     min_distance: float = 0.3) -> list[RGB]:
-    """Palette colours, minus those too similar to the accent colour (with
+    """Palette colors, minus those too similar to the accent color (with
     an orange accent, an orange second series would be indistinguishable)."""
-    colours = [hex_to_rgb(h) for h in palette]
-    kept = [c for c in colours if math.dist(c, accent) >= min_distance]
-    return kept or colours
+    colors = [hex_to_rgb(h) for h in palette]
+    kept = [c for c in colors if math.dist(c, accent) >= min_distance]
+    return kept or colors
 
 
 def series_colors(palette: Palette, dark: bool, accent: RGB) -> list[RGB]:
-    """Series colours in order: for System the accent first, then the
+    """Series colors in order: for System the accent first, then the
     steps that don't clash with it; otherwise the palette as it is."""
     if palette.follows_accent:
         return [accent] + palette_without(accent, palette.colors(dark))
@@ -100,8 +100,8 @@ def series_colors(palette: Palette, dark: bool, accent: RGB) -> list[RGB]:
 
 
 def accent_of(palette: Palette, dark: bool, accent: RGB) -> RGB:
-    """The accent colour the app uses: the desktop's for System, else the
-    palette's first colour."""
+    """The accent color the app uses: the desktop's for System, else the
+    palette's first color."""
     return series_colors(palette, dark, accent)[0]
 
 
@@ -117,7 +117,7 @@ _SHADES = ((WHITE, 0.45), (BLACK, 0.35), (WHITE, 0.7), (BLACK, 0.6))
 
 
 def entry_colors(colors: Sequence[RGB], n: int) -> list[RGB]:
-    """``n`` distinct colours for sidebar entries: the palette's colours,
+    """``n`` distinct colors for sidebar entries: the palette's colors,
     then lighter and darker shades of them (a palette has only 6–8)."""
     out: list[RGB] = []
     base = list(colors)
@@ -132,6 +132,23 @@ def entry_colors(colors: Sequence[RGB], n: int) -> list[RGB]:
 
 
 def secondary(color: RGB, dark: bool) -> RGB:
-    """A second series in an entry's colour (network: send, under receive):
+    """A second series in an entry's color (network: send, under receive):
     the same hue moved towards the surface, so it reads as secondary."""
     return mix(color, BLACK if dark else WHITE, 0.45)
+
+
+# Time Proccoli wasn't running, on graphs filled from the history (M68): a
+# dithered bar in a near-black shade of the palette's accent. Not a series
+# color, so it never reads as data; tinted, so it belongs to the palette.
+# Dark surfaces need it denser to show at all.
+OFFLINE_TOWARDS_BLACK = 0.8
+OFFLINE_ALPHA = {False: 0.4, True: 0.75}          # light, dark
+
+
+def offline_rgba(accent: RGB, dark: bool) -> tuple[float, float, float, float]:
+    """The dither color for "not recording" (each lit pixel of a 2×2
+    checker): the accent moved most of the way to black, with an alpha
+    for the surface."""
+    r, g, b = mix(accent, BLACK, OFFLINE_TOWARDS_BLACK)
+    return r, g, b, OFFLINE_ALPHA[dark]
+

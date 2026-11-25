@@ -358,16 +358,21 @@ classDiagram
         +signal tick(now)
     }
     class History {
+        +step_s: float
+        +offline: deque~bool~
         +define(name, unit) Series
         +add(now, values, units)
         +add_gap(now)
         +series(name) Series
+        +set_plan(points, every, step_s)
         +set_max_points(n)
+        +backfill(times, values, offline)
         +write_csv(path)
     }
     class Series {
         +name, unit
         +values: deque
+        +offline: deque~bool~ (the history's)
         +latest()
         +peak()
     }
@@ -1034,7 +1039,7 @@ classDiagram
   threads, daemons, or a `.desktop` icon the theme doesn't have) shows a
   solid puzzle piece, `MISSING_APP_ICON` (our own
   `<APP_ID>-missing-app-symbolic`; Adwaita's is an outline). Being
-  symbolic, it takes the text colour: white in the dark style, dark in the
+  symbolic, it takes the text color: white in the dark style, dark in the
   light style. The GPU's vendor *Processes* tab shows icons the same way:
   it knows only PIDs, so `AppIconLookup(sysroot, grouper).icon_for_pid`
   reads `/proc/<pid>/cgroup` (cached per PID; in `--demo` an empty root,
@@ -1275,10 +1280,10 @@ classDiagram
   `OverviewPage` (`CARD`: axes, span, hover; no grid), the sidebar
   (`METER`: axes through `Meter.set_show_axes`, span) and each GPU page's
   Details tabs (`DetailServices.charts`, made per set of views and
-  released when they're dropped; it carries the GPU entry's colour, so
+  released when they're dropped; it carries the GPU entry's color, so
   the tabs start at it like the Overview tab). `PAGE` graphs also get a
   value axis and `nice_max` in the user's units, the hover box in them
-  (`format_reading`), and the owner's entry colour (`set_entry_base`).
+  (`format_reading`), and the owner's entry color (`set_entry_base`).
   Legends and info lines format through `ChartSettings.format_value`, so
   *Data Unit Prefix* and *Temperature Unit* apply everywhere. The GPU
   Details tabs build only `ChartCard`s in a `ChartGridView`; detail
@@ -1294,9 +1299,9 @@ classDiagram
   per-CPU chart).
 
 - **Graph:** rounded corners, a fill under the line in the first palette
-  colour, an optional grid, and lines snapped to device pixels. Colours
+  color, an optional grid, and lines snapped to device pixels. Colors
   come from the window's theme (§9.3); with the System palette, extra
-  series skip colours close to the accent (`palette_without`).
+  series skip colors close to the accent (`palette_without`).
 - **InfoRow** with `set_value(None)` hides itself, so pages never show
   "N/A".
 - **Axes** (`ui/axes.py` holds the arithmetic): every graph of
@@ -1416,8 +1421,8 @@ classDiagram
 
 - **Many lines in one graph (M55):** `Graph.set_fill(False)` draws lines
   without the shaded area (16+ filled areas would be mud);
-  `set_distinct_colors(True)` gives every series its own colour
-  (`entry_colors`, the same generator as the sidebar's entry colours, so
+  `set_distinct_colors(True)` gives every series its own color
+  (`entry_colors`, the same generator as the sidebar's entry colors, so
   however many CPUs there are, no two lines match); `set_series_shown(i,
   on)` leaves a line out. **Left-click** a legend item hides or shows its
   line; **right-click** (long press on touch) shows only that line, and
@@ -1429,7 +1434,7 @@ classDiagram
   count as shown.
 - **`LegendChart` (M59), the reusable many-line chart**
   (`ui/widgets/legend_chart.py`): a `GraphBox` with lines only, a distinct
-  colour per line and the `Legend` inside its card. `set_lines(series,
+  color per line and the `Legend` inside its card. `set_lines(series,
   names)` and `set_values(texts)` are all a user needs; it carries the
   click rules above and the compact legend (`fit_legend`, below). On a
   device page, `DevicePage.add_legend_chart(group, title, …)` fits it
@@ -1684,7 +1689,7 @@ classDiagram
   GPUs (by PCI slot), Drives (by name), Network interfaces (Ethernet, then
   Wi-Fi, then others), Batteries.
 - **The user's order** (Proccoli-only): Overview, Apps and Processes stay
-  pinned at the top, with no chart and no entry colour (`UNCHARTED`). Every other entry can be moved (row menu on right-click, long-press,
+  pinned at the top, with no chart and no entry color (`UNCHARTED`). Every other entry can be moved (row menu on right-click, long-press,
   the Menu key or Shift+F10: *Move Up*, *Move Down*, *Minimize*/*Expand*,
   *Reset Order*; Alt+Up/Down; drag and drop) and minimised to its icon and
   name (the chevron on the row). `sidebar-order` holds the order below the
@@ -1768,6 +1773,7 @@ classDiagram
         +system_accent() RGB
         +series_rgb(index) RGB
         +accent_rgb() RGB
+        +offline_rgba() RGBA
         +accent_css() str
         +entry_rgb(index, series) RGB
         +entry_css() str
@@ -1778,8 +1784,8 @@ classDiagram
     class Palette {
         <<core.palette, frozen dataclass>>
         +id, name
-        +light: hex colours
-        +dark: hex colours
+        +light: hex colors
+        +dark: hex colors
         +follows_accent: bool
     }
     class ThemeCss {
@@ -1787,7 +1793,7 @@ classDiagram
         CSS provider with accent_css()
     }
     class Graph {
-        colours from theme_of(self)
+        colors from theme_of(self)
     }
     Theme --> Palette
     Theme --> Style
@@ -1813,24 +1819,29 @@ classDiagram
 - **Styles** (`core/styles.py`, no GTK): *Follow System* (default; maps to
   `Adw.ColorScheme.DEFAULT`, which follows the desktop), *Light*, *Dark*,
   and four tinted styles named after ExpressVPN's themes, with our own
-  colours: *Sand* (warm light), *Sky* (cool light), *Twilight* (dusk
+  colors: *Sand* (warm light), *Sky* (cool light), *Twilight* (dusk
   purple, dark) and *Midnight* (near-black navy, dark). A style has a base
-  scheme and, if tinted, colours for libadwaita's surfaces (window, view,
+  scheme and, if tinted, colors for libadwaita's surfaces (window, view,
   header bar, sidebar, cards, popovers, dialogs; `style_css` writes the
   `--*-color` variables and the pre-1.6 `@define-color` names, loaded by
   `ThemeCss`). Text meets WCAG AAA contrast (7:1) on every surface (tested).
   Changes apply at once; `Theme` emits `changed` once per change.
 - **Palettes** (`core/palette.py`, no GTK): eight, after GNOME Terminal's
   built-in schemes plus Nord: **System** (default: the desktop's accent
-  colour first, then colour-blind-friendly steps that don't clash with it),
+  color first, then color-blind-friendly steps that don't clash with it),
   GNOME, Tango, Solarized, Linux Console, XTerm, Rxvt and Nord. Each has a
-  light variant (the terminal's normal colours) and a dark one (its bright
-  colours), in series order blue, red, green, yellow, magenta, cyan.
-- **What a palette colours:** every graph series (page graphs, sidebar
+  light variant (the terminal's normal colors) and a dark one (its bright
+  colors), in series order blue, red, green, yellow, magenta, cyan.
+- **What a palette colors:** every graph series (page graphs, sidebar
   meters, the Intel Details graphs and legends) and, except for System, the
-  accent colour: `ThemeCss` loads `--accent-bg-color` (and the pre-1.6
+  accent color: `ThemeCss` loads `--accent-bg-color` (and the pre-1.6
   `@define-color` names) at application priority, so switches, progress
   bars and selections match.
+- **Time not running (M68):** graphs shade it with a 2×2 dither in
+  `offline_rgba(accent, dark)`: the palette's accent mixed 80 % towards
+  black, at alpha 0.4 on light styles and 0.75 on dark ones. Near-black
+  so it recedes, tinted so it belongs to the palette, and never a series
+  color, so it can't be read as data.
 - **Where it lives:** `Application` builds the `Theme` into
   `AppContext.theme` (the UI half of the composition root) and a
   `ThemeCss`; `MainWindow` makes a theme if a test didn't, and exposes it
@@ -1840,18 +1851,18 @@ classDiagram
   outside a themed window it uses the System palette. When the theme
   emits `changed` the window queues a redraw of every drawing area under it
   (`redraw_tree`), because GTK caches each widget's rendering.
-- **A colour per sidebar entry:** the sidebar numbers its charted entries
+- **A color per sidebar entry:** the sidebar numbers its charted entries
   (all but Apps and Processes) in the built-in order (so moving an entry
-  keeps its colour) and gives each
-  `Theme.entry_rgb(i)`: the palette's colours, then lighter and darker
+  keeps its color) and gives each
+  `Theme.entry_rgb(i)`: the palette's colors, then lighter and darker
   shades (`entry_colors`), so every entry differs however many there are.
-  Its chart uses that colour (network's send series a shade of it,
+  Its chart uses that color (network's send series a shade of it,
   `secondary`), its progress bar the `.entry-color-<i>` rule `ThemeCss`
-  loads, and its page's graphs start at the same colour
+  loads, and its page's graphs start at the same color
   (`ResourcePage.set_entry_color` → `Graph.set_entry_base`), so sidebar and
   page match.
 - **Preferences → General → Appearance:** *Style* (Follow System, Light,
-  Dark) and *Colour Palette* (each entry shows its colours for the current
+  Dark) and *Color Palette* (each entry shows its colors for the current
   style).
 
 #### App icon (M38)
@@ -1966,7 +1977,7 @@ classDiagram
 
 The first sidebar entry, pinned above Apps and Processes. It shows a card
 for every entry that has a sidebar chart, in the sidebar's order and
-colours: the entry's icon, name and usage on top; its detail and
+colors: the entry's icon, name and usage on top; its detail and
 description below; then a chart of the same series as its sidebar chart.
 Clicking a card opens that page. Placeholder pages (no summary at all) get
 no card. It's always the page shown at launch (M55).
@@ -2035,8 +2046,8 @@ flowchart TD
 - **Decoupled from the sidebar (DI):** `OverviewPage(settings,
   navigate)` never touches the sidebar. `StackSidebar` emits
   `entries-changed` whenever its charted entries, their order or their
-  colours change (every `assign_colors()`), and `entries()` lists
-  `(page, colour index)` in display order. The window connects the two
+  colors change (every `assign_colors()`), and `entries()` lists
+  `(page, color index)` in display order. The window connects the two
   (`overview.sync(sidebar.entries())`) and passes `select_page` as
   `navigate`. Tests drive `sync()` with fake pages.
 
@@ -2057,7 +2068,7 @@ classDiagram
     class OverviewCard {
         +page: ResourcePage
         +graph: Graph
-        +set_page(page, colour)
+        +set_page(page, color)
         +set_chart_height(px)
         +chrome_height(width) int
         +chrome_width(slot) int?
@@ -2098,7 +2109,7 @@ sequenceDiagram
     S->>S: assign_colors()
     S-->>W: entries-changed
     W->>O: sync(S.entries())
-    O->>C: create, re-colour, reorder or drop cards
+    O->>C: create, re-color, reorder or drop cards
     P-->>C: summary-changed (each tick)
     C->>P: sidebar_summary()
     C->>C: labels, series, queue_draw if mapped
@@ -2296,7 +2307,7 @@ every 5 s.
     (§13.2, M62). They replaced M58's `stats-log` and `stats-log-max-size`
   - `color-scheme`: the style: `system` (follow the desktop), `light`,
     `dark`, `sand`, `sky`, `twilight` or `midnight`
-  - `palette`: one of the eight colour palettes (§9.3), `system` by default
+  - `palette`: one of the eight color palettes (§9.3), `system` by default
   - `auth-at-launch`: offer to authenticate at start-up (§9.4), on by default
   - `sidebar-shown`: whether the sidebar shows on wide windows (§9.2), on
     by default
@@ -2648,6 +2659,7 @@ classDiagram
         +commit()  every 10 s
         +housekeeping()  every 10 min
         +backfill(monitor) int
+        +backfill_all()  range or interval changed: empty and refill
         +delete() / size_on_disk()
         +session: int
         +shutdown()
@@ -2825,7 +2837,7 @@ flowchart LR
 - **Gained by every graph:** the Intel tab's hover crosshair
   (`Graph.set_hover`) and a shared y-axis gutter, so plots in a column
   line up.
-- **Gained by the Intel tab:** palettes and distinct colours from the
+- **Gained by the Intel tab:** palettes and distinct colors from the
   `Theme`, the shared axes, the legend's right-click solo, never-empty
   and compact rules, and the *Graph Time Range* (open question in PLAN:
   its own *History Length* goes; its *Update Interval*, intel_gpu_top's
@@ -2842,7 +2854,7 @@ flowchart LR
 deviations). Kept as the design record.* M60 made every graph the shared `Graph`. What's
 still done several ways is what surrounds it: settings (five ways, one
 of them never live), layout (three fitting systems, none on the NVIDIA
-tab), the card (three), number formats (three), colours (four
+tab), the card (three), number formats (three), colors (four
 mechanisms) and when a legend appears. The design gives each concern
 one owner in `ui/`:
 
@@ -2989,7 +3001,7 @@ flowchart LR
     end
     subgraph I8["Idea 8"]
         S2["sidebar: Icons Only / Hidden only<br/>(sidebar-style pinned; Full left out of the menu)"]
-        O2["Overview: readings + the small chart<br/>(Graph SMALL, 36 px, entry colour, ChartKind.METER)<br/>+ busiest apps and processes, no icons"]
+        O2["Overview: readings + the small chart<br/>(Graph SMALL, 36 px, entry color, ChartKind.METER)<br/>+ busiest apps and processes, no icons"]
     end
     M66 --> I8
 ```
@@ -3010,3 +3022,115 @@ flowchart LR
   its `Meter` only when first needed. The two changes together should
   leave memory where Milestone 66 had it; `tests/ui/mem.py` checks.
 
+
+### 13.8 Custom graph time range
+
+*PLAN.md, Idea 9.* Any range from 10 seconds to 30 days, besides the
+presets. One function turns the setting into seconds, so the rest of the
+graph code doesn't change:
+
+```mermaid
+flowchart LR
+    P["Preferences: Graph Time Range<br/>presets · Custom… (number + unit)"] --> K["graph-time-range = 'custom'<br/>graph-time-range-custom = seconds"]
+    K --> T["time_range_s(settings)<br/>clamp 10 s … 30 days, ≥ 2 update intervals"]
+    T --> H["history_plan(span, interval)<br/>≤ 1200 points, each the average of every readings"]
+    H --> G["History.set_plan → graphs"]
+    H --> B["HistoryStore.backfill<br/>detail ≤ 24 h · minutes ≤ 30 days"]
+```
+
+- **Memory is flat:** `MAX_GRAPH_POINTS` caps every history at 1200
+  points, so a longer range means more readings per point (the
+  `Averager` keeps sums), not more points. About 40 KB per series at any
+  range.
+- **The 30-day ceiling** is the minute averages' retention
+  (`MINUTES_KEPT_DAYS`). Past it only hour averages are left, coarser
+  than a point.
+- `axes.span_unit` / `format_span` gain days; `NICE_STEPS` gains 2 d
+  and 7 d.
+- The Lightweight pin (`_at_most_one_minute`) reads a custom range by
+  its seconds.
+
+### 13.9 Shade the time Proccoli wasn't running
+
+*PLAN.md, Idea 10. Done as Milestone 68; as built:* the parts of a graph
+outside every recorded run get a dithered bar; a missing reading inside
+a run stays a plain break.
+
+```mermaid
+flowchart LR
+    DB["HistoryDb.sessions()<br/>(start, end) per run"] --> F["HistoryStore._fill<br/>offline_slots: slot outside every session"]
+    F --> H["History.offline (bool per point)<br/>shared as Series.offline"]
+    H --> G["Graph._draw_plot: tint → grid → offline_spans → lines"]
+    P["dither_pattern(Theme.offline_rgba(), scale)<br/>2×2 checker, EXTEND_REPEAT, FILTER_NEAREST"] --> G
+    H --> V["hover: offline_text<br/>'Proccoli wasn't running (2.5 h)'"]
+```
+
+- Live points are never offline; without the history database nothing
+  is. Time before the first recording isn't drawn at all (a graph starts
+  where its data does), and a suspend inside a run is a plain break.
+- `offline_spans` places the bars with `graph_runs`' index-to-x mapping,
+  half a point wider each side; their edges are rounded to device
+  pixels, and the pattern has one pixel per device pixel at any scale.
+- Every graph draws them, small ones included: they follow the same
+  range.
+
+### 13.10 A shorter, friendlier README
+
+*PLAN.md, Idea 11.* The README becomes a short page about common tasks,
+with screenshots; today's reference moves to `docs/USER-GUIDE.md`:
+
+```mermaid
+flowchart LR
+    R["README.md<br/>intro · hero image · features · install<br/>common tasks · privacy · help"] -->|"details"| U["docs/USER-GUIDE.md<br/>today's README, sections as they are"]
+    S["tests/ui/shoot.py demo scenes<br/>make screenshots"] --> I["docs/screenshots/*.png"]
+    I --> R
+    I --> M["metainfo screenshots"]
+```
+
+- Screenshots come only from demo scenes, so they're reproducible and
+  never show the machine's own hardware or processes.
+- A static test checks that every image the README links to exists.
+
+## 14. Known bugs
+
+Found but not fixed. PLAN.md's *Bugs* section has the steps.
+
+### 14.1 Graphs stretch old points after a time range change
+
+*PLAN.md, Bug 1. Fixed in Milestone 68; kept as the record.* `History` holds points without a per-point spacing;
+`graph_runs` draws them evenly, `step_s` apart. A range change updates
+`step_s` but keeps the points taken at the old step, and backfill only
+fills the room in front:
+
+```mermaid
+sequenceDiagram
+    participant S as Settings
+    participant H as History (graph)
+    participant St as HistoryStore
+    participant G as Graph
+    S->>H: set_plan(1184 points, step 73 s) (was 1137 at 19 s)
+    Note over H: keeps its 1137 points, 19 s apart (and 4 s, 1 s ones)
+    S->>St: backfill_all()
+    St->>H: backfill(room = 47 points)
+    H->>G: 1184 points
+    Note over G: drawn 73 s apart: ~3 h of data fills a 24 h axis
+```
+
+**The fix (M68):** `History.set_plan` regroups the held points into a
+longer step's slots by their times (`core.history.regroup`) and empties
+the history for a shorter step. With the history database on, the
+store's `backfill_all` then empties each history and fills it again in
+full from `HistoryDb.buckets`, its slots ending at "now". The Intel
+Details `History` does the same.
+
+```mermaid
+sequenceDiagram
+    participant S as Settings
+    participant H as History (graph)
+    participant St as HistoryStore
+    S->>H: set_plan(1184 points, step 73 s)
+    Note over H: regroup: held points averaged into 73 s slots
+    S->>St: backfill_all() (idle)
+    St->>H: clear(); _fill(through_now): every slot from the database
+    Note over H: points 73 s apart, offline slots flagged
+```

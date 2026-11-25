@@ -8,13 +8,13 @@ the graphs bound to it, now and on every change:
 - ``bind(graph, kind)``: ``PAGE`` graphs (device pages, the GPU *Details*
   tabs) get axes, grids, the time span, a value axis in the user's units
   for any unit (``core.units.format_axis_label``, rounded in that unit),
-  the hover box in the user's units, and the owner's entry colour;
+  the hover box in the user's units, and the owner's entry color;
   ``CARD`` graphs (Overview cards) get axes, the time span and the hover
   box; ``METER`` graphs (sidebar meters) axes and the time span only.
 - ``format_value(value, unit)`` / ``format_reading(graph, index, value)``:
   any reading in the user's units, for legends and info lines.
-- ``set_entry_base(index)``: the owner's sidebar colour, for its ``PAGE``
-  graphs (a page's charts start at its entry's colour).
+- ``set_entry_base(index)``: the owner's sidebar color, for its ``PAGE``
+  graphs (a page's charts start at its entry's color).
 - ``release()`` disconnects it; each owner (a page, the sidebar, a GPU
   page's detail tabs) has its own and releases it with its graphs.
 

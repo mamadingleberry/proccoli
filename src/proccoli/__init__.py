@@ -6,7 +6,7 @@ then rename this package directory and the files in data/.
 
 APP_ID = "io.github.mamadingleberry.Proccoli"
 APP_NAME = "Proccoli"
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # Our own symbolic icons (data/icons): Adwaita has none for these.
 PROCESSOR_ICON = f"{APP_ID}-processor-symbolic"

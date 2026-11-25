@@ -20,7 +20,7 @@ each change:
    `make test` and `make ui-test` must pass.
 3. **Update `docs/PLAN.md`, `docs/DESIGN.md` and `README.md`** as needed. Create/Modify mermaid diagrams and UML as needed.
 4. **Do light refactoring** where the change touches code that needs it.
-5. **Repeat the documented Ideas** that the user wants to revisit at the end of each response and ask if they'd like to tackle any of them.
+5. **Repeat the documented Ideas and Bugs** that the user wants to revisit at the end of each response and ask if they'd like to tackle any of them.
 
 ## Commands
 

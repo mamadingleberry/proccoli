@@ -54,7 +54,7 @@ def install_css() -> None:
 
 class ThemeCss:
     """Keeps a CSS provider loaded with ``theme.accent_css()`` (the
-    palette's accent colour), following the theme's changes."""
+    palette's accent color), following the theme's changes."""
 
     def __init__(self, theme, display=None, css_variables: Optional[bool] = None) -> None:
         self.theme = theme

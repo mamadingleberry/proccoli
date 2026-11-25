@@ -30,6 +30,15 @@
     <control>keyboard</control>
   </supports>
   <releases>
+    <release version="0.4.0" date="2026-11-24">
+      <description>
+        <p>Charts that are honest about time.</p>
+        <ul>
+          <li>Changing the Graph Time Range or Update Interval redraws the charts for the new range, instead of stretching what they held</li>
+          <li>The time Proccoli wasn't running is shaded on the charts; hover over it to see how long</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-11-24">
       <description>
         <p>A history of every reading, lighter on memory, and one look for every chart.</p>

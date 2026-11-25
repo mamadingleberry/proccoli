@@ -2,7 +2,7 @@
 (Milestone 59; first made for the per-CPU chart, M55–M58).
 
 ``LegendChart`` is a ``GraphBox`` whose graph draws lines only (filled
-areas would muddy many lines), each in its own colour (however many), with
+areas would muddy many lines), each in its own color (however many), with
 a ``Legend`` under the graph inside the same card:
 
 - left-click an item hides or shows its line, right-click shows only it

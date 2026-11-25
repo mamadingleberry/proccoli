@@ -1,6 +1,6 @@
 """The Overview page (DESIGN.md §9.6, Milestones 39 and 41): one card per
 sidebar entry with a chart (every device; not Apps or Processes), in the
-sidebar's order and colours. A card shows the entry's icon, name, usage
+sidebar's order and colors. A card shows the entry's icon, name, usage
 line and a chart of its sidebar series; clicking it opens that page.
 Below the cards, the ten busiest apps and processes (``TopTables``).
 
@@ -10,7 +10,7 @@ gives it (Milestone 50), each chart shorter than it is wide (Milestone
 space left above the tables, on every size change.
 
 The page knows nothing about the sidebar: the window hands it the entries
-(``sync([(page, colour index), ...])``) whenever they change, and a
+(``sync([(page, color index), ...])``) whenever they change, and a
 ``navigate(page_id)`` callback. Cards read ``page.sidebar_summary()`` and
 follow each page's ``summary-changed``, so any page with a summary works,
 fakes included.
@@ -333,7 +333,7 @@ class OverviewPage(FittingPage):
         ScrollingPage.do_unmap(self)
 
     def sync(self, entries: Sequence[tuple[ResourcePage, Optional[int]]]) -> None:
-        """Show these ``(page, colour index)`` entries, in this order;
+        """Show these ``(page, color index)`` entries, in this order;
         pages with no summary at all (placeholders) are left out."""
         entries = [(p, c) for p, c in entries if p.sidebar_summary() is not None]
         wanted = [page.page_id for page, _ in entries]

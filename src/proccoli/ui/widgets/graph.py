@@ -1,9 +1,12 @@
 """Resources-style graph: a rounded area plot of one or more series.
 
 The look (rounded corners, tinted background, filled area under a line in
-the accent colour, optional grid) follows Resources' observable design; the
+the accent color, optional grid) follows Resources' observable design; the
 code is our own, with pixel-snapping and palette helpers ported from
 intel_gpu_top_gui.
+
+Stretches filled from the history for a time Proccoli wasn't running
+(``Series.offline``) get a dithered bar under the lines (M68).
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ import math
 from enum import Enum
 from typing import Callable, Optional, Sequence
 
+import cairo
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -19,12 +23,13 @@ gi.require_version("Adw", "1")
 gi.require_version("PangoCairo", "1.0")
 from gi.repository import Adw, Gtk, Pango, PangoCairo  # noqa: E402
 
-from ...core.history import Series  # noqa: E402
+from ...core.history import Series, offline_runs  # noqa: E402
 from ...core.units import format_reading, nice_ceiling  # noqa: E402,F401
-from ...core.palette import RGB, entry_colors, hex_to_rgb, secondary  # noqa: E402,F401
+from ...core.palette import (RGB, entry_colors, hex_to_rgb, offline_rgba,  # noqa: E402,F401
+                             secondary)
 from ..axes import (AxisGutter, is_percent_graph, percent_ticks, time_ticks,  # noqa: E402
                     value_ticks)
-from ..hover import ago_text, box_origin, hover_point  # noqa: E402
+from ..hover import ago_text, box_origin, hover_point, offline_text  # noqa: E402
 from ..layout import aspect_height  # noqa: E402
 from ..theme import DEFAULT_ACCENT, default_theme_colors, theme_of  # noqa: E402
 
@@ -76,6 +81,49 @@ def graph_runs(values: Sequence[Optional[float]], capacity: int, width: float,
     return runs
 
 
+def offline_spans(flags: Sequence[bool], capacity: int,
+                  width: float) -> list[tuple[float, float]]:
+    """``(x0, x1)`` of each offline run, placed like ``graph_runs`` places
+    points (newest at the right edge), widened by half a point each side
+    so neighbouring runs and lines meet, clamped to the plot."""
+    if capacity < 2 or width <= 0 or not flags:
+        return []
+    step = width / (capacity - 1)
+    n = len(flags)
+    spans = []
+    for first, last in offline_runs(flags):
+        x0 = width - (n - 1 - first) * step - step / 2
+        x1 = width - (n - 1 - last) * step + step / 2
+        if x1 > 0:
+            spans.append((max(0.0, x0), min(width, x1)))
+    return spans
+
+
+def dither_pattern(rgba: tuple[float, float, float, float], scale: float):
+    """A 2×2 checker of ``rgba`` and clear, one pattern pixel per device
+    pixel at ``scale``, repeating."""
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 2, 2)
+    c = cairo.Context(surface)
+    c.set_source_rgba(*rgba)
+    c.rectangle(0, 0, 1, 1)
+    c.rectangle(1, 1, 1, 1)
+    c.fill()
+    pattern = cairo.SurfacePattern(surface)
+    pattern.set_extend(cairo.EXTEND_REPEAT)
+    pattern.set_filter(cairo.FILTER_NEAREST)
+    pattern.set_matrix(cairo.Matrix(xx=scale, yy=scale))   # user space → pattern pixels
+    return pattern
+
+
+def offline_color(widget=None) -> tuple[float, float, float, float]:
+    """The dither color from ``widget``'s window theme (``Theme.
+    offline_rgba``), or from the default palette without one."""
+    theme = theme_of(widget)
+    if theme is not None:
+        return theme.offline_rgba()
+    return offline_rgba(accent_rgb(), Adw.StyleManager.get_default().get_dark())
+
+
 def auto_max(series: Sequence[Series], floor: float = 0.0,
              nice: Callable[[float], float] = None) -> float:
     """The automatic scale: the peak (at least ``floor``) rounded up by
@@ -95,7 +143,7 @@ def rounded_rect(cr, x, y, w, h, r) -> None:
 
 
 def accent_rgb() -> RGB:
-    """The desktop's accent colour (for widgets outside a themed window)."""
+    """The desktop's accent color (for widgets outside a themed window)."""
     sm = Adw.StyleManager.get_default()
     if hasattr(sm, "get_accent_color_rgba"):  # libadwaita >= 1.6
         c = sm.get_accent_color_rgba()
@@ -104,7 +152,7 @@ def accent_rgb() -> RGB:
 
 
 def entry_rgb(index: int, series: int, widget=None) -> RGB:
-    """A sidebar entry's colour (``Theme.entry_rgb``), or the default
+    """A sidebar entry's color (``Theme.entry_rgb``), or the default
     palette's without a theme."""
     theme = theme_of(widget)
     if theme is not None:
@@ -115,7 +163,7 @@ def entry_rgb(index: int, series: int, widget=None) -> RGB:
 
 
 def series_rgb(index: int, widget=None) -> RGB:
-    """Colour of the index-th series: from the theme of ``widget``'s
+    """Color of the index-th series: from the theme of ``widget``'s
     window, or the default palette (accent first) without one."""
     theme = theme_of(widget)
     if theme is not None:
@@ -147,16 +195,16 @@ class Graph(Gtk.DrawingArea):
         self.series: list[Series] = []
         self.colors: list[Optional[RGB]] = []
         self.aspect: Optional[tuple[float, int, int]] = None
-        # A sidebar entry's colour index (all series in that colour), or None.
+        # A sidebar entry's color index (all series in that color), or None.
         self.entry_index: Optional[int] = None
-        # On a device page: its entry's index, so the page's colours start at
-        # the colour its sidebar entry has.
+        # On a device page: its entry's index, so the page's colors start at
+        # the color its sidebar entry has.
         self.entry_base: Optional[int] = None
-        # Palette slot of the first series; 1 skips the accent colour (for a
+        # Palette slot of the first series; 1 skips the accent color (for a
         # graph that sits next to another, like Write next to Read).
         self.color_offset = 0
         # Many lines in one graph (the per-CPU chart, M55): no fill, which
-        # would muddy them; a distinct colour each (entry_colors makes as
+        # would muddy them; a distinct color each (entry_colors makes as
         # many as needed); lines the legend switched off.
         self.fill = True
         self.distinct = False
@@ -178,7 +226,7 @@ class Graph(Gtk.DrawingArea):
         self.set_content_height(height)
         self.set_hexpand(True)
         self.add_css_class("graph" if self.style == GraphStyle.NORMAL else "small-graph")
-        # Colours come from the window's Theme, which redraws its graphs when
+        # Colors come from the window's Theme, which redraws its graphs when
         # the palette or the light/dark style changes (ui/window.py).
         self.set_draw_func(self._draw)
         motion = Gtk.EventControllerMotion()
@@ -238,6 +286,11 @@ class Graph(Gtk.DrawingArea):
         point = hover_point(self.hover_x - self._plot_x, plot_w, capacity, n)
         if point is None:
             return None
+        flags = self.offline_flags()
+        if flags is not None and len(flags) == n:
+            off = offline_text(flags, point.index, capacity, self.time_span_s)
+            if off is not None:
+                return point, [], off
         rows = []
         for i, s in shown:
             k = point.index - (n - len(s.values))
@@ -245,6 +298,11 @@ class Graph(Gtk.DrawingArea):
             rows.append((i, f"{self.name_for(i)}   {self.format_for(i, value)}"
                          if len(shown) > 1 or self.name_for(i) else self.format_for(i, value)))
         return point, rows, ago_text(point.back, capacity, self.time_span_s)
+
+    def offline_flags(self):
+        """The shown series' offline flags (shared by a history's series),
+        or None."""
+        return next((s.offline for s in self.series if s.offline is not None), None)
 
     def set_series(self, series: Sequence[Series],
                    colors: Optional[Sequence[Optional[RGB]]] = None,
@@ -261,8 +319,8 @@ class Graph(Gtk.DrawingArea):
             self.queue_draw()
 
     def set_distinct_colors(self, distinct: bool) -> None:
-        """A different colour for every series, however many (palettes
-        have only 6–8 colours, which would repeat)."""
+        """A different color for every series, however many (palettes
+        have only 6–8 colors, which would repeat)."""
         if distinct != self.distinct:
             self.distinct = distinct
             self.queue_draw()
@@ -326,14 +384,14 @@ class Graph(Gtk.DrawingArea):
         return auto_max(self.series, self.min_max, self.nice_max)
 
     def set_entry_base(self, index: Optional[int]) -> None:
-        """Start this graph's colours at sidebar entry ``index``'s colour."""
+        """Start this graph's colors at sidebar entry ``index``'s color."""
         if index != self.entry_base:
             self.entry_base = index
             self.queue_draw()
 
     def set_entry_color(self, index: Optional[int]) -> None:
-        """Draw in the colour of sidebar entry ``index`` (series after the
-        first in its secondary shade); None: the palette's series colours."""
+        """Draw in the color of sidebar entry ``index`` (series after the
+        first in its secondary shade); None: the palette's series colors."""
         if index != self.entry_index:
             self.entry_index = index
             self.queue_draw()
@@ -560,6 +618,17 @@ class Graph(Gtk.DrawingArea):
                 cr.move_to(x, 0)
                 cr.line_to(x, height)
             cr.stroke()
+
+        flags = self.offline_flags()
+        if flags:
+            capacity = max((s.capacity for s in self.series), default=0)
+            spans = offline_spans(list(flags), capacity, width)
+            if spans:
+                cr.set_source(dither_pattern(offline_color(self), scale))
+                for x0, x1 in spans:
+                    x0, x1 = round(x0 * scale) / scale, round(x1 * scale) / scale
+                    cr.rectangle(x0, 0, x1 - x0, height)
+                cr.fill()
 
         y_max = self.y_max()
         cr.set_line_width(self.line_width)

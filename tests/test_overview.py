@@ -83,7 +83,7 @@ class OverviewPageTest(unittest.TestCase):
         self.assertEqual(self.page.order(), ["c", "a"])
         self.assertNotIn("b", self.page.cards)
 
-    def test_card_colour_is_the_entrys(self):
+    def test_card_color_is_the_entrys(self):
         a = FakePage("a")
         self.page.sync([(a, 3)])
         self.assertEqual(self.page.cards["a"].graph.entry_index, 3)
@@ -167,7 +167,7 @@ class OverviewWindowTest(unittest.TestCase):
         self.addCleanup(win.destroy)
         return win
 
-    def test_one_card_per_charted_entry_in_sidebar_order_and_colour(self):
+    def test_one_card_per_charted_entry_in_sidebar_order_and_color(self):
         win = self.make()
         overview = win.page("overview")
         charted = [i for i in win.sidebar.order() if i not in ("overview", "apps", "processes")]

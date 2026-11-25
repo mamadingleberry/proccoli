@@ -127,8 +127,8 @@ class ResourcePage(Adw.Bin):
         return None
 
     def set_entry_color(self, index: Optional[int]) -> None:
-        """The colour index of this page's sidebar entry (device pages
-        colour their graphs to match)."""
+        """The color index of this page's sidebar entry (device pages
+        color their graphs to match)."""
 
     def title_widget(self) -> Optional[Gtk.Widget]:
         """A widget for the header's centre instead of the page title

@@ -109,12 +109,15 @@ and activity.
   Axes* on, every chart has a value scale on its left: percentages, and
   speeds, clocks, power and temperatures in your *Data Unit Prefix*,
   network bits and *Temperature Unit*. Charts start
-  full: when Proccoli starts, or you choose a longer *Graph Time Range*,
-  they show the readings it kept before (with a gap for the time it
-  wasn't running), and so do the GPU *Details* charts. Ranges of 30
-  minutes or more show each point as the average of several readings,
-  so a day takes no more memory than ten minutes; a short spike looks
-  smaller there than at a shorter range.
+  full: when Proccoli starts, or you change the *Graph Time Range* or
+  *Update Interval*, they show the readings it kept before, redrawn for
+  the new range, and so do the GPU *Details* charts. The time Proccoli
+  wasn't running is shaded with a dark dotted bar; hover over it to see
+  how long that was. A plain break in a line means a reading was missing
+  while Proccoli was running. Ranges of 30 minutes or more show each
+  point as the average of several readings, so a day takes no more
+  memory than ten minutes; a short spike looks smaller there than at a
+  shorter range. Without *Keep History*, a chart only shows this run.
 - **Exporting statistics:** the logo → *Export Statistics…* (or
   Preferences → General → *History* → *Export…*) saves every reading
   since Proccoli started to a folder you choose. Proccoli makes a new
@@ -135,7 +138,7 @@ and activity.
   often `intel_gpu_top` takes a reading. On an NVIDIA GPU, the *Details*
   tab shows what NVIDIA's tools report, laid out the same way; its first
   line says which tool is in use. On both, the charts fill the window in
-  columns, start in the GPU's sidebar colour, show their readings in your
+  columns, start in the GPU's sidebar color, show their readings in your
   units, and follow every chart preference (axes, grids, *Graph Time
   Range*) as soon as you change it. A chart with one line has no legend;
   its value is under its title. The GPU page's *Detailed Statistics* property says
@@ -190,7 +193,7 @@ Open with Ctrl+, or from the main menu.
 - **General:**
   - *Memory Use:* *Lightweight Mode* (see *Lightweight mode* above).
   - *Appearance:* style (Follow System, Light, Dark, Sand, Sky, Twilight,
-    Midnight) and colour palette for the charts.
+    Midnight) and color palette for the charts.
   - *Units:* data units, network speeds in bits, temperature unit.
   - *User Interface:* *Update Interval* (how often Proccoli takes
     readings: every 1, 2, 3, 5 or 10 seconds; 1 by default. It replaced
@@ -231,7 +234,7 @@ memory while it shows the Overview:
 - the sidebar shows a usage bar instead of a chart;
 - charts show at most a minute, without axes or grids;
 - Apps and Processes show name, ID, processor and memory, without icons;
-- the system style and colours are used, the log keeps only warnings,
+- the system style and colors are used, the log keeps only warnings,
   and GPU detailed statistics aren't started.
 
 Your own choices for all of these are kept and come back when you turn

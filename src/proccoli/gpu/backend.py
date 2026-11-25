@@ -45,7 +45,7 @@ class DetailServices:
     """What a detail backend's views may use (injected by the page
     factory): preferences, the app icon of a PID (None: no icon), and
     ``charts`` (``ui.chart_settings.ChartSettings``): where every graph
-    gets its preferences, units and the GPU entry's colour (Idea 4). The
+    gets its preferences, units and the GPU entry's color (Idea 4). The
     GPU page makes a new one for each set of views and releases it with
     them."""
     settings: object

@@ -193,7 +193,7 @@ class IconsTest(unittest.TestCase):
         self.assertEqual(used - self.available(), set())
 
     def test_our_symbolic_icons_are_solid(self):
-        """Filled shapes in the recolourable symbolic grey: no outlines."""
+        """Filled shapes in the recolorable symbolic grey: no outlines."""
         import xml.etree.ElementTree as ET
         folder = os.path.join(ROOT, "data", "icons", "hicolor", "symbolic", "apps")
         names = os.listdir(folder)

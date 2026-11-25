@@ -92,8 +92,9 @@ Check all three every time, and change whichever no longer matches.
   shortcuts, preferences, files Proccoli keeps, troubleshooting. Update it
   when anything user-visible changes. Never put milestones, class names or
   design references in it.
-- Follow the documents' style: plain, short sentences; British spelling
-  where the docs already use it (colour, minimise).
+- Follow the documents' style: plain, short sentences. Spell it
+  "color" (American), in code, UI text and docs alike; other words keep
+  the spelling the docs already use (minimise).
 
 ## 4. Light refactoring
 

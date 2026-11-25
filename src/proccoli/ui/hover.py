@@ -8,7 +8,7 @@ filled so far. The pointer picks the nearest point.
 
 from __future__ import annotations
 
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, Sequence
 
 from .axes import format_span
 
@@ -41,6 +41,22 @@ def ago_text(back: int, capacity: int, span_s: Optional[float]) -> str:
     if not span_s or capacity < 2:
         return f"{back} samples ago"
     return f"{format_span(back * span_s / (capacity - 1))} ago"
+
+
+def offline_text(flags: Optional[Sequence[bool]], index: int, capacity: int,
+                 span_s: Optional[float]) -> Optional[str]:
+    """The hover heading over time Proccoli wasn't running (``flags[index]``
+    set): how long that stretch lasted, or None over a recorded point."""
+    if not flags or not 0 <= index < len(flags) or not flags[index]:
+        return None
+    first = last = index
+    while first > 0 and flags[first - 1]:
+        first -= 1
+    while last < len(flags) - 1 and flags[last + 1]:
+        last += 1
+    if not span_s or capacity < 2:
+        return "Proccoli wasn't running"
+    return f"Proccoli wasn't running ({format_span((last - first + 1) * span_s / (capacity - 1))})"
 
 
 def box_origin(x: float, box_w: float, box_h: float, width: float, height: float,

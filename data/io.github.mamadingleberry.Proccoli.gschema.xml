@@ -211,7 +211,7 @@
     </key>
     <key name="palette" enum="io.github.mamadingleberry.Proccoli.Palette">
       <default>'system'</default>
-      <summary>Colour palette for graphs, meters and the accent colour</summary>
+      <summary>Color palette for graphs, meters and the accent color</summary>
     </key>
     <key name="sidebar-meter-type" enum="io.github.mamadingleberry.Proccoli.MeterType">
       <default>'graph'</default>

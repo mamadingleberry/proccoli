@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from proccoli.core.history import History, Series  # noqa: E402
+from proccoli.core.history import History, Series, offline_runs, regroup  # noqa: E402
 
 
 def aligned(h: History) -> bool:
@@ -110,6 +110,96 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(rows[0], ["timestamp", "read (B/s)", "write"])
         self.assertEqual(rows[1], ["1.000", "1.500", ""])
         self.assertEqual(rows[2], ["2.000", "", "2.250"])
+
+
+class RegroupTest(unittest.TestCase):
+    """Points into a new step's slots (Bug 1)."""
+
+    def test_averages_into_longer_slots(self):
+        times = [float(t) for t in range(8)]
+        out_t, (col,), off = regroup(times, [[float(t) for t in range(8)]], [False] * 8, 4.0, 10)
+        self.assertEqual(out_t, [-1.0, 3.0, 7.0])           # back from the newest
+        self.assertEqual(col, [0.5, 3.5, 6.5])              # {0,1} {2..5} {6,7}
+        self.assertEqual(off, [False] * 3)
+
+    def test_missing_values_and_empty_slots_are_gaps(self):
+        out_t, (col,), off = regroup([0.0, 10.0], [[None, 2.0]], [False, False], 5.0, 10)
+        self.assertEqual(out_t, [0.0, 5.0, 10.0])
+        self.assertEqual(col, [None, None, 2.0])
+        self.assertEqual(off, [False, False, False])
+
+    def test_offline_only_when_every_point_was(self):
+        _t, _c, off = regroup([0.0, 1.0, 2.0, 3.0], [[None] * 4], [True, True, True, False],
+                              2.0, 10)
+        self.assertEqual(off, [True, True, False])           # {0} {1,2} {3}
+
+    def test_keeps_the_newest_that_fit(self):
+        out_t, _c, _o = regroup([float(t) for t in range(10)], [[1.0] * 10], [False] * 10,
+                                1.0, 4)
+        self.assertEqual(out_t, [6.0, 7.0, 8.0, 9.0])
+
+    def test_nothing_in_nothing_out(self):
+        self.assertEqual(regroup([], [[]], [], 1.0, 5), ([], [[]], []))
+
+
+class OfflineRunsTest(unittest.TestCase):
+    def test_runs(self):
+        self.assertEqual(offline_runs([]), [])
+        self.assertEqual(offline_runs([False, True, True, False, True]), [(1, 2), (4, 4)])
+        self.assertEqual(offline_runs([True, True]), [(0, 1)])
+
+
+class SetPlanTest(unittest.TestCase):
+    """A new time range or update interval (Bug 1): points held are never
+    drawn at a spacing they weren't taken at."""
+
+    def filled(self, n=60, step=1.0):
+        h = History(n)
+        h.set_plan(n, 1, step)
+        for i in range(n):
+            h.add(i * step, {"usage": float(i)})
+        return h
+
+    def test_a_longer_step_averages_what_is_held(self):
+        h = self.filled()
+        h.set_plan(901, 4, 4.0)
+        times = list(h.times)
+        self.assertEqual(len(times), 16)                     # 60 s at 4 s: 15 slots + the edge
+        self.assertTrue(all(b - a == 4.0 for a, b in zip(times, times[1:])))
+        self.assertEqual(times[-1], 59.0)
+        self.assertEqual(h.series("usage").values[-1], 58.5)  # 58 and 59: within half a step
+
+    def test_a_shorter_step_drops_what_is_held(self):
+        h = self.filled(step=4.0)
+        h.set_plan(61, 1, 1.0)
+        self.assertEqual(len(h), 0)
+        self.assertEqual(len(h.series("usage").values), 0)
+
+    def test_the_same_step_keeps_everything(self):
+        h = self.filled()
+        h.set_plan(121, 1, 1.0)
+        self.assertEqual(len(h), 60)
+
+    def test_offline_flags_stay_aligned(self):
+        h = History(10)
+        h.set_plan(10, 1, 1.0)
+        h.add(5.0, {"usage": 1.0})
+        h.backfill([2.0, 3.0, 4.0], {"usage": [None, None, 3.0]}, [True, True, False])
+        self.assertEqual(list(h.offline), [True, True, False, False])
+        s = h.series("usage")
+        self.assertIs(s.offline, h.offline)                  # shared with every series
+        h.set_max_points(3)
+        self.assertIs(s.offline, h.offline)
+        self.assertEqual(list(h.offline), [True, False, False])
+        h.add_gap(6.0)
+        self.assertEqual(list(h.offline), [False, False, False])  # live points never are
+        h.clear()
+        self.assertEqual(len(h.offline), 0)
+
+    def test_a_series_defined_later_shares_them(self):
+        h = History(10)
+        h.add(1.0, {"a": 1.0})
+        self.assertIs(h.define("b").offline, h.offline)
 
 
 if __name__ == "__main__":

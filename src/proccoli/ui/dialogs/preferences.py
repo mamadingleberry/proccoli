@@ -201,7 +201,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         return row
 
     def _style_row(self, group) -> Adw.ComboRow:
-        """The *Style* combo: each entry shows its window and text colours."""
+        """The *Style* combo: each entry shows its window and text colors."""
         row = self._combo(group, "color-scheme", "Style", [(s.id, s.name) for s in STYLES],
                           "Follow System uses the desktop's light or dark style")
         factory = Gtk.SignalListItemFactory()
@@ -247,10 +247,10 @@ class PreferencesDialog(Adw.PreferencesDialog):
         cr.fill()
 
     def _palette_row(self, group) -> Adw.ComboRow:
-        """The *Colour Palette* combo: each entry shows its colours."""
-        row = self._combo(group, "palette", "Colour Palette",
+        """The *Color Palette* combo: each entry shows its colors."""
+        row = self._combo(group, "palette", "Color Palette",
                           [(p.id, p.name) for p in PALETTES],
-                          "Colours of graphs, meters and the accent")
+                          "Colors of graphs, meters and the accent")
         factory = Gtk.SignalListItemFactory()
 
         def setup(_f, item):
@@ -271,7 +271,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             label.set_label(palette.name)
             swatch.set_draw_func(self._draw_swatch, palette)
             swatch.update_property([Gtk.AccessibleProperty.LABEL],
-                                   [f"{palette.name} colours"])
+                                   [f"{palette.name} colors"])
         factory.connect("setup", setup)
         factory.connect("bind", bind)
         row.set_factory(factory)

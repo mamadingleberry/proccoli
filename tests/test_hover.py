@@ -8,7 +8,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from proccoli.ui.axes import AxisGutter, value_divisions, value_ticks  # noqa: E402
-from proccoli.ui.hover import ago_text, box_origin, hover_point  # noqa: E402
+from proccoli.ui.hover import ago_text, box_origin, hover_point, offline_text  # noqa: E402
 
 
 class HoverPointTest(unittest.TestCase):
@@ -46,6 +46,20 @@ class AgoTextTest(unittest.TestCase):
 
     def test_without_a_time_span(self):
         self.assertEqual(ago_text(3, 61, None), "3 samples ago")
+
+
+class OfflineTextTest(unittest.TestCase):
+    def test_over_a_recorded_point(self):
+        self.assertIsNone(offline_text([False, True], 0, 61, 60.0))
+        self.assertIsNone(offline_text(None, 0, 61, 60.0))
+        self.assertIsNone(offline_text([True], 5, 61, 60.0))
+
+    def test_how_long_the_stretch_was(self):
+        flags = [False] + [True] * 30 + [False] * 30
+        self.assertEqual(offline_text(flags, 10, 61, 60.0), "Proccoli wasn't running (30 s)")
+
+    def test_without_a_time_span(self):
+        self.assertEqual(offline_text([True], 0, 61, None), "Proccoli wasn't running")
 
 
 class BoxOriginTest(unittest.TestCase):

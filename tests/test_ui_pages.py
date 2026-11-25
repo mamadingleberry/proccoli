@@ -87,8 +87,8 @@ class LaptopPagesTest(unittest.TestCase):
         self.assertEqual([i.name for i in page.legend.items], [f"CPU {i}" for i in range(12)])
         self.assertFalse(page.threads.graph.fill)
         page.update_labels(page.monitor.latest)           # normally on each tick
-        colours = {page.threads.graph.color_for(i) for i in range(12)}
-        self.assertEqual(len(colours), 12)                 # every line its own colour
+        colors = {page.threads.graph.color_for(i) for i in range(12)}
+        self.assertEqual(len(colors), 12)                 # every line its own color
         # Unchanging fixture files: no busiest CPU yet, but the count shows.
         self.assertEqual(page.threads.pane.info_label.get_label(), "12 logical CPUs")
         from proccoli.core.units import NO_DATA
@@ -232,7 +232,7 @@ class GpuPagesTest(unittest.TestCase):
                   for i in range(m.get_n_items())]
         self.assertEqual(labels, ["Update Interval"])
 
-    def test_palette_change_recolours_the_details_tab(self):
+    def test_palette_change_recolors_the_details_tab(self):
         page = self.win.page("gpu-demo")
         self.win.select_page("gpu-demo")
         self.win.present()
@@ -531,7 +531,7 @@ class GraphsFillThePageTest(unittest.TestCase):
                                      graph_cap(section.get_width()) + 1)
 
     def test_intel_details_are_the_chart_family(self):
-        # Idea 4: user units, the legend rule, live preferences, entry colour.
+        # Idea 4: user units, the legend rule, live preferences, entry color.
         self.settings = Settings.for_tests({"gpu-view": "details"})
         ctx = make_context(self, demo=True, settings=self.settings, system=_RealStreams())
         ctx.ticker.set_interval(250)          # faster than any Update Interval: tests only
@@ -559,7 +559,7 @@ class GraphsFillThePageTest(unittest.TestCase):
         self.assertFalse(view.sections["engines"].graph.has_axes())
         self.settings.set("show-graph-grids", True)
         self.assertTrue(view.sections["engines"].graph.show_grid)
-        # The Details tab starts at the GPU entry's colour, like its Overview.
+        # The Details tab starts at the GPU entry's color, like its Overview.
         self.assertIsNotNone(page.entry_index)
         self.assertEqual(view.sections["engines"].graph.entry_base, page.entry_index)
         self.assertEqual(page.usage.graph.entry_base, page.entry_index)

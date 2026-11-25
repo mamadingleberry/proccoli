@@ -8,7 +8,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
-from ...core.history import Averager
+from ...core.history import Averager, regroup
 from ...core.history import Series as CoreSeries
 
 # Top-level keys that are not plotted as metric groups.
@@ -89,6 +89,7 @@ class History:
 
     max_points: int = 600
     times: deque = field(default_factory=deque)
+    offline: deque = field(default_factory=deque)
     series: dict[tuple[str, str], Series] = field(default_factory=dict)
     group_order: list[str] = field(default_factory=list)
     latest_sample: Optional[dict] = None
@@ -98,14 +99,33 @@ class History:
 
     def __post_init__(self) -> None:
         self.times = deque(maxlen=self.max_points)
+        self.offline = deque(maxlen=self.max_points)
         self._averager = Averager(1)
         self._units: dict[tuple[str, str], str] = {}
 
     def set_plan(self, points: int, every: int = 1, step_s: Optional[float] = None) -> None:
+        """As ``core.history.History.set_plan``: a new step regroups the
+        points held (a longer one) or drops them (a shorter one)."""
+        old_step = self.step_s
         self.set_max_points(points)
         if max(1, every) != self._averager.every:
             self._averager = Averager(every)
         self.step_s = step_s
+        if old_step and step_s and step_s != old_step and self.times:
+            if step_s < old_step:
+                self.clear()
+            else:
+                self._regroup(step_s)
+
+    def _regroup(self, step: float) -> None:
+        series = list(self.series.values())
+        times, columns, offline = regroup(list(self.times), [list(s.values) for s in series],
+                                          list(self.offline), step, self.max_points)
+        self.times = deque(times, maxlen=self.max_points)
+        self.offline = deque(offline, maxlen=self.max_points)
+        for s, column in zip(series, columns):
+            s.values = deque(column, maxlen=self.max_points)
+            s.offline = self.offline
 
     def room(self) -> int:
         return self.max_points - len(self.times)
@@ -124,7 +144,7 @@ class History:
                 units[f"{group}/{name}"] = unit
         return values, units
 
-    def backfill(self, times, values) -> int:
+    def backfill(self, times, values, offline=None) -> int:
         """Older points in front (as ``core.history.History.backfill``)."""
         oldest = self.times[0] if self.times else float("inf")
         room = self.room()
@@ -132,6 +152,7 @@ class History:
         if not keep:
             return 0
         self.times.extendleft(times[i] for i in reversed(keep))
+        self.offline.extendleft(bool(offline[i]) if offline else False for i in reversed(keep))
         for (g, n), s in self.series.items():
             column = values.get(f"{g}/{n}")
             s.values.extendleft(None if column is None else column[i] for i in reversed(keep))
@@ -142,12 +163,15 @@ class History:
             return
         self.max_points = n
         self.times = deque(self.times, maxlen=n)
+        self.offline = deque(self.offline, maxlen=n)
         for s in self.series.values():
             s.values = deque(s.values, maxlen=n)
+            s.offline = self.offline
 
     def clear(self) -> None:
         self._averager.reset()
         self.times.clear()
+        self.offline.clear()
         for s in self.series.values():
             s.values.clear()
         self.latest_sample = None
@@ -166,12 +190,14 @@ class History:
                     # Back-fill so that the deque stays aligned with times.
                     s = self.series[key] = Series(group, name, unit, self.max_points)
                     s.values.extend([None] * len(self.times))
+                    s.offline = self.offline
                 self.series[key].unit = unit
                 flat[key] = v
         point = self._averager.push(flat)
         if point is None:
             return
         self.times.append(ts)
+        self.offline.append(False)
         for key, s in self.series.items():
             s.values.append(point.get(key))
 
@@ -181,6 +207,7 @@ class History:
         if not self.times:
             return
         self.times.append(time.time() if timestamp is None else timestamp)
+        self.offline.append(False)
         for s in self.series.values():
             s.values.append(None)
 

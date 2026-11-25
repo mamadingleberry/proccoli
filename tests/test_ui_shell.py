@@ -331,7 +331,7 @@ class SidebarArrangeTest(unittest.TestCase):
         self.assertEqual(sidebar.order()[2:4], ["sdb", "cpu"])
         self.assertFalse(sidebar._on_drop("nope", "cpu"))
 
-    def test_moving_keeps_each_entrys_colour(self):
+    def test_moving_keeps_each_entrys_color(self):
         sidebar = self.make()
         before = {i: sidebar.items[i].meter.graph.entry_index for i in ("cpu", "sda", "sdb")}
         sidebar.move("sdb", -3)
@@ -421,7 +421,7 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(item.image.get_pixel_size(), ICON_SIZE)
         self.assertEqual(item.details.get_margin_start(), ICON_SIZE + ICON_SPACING)
 
-    def test_each_chart_entry_has_its_own_colour(self):
+    def test_each_chart_entry_has_its_own_color(self):
         from helpers import FakeStyleManager, make_context
         from proccoli.core.palette import hex_to_rgb
         from proccoli.ui.theme import Theme
