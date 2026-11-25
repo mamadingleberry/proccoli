@@ -1,4 +1,4 @@
-"""ui.sidebar_fields: per-entry parts (Milestone 31)."""
+"""ui.sidebar_fields: per-entry parts."""
 
 import os
 import sys

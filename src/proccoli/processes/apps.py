@@ -3,11 +3,11 @@
 Desktops start every app in its own systemd unit, whose name carries the
 app ID. The forms seen in practice (all under app.slice):
 
-  app-org.gnome.Terminal.slice/...           GNOME 49 (app ID + ".slice")
-  app-gnome-org.gnome.Nautilus-12345.scope   launcher "gnome", random suffix
+  app-org.gnome.Terminal.slice/... GNOME 49 (app ID + ".slice")
+  app-gnome-org.gnome.Nautilus-12345.scope launcher "gnome", random suffix
   app-flatpak-org.mozilla.firefox-12345.scope
-  snap.firefox.firefox-<uuid>.scope          desktop ID "firefox_firefox"
-  app-org.example.Tool@abc123.service        app started as a service
+  snap.firefox.firefox-<uuid>.scope desktop ID "firefox_firefox"
+  app-org.example.Tool@abc123.service app started as a service
 """
 
 from __future__ import annotations
@@ -106,7 +106,7 @@ class AppIconLookup:
 
 class AppGrouper:
     """Groups processes into apps. ``lookup`` maps an app ID to its
-    ``AppInfo`` (in the app: ``System.desktop_app``)."""
+    ``AppInfo`` (in the app: ``System.desktop_app()``)."""
 
     def __init__(self, lookup: Callable[[str], Optional[AppInfo]]) -> None:
         self.lookup = lookup

@@ -1,0 +1,7 @@
+# D-Bus activation for proccoli: a window asking for
+# readings starts the collector through systemd if it isn't running.
+# Installed as <app ID>.Metrics.service in dbus-1/services.
+[D-BUS Service]
+Name=@APP_ID@.Metrics
+Exec=@BINDIR@/proccoli
+SystemdService=proccoli.service

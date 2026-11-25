@@ -2,7 +2,7 @@
 
 One ``Ticker`` drives every monitor, so all graphs sample at the same moments
 and line up. Its interval follows the *Update Interval* preference
-(``update-interval``; it replaced *Refresh Speed*, Idea 6).
+(``update-interval``; it replaced *Refresh Speed*).
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Callable, Optional
 from gi.repository import GLib, GObject
 
 # Update-interval nicks (settings schema) -> milliseconds. Nothing faster
-# than once a second (Idea 6).
+# than once a second.
 UPDATE_INTERVALS_MS = {
     "1-second": 1000,
     "2-seconds": 2000,
@@ -25,7 +25,7 @@ UPDATE_INTERVALS_MS = {
 DEFAULT_INTERVAL = "1-second"
 
 # The old *Refresh Speed* nicks -> the update interval that replaces them
-# (settings.migrate; also how an old Intel tab interval is read).
+# (settings.migrate(); also how an old Intel tab interval is read).
 REFRESH_SPEED_TO_INTERVAL = {
     "very-slow": "5-seconds",      # was 4 s
     "slow": "2-seconds",
@@ -46,7 +46,7 @@ def update_interval_ms(settings) -> int:
     return interval_for(settings.get("update-interval"))
 
 
-# Graph time-range nicks (settings schema) -> seconds (M58). Graphs show
+# Graph time-range nicks (settings schema) -> seconds. Graphs show
 # this much time whatever the update interval; the number of points follows.
 TIME_RANGES_S = {
     "30-seconds": 30,
@@ -66,8 +66,39 @@ TIME_RANGES_S = {
 MAX_GRAPH_POINTS = 1200
 
 
-def time_range_s(nick: str) -> int:
+# A custom range: any number of seconds in these bounds,
+# and never shorter than two readings. 30 days is how long the history
+# keeps minute averages; past that only hours are left, coarser than a
+# point.
+CUSTOM = "custom"
+CUSTOM_KEY = "graph-time-range-custom"
+MIN_RANGE_S = 10
+MAX_RANGE_S = 30 * 86400
+# Everything that sizes a graph follows these keys.
+RANGE_KEYS = ("graph-time-range", CUSTOM_KEY)
+PLAN_KEYS = RANGE_KEYS + ("update-interval",)
+
+
+def preset_s(nick: str) -> int:
+    """Seconds for a preset nick; unknown (or custom): 1 minute."""
     return TIME_RANGES_S.get(nick, TIME_RANGES_S["1-minute"])
+
+
+def clamp_range_s(seconds: float, interval_ms: int = 1000) -> int:
+    """``seconds`` within ``MIN_RANGE_S``..``MAX_RANGE_S`` and at least two
+    update intervals."""
+    low = max(MIN_RANGE_S, math.ceil(2 * interval_ms / 1000))
+    return int(min(MAX_RANGE_S, max(low, seconds)))
+
+
+def time_range_s(settings) -> int:
+    """How much time graphs show, in seconds: the preset, or the custom
+    range (clamped). Every graph and history goes through this, so nothing
+    else needs to know about custom ranges."""
+    nick = settings.get("graph-time-range")
+    if nick != CUSTOM:
+        return preset_s(nick)
+    return clamp_range_s(settings.get(CUSTOM_KEY), update_interval_ms(settings))
 
 
 def history_points(span_s: float, interval_ms: int) -> int:
@@ -91,7 +122,7 @@ def graph_plan(settings) -> tuple[int, int, float]:
     """``(points, every, step_s)`` for the graphs' time range at the
     update interval; ``step_s`` is the time between points."""
     interval = update_interval_ms(settings)
-    points, every = history_plan(time_range_s(settings.get("graph-time-range")), interval)
+    points, every = history_plan(time_range_s(settings), interval)
     return points, every, interval * every / 1000
 
 

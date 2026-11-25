@@ -1,11 +1,11 @@
-"""Moving between panes without the sidebar (DESIGN.md §9.2).
+"""Moving between panes without the sidebar.
 
-- *Go To* (Milestone 48): a submenu of the main menu listing every pane in
+- *Go To*: a submenu of the main menu listing every pane in
   the sidebar's order. Its items use the stateful ``win.go-to`` action,
   whose state is the visible page's ID, so the current pane is marked.
   Panes with the same name (two identical drives) are told apart by their
   description.
-- *Back and forward* (Milestone 49): ``NavigationHistory`` remembers the
+- *Back and forward*: ``NavigationHistory`` remembers the
   panes visited, like a browser. The mouse's back and forward side buttons
   (8 and 9) and Alt+Left / Alt+Right move through it.
 

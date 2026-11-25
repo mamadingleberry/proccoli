@@ -47,7 +47,7 @@ Class and module names refer to [DESIGN.md](DESIGN.md). Section references
 | 14 Battery | ✅ Done | Fixture-tested only: this machine has no battery |
 | 15 Packaging and polish | ✅ Done | CPU target not met under Broadway, see 15.4 |
 | Refactor: GPU tabs (summary + detail sources) | ✅ Done | Replaces the swappable GPU page, see below |
-| 16+ More GPU backends | ⬜ Future | |
+| 16+ More GPU backends | 🟡 Started | AMD built as Milestone 70 (amdgpu's own sysfs files, not `amdgpu_top`) |
 | 17 Light/dark follows the system | ✅ Done | |
 | 18 Color palettes | ✅ Done | Screenshots now render the whole window (a dark page background was missing) |
 | 19 Sidebar area charts | ✅ Done | |
@@ -102,15 +102,42 @@ Class and module names refer to [DESIGN.md](DESIGN.md). Section references
 | 67 Switch To any running app | ✅ Done | Was Idea 5. Proccoli's own GNOME Shell extension (installed off; *Install* / *Turn On* in Preferences); activation tokens for the M32 ways; `wmctrl` on X11. Not yet tried with the extension loaded: that needs a log-out |
 | **Release 0.3.0** | ✅ Tagged `v0.3.0` | Milestones 60–67 since 0.2.0; release notes in the metainfo |
 | Export any part of the history | 💡 Idea | *Export Statistics…* for this session, the last hour/day/week, or all saved history; see *Ideas*, Idea 7 |
-| Lightweight: small charts on the Overview, minimal sidebar | 💡 Idea | The sidebar's small charts move to the Overview cards, the busiest apps and processes come back to the Overview, and the sidebar is *Icons Only* or *Hidden* in Lightweight Mode; see *Ideas*, Idea 8 |
-| Custom graph time range | 💡 Idea | Any range from 10 seconds to 30 days (number + unit) besides the presets; memory stays flat because a graph never holds more than 1200 points; see *Ideas*, Idea 9 |
+| Lightweight: small charts on the Overview, minimal sidebar | ➡️ Moved | Was Idea 8; built as Milestone 71 |
+| Custom graph time range | ➡️ Moved | Was Idea 9; built as Milestone 74 |
 | 68 Honest graph time: range changes, time not running | ✅ Done | Fixes Bug 1 (a range change regroups or refills, never stretches) and was Idea 10 (dithered bars, near-black in the palette's accent, over time Proccoli wasn't running). "Colour" spelled "color" everywhere |
 | **Release 0.4.0** | ✅ Tagged `v0.4.0` | Milestone 68 since 0.3.0; release notes in the metainfo |
 | Shorter, friendlier README | 💡 Idea | A short README around what people want to do, with screenshots; the reference details move to a second page; see *Ideas*, Idea 11 |
+| 69 Honest GPU readings on AMD APUs; README version | ✅ Done | Fixes Bugs 2–5: an APU's package power was shown as the GPU's, its graphics memory as the carve-out alone, AMD process memory counted twice, and the README still installed 0.3.0. Checked on a Ryzen 3 4300U (Radeon Vega 6) |
+| 70 AMD detailed statistics | ✅ Done | A *Details* tab from amdgpu's own files (`gpu_metrics`, clock tables, hwmon, fdinfo): no tool, no password. The NVIDIA tab's chart code shared as `DetailChartsView`. A second demo GPU (AMD). Checked on the same Vega 6 |
+| 71 Lightweight: small charts on the Overview, minimal sidebar | ✅ Done | Was Idea 8. Sidebar *Icons Only* or *Hidden*; Overview cards with the small chart and the 5 busiest apps and processes without icons; meters built only when shown. +1.7 MiB at start (37.1 MiB) |
+| Graph toolbar | ➡️ Moved | Was Idea 12; built as Milestone 72 |
+| Record history in the background | ➡️ Moved | Was Idea 13; built as Milestone 75 |
+| Exports describe their devices | ➡️ Moved | Was Idea 14; built as Milestone 73 |
+| Separate installs: `proccoli-metrics` and `proccoli-gui` | ➡️ Moved | Was Idea 15; built as Milestone 76 |
+| Web GUI, hosted locally | 💡 Idea (brainstorm) | A browser view of the same history and live readings, served by `proccoli-metrics` on this machine only by default; options, trade-offs and a recommended first slice; see *Ideas*, Idea 16 |
+| Web GUI for machines on the local network | 💡 Idea (brainstorm) | One Web GUI showing several machines that run `proccoli-metrics`: found on the network, paired once, read-only; feasible, and where to begin; see *Ideas*, Idea 17 |
+| Overview pages for groups: GPUs, Drives, Network, Batteries | 💡 Idea | Where a kind can have several devices, a group entry in the sidebar with its devices as children and its own overview page (a card per device, side by side); Network groups Ethernet, Wi-Fi and other connections, with combined throughput; see *Ideas*, Idea 18 |
+| 72 Graph toolbar | ✅ Done | Was Idea 12. A toolbar under each page with charts: a *Time Range* menu, *Graph Axes* and *Graph Grid* switches (and *Logical CPUs* on the Processor page), each titled, each the same setting as Preferences; *Graph Grid* now reaches the Overview cards and sidebar charts too; drag (or Ctrl+Shift+Left/Right) to reorder, ⋮ to show, hide or reset; *Show Toolbar* in the main menu. The sidebar's ordering is now the shared `reorder.py` and `make_reorderable`. Not in Lightweight Mode |
+| The window reads nothing: `proccoli-metrics` serves every reading | 🚧 Started | Idea 19, in three parts approved one at a time: **19a** the collector serves every reading over D-Bus (Milestone 78); **19b** the window reads from it, the history read-only, the collector always on and started on demand, a banner when readings stop (Milestone 79); **19c** the features that need administrator rights, Preferences, the `strace` check and measurements; see *Ideas*, Idea 19 |
+| Recording from boot (lingering) | 💡 Idea | The recorder starts at boot, not only at log-in: lingering offered at the right moments, or turned on by the package, or a system-wide recorder; see *Ideas*, Idea 22 |
+| Refactoring candidates | 💡 Idea (R1–R3 done in M84) | Twelve places to restructure into classes, base classes or helpers (signal connections, a common device-source base, monitors that describe themselves, `System` split, `Graph` axes and hover, …); see *Ideas*, Idea 21 |
+| Preferences in named sections | 💡 Idea | Split Preferences' long *General* page into named pages (Appearance, Graphs, Recording, Access, Performance, Diagnostics…) and move long lists (table columns, per-device options) to subpages; see *Ideas*, Idea 20 |
+| 84 Restart keeps its name; signal connections, device sources, device descriptions | ✅ Done | *Restart Now* runs the launcher itself, so the window isn't listed as `python3` (Bug 14); `Connections` in 17 modules, a `DeviceSource` base for both device managers, monitors that describe themselves (Idea 21: R1, R2, R3) |
+| 83 More styles; the programs renamed; 0.5.0 | ✅ Done | 18 more styles (High Contrast Light and Dark among them); the recorder is now `proccoli` (program, unit, package) and the window `proccoli-gui`; the meta package is gone; version 0.5.0 |
+| 82 Palettes, padlocks, steady tables, no stray collectors | ✅ Done | 13 more palettes (five color-blind safe first after System); Lightweight Mode's fixed settings get a padlock and each page a notice; the Overview's tables keep their size (Bug 13); tests and the window can no longer start a collector by accident (Bug 12) |
+| 81 Lightweight Mode draws with Cairo; gaps, the switch, references | ✅ Done | Measured on the real display, Lightweight Mode (OpenGL) used *more* than the full window (128 MiB private, 19.8 % of a core vs 117 MiB, 15.1 %); with Cairo it's 56 MiB and 10.4 %. Fixes Bug 9 (a window's first seconds missing from its graphs), Bug 10 (the Lightweight switch showed the setting, not the mode) and Bug 11 (Lightweight Mode's Processor and Memory pages blank). Planning references removed from code, with a static check and a CLAUDE.md rule |
+| 80 Pane graphs and sidebar graphs | ✅ Done | `PaneGraph` and `SidebarGraph` (both `Graph`): sidebar charts never have a grid, show the time axis whenever axes are on (network ones too, which had none) and only the minimum and maximum on a value axis; pane charts as before. Also: 19 lines of Mermaid fixed for GitHub (semicolons, quotes in class members, `PK, FK`) |
+| 79 The window reads from the collector (Idea 19b) | ✅ Done | The window's devices are `RemoteDeviceManager`'s, fed by `proccoli-metrics` over D-Bus; its history read-only; the collector on for every user and started on demand (D-Bus activation); a banner with *Try Again* when readings stop. Apps and Processes stay in the window. Intel GPU *Details* wait for 19c |
+| 78 The collector serves every reading (Idea 19a) | ✅ Done | `proccoli-metrics` owns `<app ID>.Metrics` on the session bus: `Devices`, `Subscribe` / `Unsubscribe` (name-watched), `Status`, and a `Readings` signal each update while someone's subscribed; snapshots as JSON by `devices/snapshot_codec` (known types only); `proccoli-metrics --watch`. The window doesn't use it yet. Serving costs nothing measurable (1.12 % of a core with a subscriber, 1.22 % without) |
+| 77 The collector's name and app | ✅ Done | Fixes Bug 7 (Processes showed `proccoli-metric`: a script's name now comes from the script); the unit runs in the desktop's app slice for Proccoli (`Slice=app-<app ID>.slice`), so the Apps page groups it with the window instead of *System Processes* |
+| 76 Separate installs | ✅ Done | Was Idea 15. `packaging/split.py` puts every source file in one part; `install.sh --metrics / --gui`; three debs: `proccoli-metrics` (no GTK), `proccoli-gui` (needs the same metrics), `proccoli` (both), taking over the old single package's files. A static test keeps the library free of the GUI at any level |
+| 75 Record the history in the background | ✅ Done | Was Idea 13. `proccoli-metrics`, a systemd user service without Gtk, writes the history while the window is closed; `history.lock` makes one process the writer, the other reads and takes over within 10 s; Preferences turns it on (and *Start at Boot*) and says who's recording. Fixes Bug 6 (fdinfo read twice per update). 15.6 MiB private memory, 1.1 % of one core on the Ryzen 3 4300U |
+| 74 Custom graph time range | ✅ Done | Was Idea 9. *Custom…* in Preferences and the toolbar's *Time Range*: a number and a unit, 10 seconds to 30 days, clamped to two update intervals; axes in days past 48 h; every re-planning listener follows the custom key; Lightweight Mode caps it at a minute. Memory flat: 351 KiB filled at 1 day, 354 KiB at 30 days (8 lines) |
+| 73 Exports describe their devices | ✅ Done | Was Idea 14. The history keeps each device's description and properties when they change (schema 2); exports add a `machine` block, each device's details and changes in `export.json`, and `devices.csv`. Hardware addresses only with *Include Hardware Addresses*; never the host name |
 
-Tests: 937, all passing on the headless display (`make ui-test`; on GTK
+Tests: 1153, all passing on the headless display (`make ui-test`; on GTK
 4.14, 3 skip because they need a window taller than the 1024×768 headless
-screen, see M53). A plain `make test` runs the 703 that need no display
+screen, see M53). A plain `make test` runs the 866 that need no display
 and skips the rest, so it never opens windows on your desktop.
 
 **Platform floor:** Ubuntu 24.04 (Python 3.12, GTK 4.14, libadwaita 1.5,
@@ -521,7 +548,7 @@ addition: **one new package under `gpu/` + one `register()` line + tests**.
 | Backend | Data source | Detail tabs |
 |---|---|---|
 | `NvidiaSmiBackend` (DETAIL) | `nvidia-smi --query-gpu=… --format=csv -lms`, `nvidia-smi pmon` / `--query-compute-apps` for processes (or NVML via ctypes) | SM, memory controller, encoder, decoder, VRAM, clocks (graphics, SM, memory, video), power vs limit, temperature, fan, PCIe throughput, P-state |
-| `AmdGpuTopBackend` (DETAIL) | `amdgpu_top --json` stream (or sysfs + `gpu_metrics` binary blob) | GFX, compute, VCN, SDMA rings; GTT vs VRAM; sclk, mclk, fclk; per-sensor temperatures (edge, junction, mem); power vs cap |
+| `AmdGpuTopBackend` (DETAIL) | `amdgpu_top --json` stream (or sysfs + `gpu_metrics` binary blob) | GFX, compute, VCN, SDMA rings; GTT vs VRAM; sclk, mclk, fclk; per-sensor temperatures (edge, junction, mem); power vs cap. *Built as Milestone 70 from sysfs + `gpu_metrics` (`AmdgpuBackend`), without `amdgpu_top`* |
 
 **Checklist for adding a backend:** fixtures for its tool output → `probe()`
 matrix tests → `summary()` / `process_usage()` tests → `TABS` and
@@ -1388,6 +1415,531 @@ either: Proccoli was running, so it's a plain break. Small graphs
   long graph's oldest edge can show one point, a gap, then the rest.
   Harmless; left as is.
 
+## Milestone 69: Honest GPU readings on AMD APUs; README version
+
+Fixes Bugs 2, 3, 4 and 5 (kept below as the record). Found by comparing
+the generic GPU page with amdgpu's own files on a Ryzen 3 4300U (Radeon
+Vega 6, Renoir APU), the first AMD GPU Proccoli ran on.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 69.1 | `core/sysroot.py`: `read_bytes` (binary attributes); `tests/helpers.FakeRoot.write_bytes`; fixture `tests/fixtures/renoir-apu` (this APU's amdgpu files and two `gpu_metrics` samples) | – |
+| 69.2 | `gpu/info.py`: `amd_is_apu`: `gpu_metrics` format revision 2, the carve-out size only without it | Unit: a 4 GiB UMA APU is integrated; a revision-1 table isn't; both fallbacks |
+| 69.3 | `gpu/backend.py`: `GpuSummary.gtt_used/gtt_total`, `shared_memory`, `power_is_package`, `memory_used/total/usage` (replaces `vram_usage`); `gpu/generic_drm.py` sets them for an AMD APU; `controller.py` records `gtt-used/-total` | Unit (Bugs 2, 3) on the fixture: memory includes GTT (under 20 % against 85 % for the carve-out), power is the package's; a discrete GPU unchanged |
+| 69.4 | `gpu/fdinfo.py`: each memory region once, `drm-total-*` first (Bug 4); `FdinfoReader(shared_memory=)` counts GTT | Unit with this machine's amdgpu fdinfo: 415 160 KiB, not twice; GTT added on an APU; an old kernel's `drm-memory-*` alone still counts. Fails on the old code |
+| 69.5 | `ui/pages/gpu.py`: *Graphics Memory* and *Processor Package Power* titles (`memory_title`, `power_title`); `ui/summaries.py` facts from `memory_used/total` | UI on the fixture: the titles, "of 8.9 GB", "12.0 W"; a discrete GPU keeps *Video Memory* and *Power Usage* |
+| 69.6 | README: `proccoli_0.4.0_all.deb` (Bug 5) | `test_meta`: every package name in the README is `__version__` |
+| 69.7 | DESIGN §7.1, §14.2–14.5 | – |
+
+**Found while doing 69:** Renoir's hwmon `power1` reads whole watts (12,
+15, 34), so the earlier guess that 15.000 W "looks like a limit" was
+wrong: it's the package's power, rounded by the firmware.
+
+## Milestone 70: AMD detailed statistics
+
+Milestone 16's AMD backend, built from amdgpu's own sysfs files instead
+of `amdgpu_top`: they're readable by every user, need nothing installed,
+and `amdgpu_top` isn't in the Ubuntu or Debian archives. Reuses the chart
+classes (`ChartCard`, `ChartGridView`, `ChartSettings`) through the NVIDIA
+tab's code, moved to a shared `DetailChartsView`.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 70.1 | `gpu/amdgpu/metrics.py`: `parse_gpu_metrics` (APU layout v2.x), `socket_power_w`, `throttle_reasons` | Unit on the idle and load samples: temperatures, the 4 cores in use, 15 W / 32 W, cores and SoC power, clocks, "Fast power limit" under load; v2.0's whole degrees; revision 1, truncated and empty tables give None |
+| 70.2 | `gpu/amdgpu/sensors.py`: `AmdgpuSample`, `read_sample`, `engine_classes`, `HISTORY_UNITS`, `to_summary` | Unit: the APU fixture; a discrete GPU from hwmon (junction, memory temperature, board power and cap, fan, voltage); engine folding |
+| 70.3 | `gpu/amdgpu/backend.py`: `AmdgpuBackend` (probe, refresh, history, processes, history database), `DemoAmdgpuBackend`; `registry.standard_registry` registers it before the generic source | Unit: probe matrix (APU, NVIDIA, `radeon`, no usage file); readings, history, per-engine use and GTT per process; the time range followed until stopped; this APU's plan; the controller runs it without a password |
+| 70.4 | `ui/widgets/detail_charts.py`: `DetailChartsView` (from `NvidiaDetailsView`); `gpu/nvidia/views.py` and `gpu/amdgpu/views.py` subclass it | UI: the NVIDIA tests unchanged; the AMD cards and lines on the fixture (no fan, no junction), "Package 15.0 W", "limited by fast power limit", memory "of 8.9 GB" |
+| 70.5 | `devices/demo.py`: a second demo GPU, *Demo AMD Radeon Graphics* (`gpu-demo-amd`); `tests/ui/shoot.py`: `demo-amd-details`, `demo-amd-overview` | Demo GPUs never read the system; sidebar order; Preferences lists both |
+| 70.6 | README *GPU*, *Graphics details*; DESIGN §4.1, §7, §7.5 | – |
+
+**Done:** on this laptop the GPU page has *Overview* and *Details* tabs;
+Details shows utilization, engines, memory, clocks, temperatures (GPU,
+SoC, processor), power (package, cores, SoC) and voltages, with no
+password.
+
+**Found while doing 70:**
+
+- Renoir's firmware breaks two of the kernel's documented units in
+  `gpu_metrics`: the package power is in watts (not milliwatts) and the
+  memory clock is a level number (6). Both are handled and tested.
+- Its `average_gfx_activity` is in hundredths of a percent (611 = 6.11 %,
+  beside `gpu_busy_percent` 6). The tab uses `gpu_busy_percent`, which
+  every amdgpu device has, rather than guess the unit per chip.
+- `ChartGridView` already has a `caption` label, so the subclass hook is
+  `caption_line()`.
+- The first screenshot of the real Details tab showed the right column
+  clipped: the *Engines* card appears with the second reading, and that
+  frame was mid-layout. A second shot was fine; not seen in the app.
+
+**Deviations:** no *Processes* tab yet (Intel has one); the process
+columns already show each app's graphics use and memory from fdinfo. The
+summary and detail sources each read fdinfo while the Details tab runs.
+
+## Milestone 71: Lightweight Mode: small charts on the Overview, a minimal sidebar
+
+Was Idea 8 (kept below with its design). Its steps I8.1–I8.4 as planned.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 71.1 | `core/profile.py`: `sidebar-style` pinned to `icons`, the `sidebar-meter-type` pin dropped; `overview_chart` (`"full"`/`"small"`, was `overview_charts`), `overview_tables` true and `overview_top_count` 5 in Lightweight Mode | Unit: the pins and flags; a user's *Full* comes back with the full profile; the full count is `TOP_COUNT` |
+| 71.2 | `ui/sidebar_style.py`: `menu_modes`, `choose(..., full_allowed)`; `ui/window.py`: `primary_menu(goto, modes)`; `ui/sidebar_visibility.py`: *Full* becomes *Icons Only* while pinned | Unit: the modes and choices; UI: the menu has no *Full*, a stale *Full* target and F9 give icons only |
+| 71.3 | `ui/pages/overview.py`: `OverviewCard(chart="small")` bound as `METER`; `TopTables(count, icons)`; `ui/widgets/top_table.py`: rows without an image; `ui/sidebar.py`: `StackSidebarItem.meter` built on first use (`has_meter`) | UI: small graphs, no axes, entry colors; five rows each without icons, rows open their page, the scan only while shown; no meter widgets in an icons-only sidebar; the full profile still builds them |
+| 71.4 | Measured; `tests/ui/shoot.py` `lightweight-overview`, `real-lightweight-overview`; README *Lightweight mode*; DESIGN §9.6, §13.1, §13.7 | Run |
+
+**Decisions on Idea 8's open questions** (taken with the design's own
+leanings, since the request was to build it): (1) the overlaid sidebar
+of a narrow window is icons only too, as the pin applies everywhere;
+(2) the small charts keep the sidebar's fill; (3) Lightweight Mode keeps
+the user's shown or hidden choice, so it starts *Icons Only* unless the
+sidebar was hidden; (4) five rows per table, not ten.
+
+**Measured** (`tests/ui/mem.py`, Lightweight profile, RssAnon in MiB,
+three runs each on this machine, against the same checkout without 71):
+
+| | Before | After |
+|---|---|---|
+| Started, on the Overview | 34.9–36.1 | 37.0–37.2 |
+| Every page visited, after `gc` + `malloc_trim` | 52.7–53.3 | 55.7–55.9 |
+
+The Overview's tables (and the process list while they show) cost about
+2 MiB; the meters saved are small. Still under half the full profile's
+start (78–90 MiB, M66), so the README's "about half" stands.
+
+## Milestone 72: Graph toolbar
+
+Was Idea 12 (kept below with its design). Steps I12.1–I12.5 as planned,
+with the deviations listed after the table.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 72.1 | `ui/sidebar_order.py` → `ui/reorder.py` (the tests moved to `test_reorder.py`); `ui/widgets/reorderable.py`: `make_reorderable` (drag, drop, modifier+arrow keys); the sidebar switched to it | Unit: the order functions as before; the keys (Alt+Up/Down for the sidebar, Ctrl+Shift+Left/Right for the toolbar, Caps Lock ignored); UI: the sidebar's drop and move tests unchanged |
+| 72.2 | `ui/toolbar_items.py`: the items, `shown`, `set_shown`, `applies`; Preferences' time-range and interval choices moved there | Unit: every item's key and type match the schema; every nick has a label; Preferences uses the same tuples; showing an item puts it at its default place |
+| 72.3 | `toolbar-items`, `show-toolbar` keys; `ui/widgets/graph_toolbar.py`; `ResourcePage.has_graphs`; `PageContainer.attach_toolbar` / `detach_toolbar`; `MainWindow._place_toolbar`, `win.show-toolbar` and *Show Toolbar* in the main menu; `Profile.graph_toolbar` (off in Lightweight Mode) | UI: toggles and menus set their settings and follow them; *Grid* reaches the page's graphs; one toolbar moves with the page and survives removing the shown page; items per page; pinned keys greyed out; *Show Toolbar* hides it both ways; no toolbar in Lightweight Mode |
+| 72.4 | Reordering, ⋮ *Show in Toolbar* and *Reset Toolbar*, right-click on the bar | UI: a drop and Ctrl+Shift+arrow store the order; hiding, showing and reset |
+| 72.5 | README (*Toolbar*, shortcuts), DESIGN §4.1, §9.2, §11, §13.11; `shoot.py` `toolbar-all-items`, `narrow-toolbar` | `make ui-test` |
+| 72.6 | Every item has a title above it (`ToolbarItem.title`, asked for after 72.5: menus showed only their value, and a tooltip isn't enough): a cell with a dim caption over the control; toggles show *On* / *Off*; *Axes* and *Grid* are titled *Graph Axes* and *Graph Grid*; the cell is what's dragged | Unit: every item has a distinct title; UI: each cell is the title over its control; a toggle says *On* or *Off* |
+| 72.7 | Toggles are `Gtk.Switch`es (no text: slide right, accent color when on); *Logical CPUs* is `fixed`: always on the Processor page's toolbar, nowhere else, not listed or stored; the page's own row shows only without the toolbar (`toolbar_shown`) | Unit: fixed items never stored; `toolbar_shown`; UI: toggles are switches; *Logical CPUs* last on the Processor page; an old saved `logical-cpus` ignored; the page row hides and shows with *Show Toolbar* |
+| 72.8 | *Update Interval* out of the toolbar (the user's choice: it sets every reading everywhere, not a page's view; Preferences keeps it); every item is about graphs, so the bar hides on Apps and Processes. `ChartSettings` gives *Graph Grid* to every kind of chart: Overview cards and sidebar meters had ignored it (the graph could always draw it), so the toolbar's switch didn't change charts in plain sight | Unit: every kind gets the grid, live; no item applies without graphs; an old saved `update-interval` ignored; UI: the toolbar's *Graph Grid* reaches the Overview cards and sidebar meters; `shoot.py` `overview-grids` |
+
+**Decisions on Idea 12's open questions** (taken with the design's own
+leanings, since the request was to build it): (1) "button-drag" is
+dragging toolbar buttons to reorder them; dragging across a graph to
+zoom would be its own change; (2) on by default, and *Show Toolbar* in
+the main menu turns it off (see the finding below); (3) *Time Range*,
+*Axes* and *Grid* shown, *Update Interval* and *Logical CPUs* available
+(changed in 72.7 and 72.8: *Logical CPUs* is fixed to the Processor
+page, and *Update Interval* left the toolbar).
+
+**Deviations from Idea 12, and why:**
+- **Under the page header, not one header for the content:** every page
+  already has its own header bar (`PageContainer`), so the toolbar is a
+  second top bar there, and the window moves its one instance to the
+  page shown.
+- **Customize is a menu, not a dialog:** ⋮ lists every item as a check
+  item plus *Reset Toolbar*; a dialog added nothing a menu can't do.
+- **Scrolls instead of an overflow menu** in a narrow window: simpler,
+  and the 360 px minimum still shows the first items.
+- **Ctrl+Shift+Left/Right, not Alt+Left/Right:** Alt+Left/Right are Back
+  and Forward (M49).
+- **No toolbar in Lightweight Mode:** every graph setting on it is
+  pinned there anyway.
+
+*Found while doing 72:* the bar takes about 46 px (65 px since 72.6), and at 1024×768 that
+was the difference between the Overview's tables fitting below the
+charts and moving below the fold (two `test_overview` geometry tests
+failed). The planner was right; the room was gone. Hence *Show Toolbar*;
+those geometry tests now run with it off, and `WindowToolbarTest` checks
+that turning it off gives the page the room back.
+
+## Milestone 73: Exports describe their devices
+
+Was Idea 14 (kept below with its design). Steps I14.1–I14.5 as planned.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 73.1 | `core/history_db.py`: schema 2, `device_info` table, `record_info` (only on change, last row cached), `device_info(table, start, end)` | Unit: first sight writes, the same again doesn't, a change does; a new connection remembers; a range gets the row in effect and the changes; a version 1 database gains the table; a read-only old one returns none |
+| 73.2 | `Monitor.described_properties()` (memory adds its modules, GPUs their detail source); `HistoryStore.commit` records each device once per commit | Unit: one row for two commits; a changed description adds one |
+| 73.3 | `core/machine_info.py`: OS (`os-release`), kernel, architecture, DMI vendor, product and version, placeholders dropped | Unit with `FakeRoot`: all present; missing files and placeholders |
+| 73.4 | `core/history_export.py`: `machine`, `devices` (details at the end, `since_utc`, `changes`, `as_of`), `devices.csv`, `IDENTIFYING`; `ui/export.py`: `export_details(ctx)`, `describe` and `settings` injected | Unit: the manifest; addresses only when asked; the CSV rows; an older history marked `as_of: export`; every property key on the fixture machines reviewed (`ExportPrivacyTest`); UI: the flow passes the details and the option |
+| 73.5 | `export-hardware-addresses` key; Preferences → *History* → *Include Hardware Addresses*; README, DESIGN §11, §13.2, §13.13 | UI: the switch sets the key |
+
+**Decisions on Idea 14's open questions:** (1) hardware addresses are
+left out by default; (2) the `machine` block has the computer model and
+OS; (3) no `README.txt`: `devices.csv` serves people without a JSON
+viewer.
+
+**Deviations from Idea 14, and why:**
+- **Device details in a top-level `devices` list,** each naming its
+  files, rather than repeated in every file entry (a device can have a
+  detail and a minutes file).
+- **No icon name:** it means nothing outside Proccoli.
+- **`devices.csv` has a `files` column instead of `from_utc`:** the
+  details are as they stood at the end of the export; when they changed
+  is in `export.json`.
+- **The option is a Preferences switch:** today's export has no dialog
+  to hold it (Idea 7 would add one, and the switch can move there).
+
+## Milestone 74: Custom graph time range
+
+Was Idea 9 (kept below with its design). Steps I9.1–I9.5 as planned,
+plus the toolbar.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 74.1 | `custom` nick and `graph-time-range-custom` (seconds, 10–2592000, default 7200); `core/ticker.py`: `time_range_s(settings)`, `clamp_range_s`, `preset_s`, `RANGE_KEYS`, `PLAN_KEYS`; every caller (`graph_plan`, `ChartSettings`, the Intel source) and every re-planning listener (`DeviceManager`, `HistoryStore`, the AMD and NVIDIA sources) switched | Unit: presets unchanged; custom seconds; clamped at both ends and to two update intervals; 30 days stays under 1200 points and covers the range; the listeners' keys include the custom one |
+| 74.2 | `core/profile.py`: a custom choice stays custom, its seconds pinned to at most 60 in Lightweight Mode | Unit: a 2-hour custom range reads as a minute and comes back without the mode; 30 s stays 30 s |
+| 74.3 | `ui/axes.py`: days past 48 hours; 2-day and 7-day steps | Unit: labels for 3 h, 2 d, 3 d, 30 d |
+| 74.4 | `ui/time_range.py` (number and unit, `describe`, `limit_note`); `widgets/range_editor.py`; Preferences: *Custom…* in *Graph Time Range* and its row; toolbar: *Custom…* in the *Time Range* menu, an `Adw.AlertDialog` with the editor, the button naming the range | Unit: split, round trip, labels, notes; UI: the row only for *Custom…*, 90 minutes stores 5400, 90 days stops at 30 with a note, greyed out in Lightweight Mode; the toolbar dialog sets and names the range, clamps, and *Cancel* keeps the old one |
+| 74.5 | Backfill at long ranges; memory measured; README *Charts*, *Toolbar*, *Preferences*; DESIGN §4.1, §11, §13.8; `shoot.py` `custom-range-3-days` | Unit: a custom week fills from minute averages; run |
+
+**Decisions on Idea 9's open questions** (with the design's leanings):
+(1) 30 days stays the ceiling: past it only hour averages are left,
+coarser than a point; (2) yes, on the charts too: the toolbar's *Time
+Range* menu has *Custom…* (the toolbar was built in M72 since the idea
+was written); (3) no list of recent custom ranges: the one custom value
+is kept and shown in the button.
+
+**Deviations from Idea 9, and why:**
+- **No "each point: 36 min" in the hover heading:** the hover already
+  says how long ago a point was; the axis and the README explain the
+  averaging. Left for later if wanted.
+- **A typed value past the limits stays in the editor** with the note
+  ("At most 30 Days") while the clamped value is stored, so the user
+  sees what they typed and why it wasn't taken.
+
+**Measured** (`History` filled to its plan, 8 lines, 1 s readings,
+`tracemalloc`): 1 minute 28 KiB; 1 day 351 KiB (1184 points of 73
+readings); 7 days 354 KiB (1198 of 505); 30 days 354 KiB (1199 of
+2162). `tests/ui/mem.py` doesn't apply: it runs without a history
+database, so graphs never fill there.
+
+*Found while doing 74:* without the history (`--demo`, *Keep History*
+off), a long range's points appear only once their readings are in: at
+3 days every 3.6 minutes, at 30 days every 36. That was already true of
+a day (73 s); the README now says so.
+
+## Milestone 84: Restart keeps its name; three refactors
+
+Asked for after M83: "let's do python3 process fix, then refactor signal,
+device managers, and device descriptions. keep the Big Classes in the
+Idea for now".
+
+| Step | Create / change | Test |
+|---|---|---|
+| 84.1 | Bug 14: `core/system.restart_command(argv0, interpreter, runnable)` → `(program, argv)`; `System.restart_self` runs the launcher itself when it's executable | Unit: the cases; a real launcher restarted the same way keeps its process name (`python3` without the fix) |
+| 84.2 | R1: `core/connections.Connections` (`connect`, `watch`, `add`, `adopt`, `disconnect_all`) in place of the handler lists in `metrics_service`, `window`, `sidebar_visibility`, `graph_toolbar`, `gpu/controller`, the AMD, Intel and NVIDIA backends, `chart_settings`, `devices/remote`, `page`, `preferences` (both dialogs), `overview`, `history_store` (one per followed device), `applog` (both), `theme`, `pages/gpu` | Unit `test_connections`; the existing shutdown and leak tests |
+| 84.3 | R2: `devices/source.DeviceSource`: signals, `monitors`, `monitor`, `connected`, `status`, `readings`, `remote`, `reconnect`, and `start`/`stop`/`refresh`/`rescan`/`retry` for each kind; `DeviceManager` and `RemoteDeviceManager` subclass it. `app.py`, `window.py` and `metrics_service` use `devices.remote` and `devices.retry` instead of `hasattr`/`getattr` | Unit `test_device_source`: both are sources; local always connected; status announced once; no `hasattr(…devices…)` anywhere |
+| 84.4 | R3: `Monitor.describe(encode)` and `Monitor.reading(encode)`, extended by `FailedMonitor`, `CpuMonitor`, `MemoryMonitor` and `GpuController`; `metrics_service.device_info`/`reading` only ask. The wire format is unchanged | Unit: common fields; each kind's fields round-trip through `monitor_for`; no reading before the first sample; no `hasattr`/`getattr` in the service |
+| 84.5 | Light refactoring: three docstrings broken by the earlier reference cleanup (a line holding only "." or ":") mended | `make test` |
+
+**Kept for later (by request):** the big classes (R4–R7, R9, R10). R11
+is covered by `Connections.watch`; R8 and R12 remain.
+
+## Milestone 83: More styles; the programs renamed; 0.5.0
+
+Asked for after M82: "add a lot more style options. and then i want the
+proccoli back process to be renamed from 'proccoli-metric' to 'proccoli'
+and 'proccoli' to be renamed to 'proccoli-gui'", and "i need this version
+bumped to 0.5.0".
+
+| Step | Create / change | Test |
+|---|---|---|
+| 83.1 | `core/styles.py`: light tints Mint, Rose, Lavender, Paper, Solarized Light, Gruvbox Light, Catppuccin Latte, High Contrast Light; dark tints Nord, Dracula, Gruvbox Dark, Solarized Dark, Catppuccin Mocha, Tokyo Night, Forest, Ember, Black, High Contrast Dark. Light tints listed before dark ones; the schema's `ColorScheme` enum in the same order (existing values kept); `shoot.py` scenes `style-*` | Unit: ids and names unique; light before dark; high contrast is pure black and white; existing rules (7:1 text on every surface, light styles light) cover them all |
+| 83.2 | The recorder's program, unit and package become `proccoli` (`data/proccoli.service`, `data/proccoli.preset`, log `proccoli.log`); the window's program becomes `proccoli-gui` (desktop `Exec`, log `proccoli-gui.log`); the names live once, as `COLLECTOR` and `WINDOW` in `proccoli/__init__.py` | Unit: desktop file runs `proccoli-gui`; the debs hold `/usr/bin/proccoli` and `/usr/bin/proccoli-gui`; log paths |
+| 83.3 | Packages: `proccoli` (the recorder) and `proccoli-gui` (depends on it); the meta package is gone. `proccoli` *Conflicts* and *Replaces* `proccoli-metrics` and *Replaces*/*Breaks* `proccoli-gui (<< 0.5.0)` (which owned `/usr/bin/proccoli`); its `postinst` disables the old unit; `install.sh` removes the old program and unit | Unit: two debs; the relationships; `postinst` disables `proccoli-metrics.service`; installing over the old names removes them |
+| 83.4 | Version 0.5.0: `__version__`, metainfo release notes, README | `test_meta` (README installs this version) |
+
+**Decision:** the recorder takes the plain name because it's the part
+every install has (alone on a server); the window is the add-on. The
+D-Bus name (`<app ID>.Metrics`) and the Python modules (`proccoli.metrics`,
+`metrics_service`) keep their names: they're interfaces and code, not
+what people run.
+
+**Upgrade path:** from 0.4.0, `apt install` of both new debs upgrades the
+old meta package `proccoli` to the recorder, removes `proccoli-metrics`
+(its `prerm` stops the old unit for every user), and the new `postinst`
+enables and starts `proccoli.service`. The history and settings are the
+same files.
+
+## Milestone 82: Palettes, padlocks, steady tables, no stray collectors
+
+Asked for after M81: "find and add a lot more color palettes, consider
+color palettes for colorblind"; a notice at the top of Preferences and a
+mark beside each setting Lightweight Mode fixes, with the explanation as
+its tooltip ("a buster … or if there's a better one"); "what does this
+debug log imply? … can't serve … no session bus, or another collector";
+"why do the table widths shift back and forth … on the Overview page?"
+
+| Step | Create / change | Test |
+|---|---|---|
+| 82.1 | `core/palette.py`: Okabe–Ito, Tol Bright, Tol Vibrant, Tol Muted, Viridis (named "(Color-Blind Safe)", right after System), Tableau 10, Matplotlib, ColorBrewer Set 1 and Dark 2, Catppuccin, Gruvbox, One, Tokyo Night; the schema's `Palette` enum in the same order (existing values kept) | Unit: ids and names unique and in the schema's order; the color-blind safe ones first; Okabe–Ito's colors the published set; every palette passes the existing rules (6+ colors, light and dark lengths match, visible on their surface, starts blue, 24 distinct entry colors) |
+| 82.2 | Preferences in Lightweight Mode: a notice at the top of each page with a fixed setting ("Some settings are fixed in Lightweight Mode…"), and a padlock (`changes-prevent-symbolic`) before each fixed setting's title whose tooltip explains, replacing the row tooltip; `shoot.py` `lightweight-preferences` | UI: the padlock and its tooltip on a fixed row, none on a free one; notices only on pages with fixed settings; none in the full window |
+| 82.3 | Bug 12: the tests' private bus has no service folders (`PrivateBus.CONFIG`); the window's calls to the collector carry `NO_AUTO_START` (only the name watcher may start it) | Unit: the tests' bus starts nothing; every window call carries the flag (fails without it) |
+| 82.4 | Bug 13: the Overview's tables: the name column's natural width capped, value columns fixed at their widest value | UI: a long name and the widest values leave the table's size unchanged (342 → 547 px without the fix) |
+
+**Decision:** the padlock rather than a prohibition sign
+(`action-unavailable-symbolic`, the "buster"): GNOME uses the padlock for
+settings locked for now, which is what these are; a prohibition sign
+reads as an error. The other is a one-word change.
+
+## Milestone 81: Lightweight Mode draws with Cairo; gaps, the switch, references
+
+Asked for after M80: Lightweight Mode "uses less compute but it seems to
+use more mem", it "still freezes on restart", "why are there gaps in
+data", the Preferences switch "should be set to the current state", and
+no "Bug #" (or other planning) references in code.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 81.1 | `Profile.renderer` ("cairo" in Lightweight Mode); `profile.apply_renderer(profile, env)` sets `GSK_RENDERER` before any window, leaves a user's own choice alone, and clears its own when *Restart Now* carries it into the full profile (`PROCCOLI_SET_GSK_RENDERER` marks it) | Unit: Lightweight gets Cairo; back to full clears ours; the user's choice wins in both |
+| 81.2 | Bug 9: the collector commits what it holds when a window subscribes | Unit on a private bus: buffered rows are in the database once `Subscribe` returns (fails without the fix) |
+| 81.3 | Bug 10: Preferences' Lightweight switch shows the running mode; flipping it sets the next start's mode; *Restart to Apply* says which way ("turns on/off at the next start") | UI: started with `--lightweight` (setting off) shows on; a pending change says what happens next; flipping back clears it |
+| 81.4 | Planning references (milestone, idea, bug, step numbers, DESIGN/PLAN sections) removed from code, comments, docstrings, tests, scripts and data; CLAUDE.md rule 6; the `proccoli-change` skill; `NoPlanningReferencesTest` | Static: none in `src/`, `tests/`, `packaging/`, `data/` |
+| 81.5 | Bug 11: a device replacing a placeholder removes it before its lazy page is registered | UI: the Memory page is built when visited in Lightweight Mode on a collector |
+
+**Measured on the real display** (GNOME on Wayland, the Ryzen 3 4300U,
+the Overview, 60 s after 20 s settling; each window on a private bus with
+its own collector, settings in memory):
+
+| Window | Processor | Private (RssAnon) | Total (VmRSS) | PSS |
+|---|---|---|---|---|
+| Full | 15.1 % | 116.7 MiB | 224.8 MiB | 136.9 MiB |
+| Lightweight, OpenGL (until now) | 19.8 % | 128.0 MiB | 236.6 MiB | 148.4 MiB |
+| Lightweight, Cairo | 10.4 % | 55.7 MiB | 115.7 MiB | 68.1 MiB |
+
+*Found while doing 81:*
+- **Every earlier memory figure was taken on the headless display**
+  (Broadway, which draws with Cairo), so none included OpenGL's driver
+  memory, which is the same whatever the window shows. That's why
+  Lightweight Mode looked like half the full window (M66, M71) and
+  measured more than it on a real desktop. Figures now come from the real
+  display as well.
+- **The code clean-up's first pass removed every empty `()`** in comments
+  and docstrings (meant for brackets emptied by a removed reference).
+  Calls written in the last commit were put back exactly (43), dotted
+  ones in newer text by rule (47, five wrong ones fixed by hand); some
+  single-word mentions in newer text stay without brackets.
+
+## Milestone 80: Pane graphs and sidebar graphs
+
+Asked for after M79: "sidebar graphs have the unique characteristics:
+graph grids don't appear on them, x-axis appears on all graphs (currently
+not on internet devices on the sidebar), y-axis (if provided for the
+graph) only includes the min/max values and tick marks", with subclasses
+for pane graphs and sidebar ("toolbar") graphs.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 80.1 | `ui/widgets/graph.py`: `PaneGraph` and `SidebarGraph` (both `Graph`). `SidebarGraph`: `set_show_grid` keeps it off; `has_axes` is just *Show Graph Axes* (the time axis on network meters too, which had no axes because they have no percentage); `y_tick_labels` only the minimum and maximum, and none without a value axis (a percentage or an `axis_format`). `Graph.plot_rect` leaves no left margin when there are no value labels | UI: the kinds and who uses them; no grid on the sidebar, a grid on pane charts; a network meter's time axis with no value labels (and what it was: none); min and max only; off means the whole widget |
+| 80.2 | `GraphBox` makes a `PaneGraph`, `Meter` a `SidebarGraph`, the Overview's cards one or the other (small charts in Lightweight Mode are the sidebar's) | UI: the toolbar's *Graph Grid* reaches pane charts and not the sidebar (it reached both since M72.8) |
+| 80.3 | DESIGN's chart class diagram; Mermaid fixes (below) | – |
+
+**Decision:** "Toolbar Graphs" read as the sidebar's (the request
+describes them); a network meter still has no *value* axis ("if provided
+for the graph"): only pane charts get value labels in units. Giving
+sidebar meters one too is a small change if wanted.
+
+**Mermaid on GitHub** (asked for at the same time, after reading GitHub's
+*Creating diagrams* page, which documents only third-party plugins as a
+cause of errors and an `info` block to show its Mermaid version): every
+diagram was checked by hand for constructs Mermaid's grammar rejects,
+since running Mermaid itself locally was declined. 19 lines in DESIGN.md
+changed: semicolons in sequence messages, notes, state transitions and
+class members (Mermaid's statement separator: they cut lines in two),
+double quotes inside class members, and two `PK, FK` key pairs in the
+entity diagram (older renderers take one key; the foreign key is now in
+the column's comment). None of the 62 diagrams has been rendered to
+confirm.
+
+## Milestone 79: The window reads from the collector (Idea 19b)
+
+The second of Idea 19's parts. Open question 1 answered: Apps,
+Processes and the Overview's busiest apps and processes stay in the
+window.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 79.1 | Collector side: the codec carries `GpuInfo`, `GpuVendor` and `MemoryModule`; `Devices()` adds the sort name, the processor's thread names and sensor, a GPU's info, plan and Details source, memory modules, a failed device's message and details; `Retry(id)`; readings carry the source note; the collector's GPU controllers follow `gpu-details-disabled`; `Monitor.sort_name()` replaces `ui/summaries`' per-kind code | Unit: a GPU's info and plan over the bus; turning details off and on reaches the collector's controller |
+| 79.2 | `devices/remote.py`: `RemoteDeviceManager`, `RemoteMonitor`, `RemoteGpuController`, `RemoteDetailBackend`, `FailedMonitor` for failed devices; name watching with `AUTO_START`; connected once subscribed | Unit on a private bus: the same devices, info, sort names and properties; readings into history on the window's clock; a GPU with its Details sample and history; details off through the collector; a device removed; a failed device and *Try Again*; the collector going away and coming back; the time range reaching remote histories |
+| 79.3 | `build_context(remote=True)` for the application (local devices for `--demo` and tests; `pci.ids` not parsed); the window's `HistoryStore(read_only=True)`; the collector imports Milestone 58's files instead; the window's banner and *Try Again* | UI: the window's pages from a collector, the GPU's AMD Details tab built from its readings, the banner when it goes and gone when it's back; unit: the window's store never writes, even with the lock free |
+| 79.4 | Packaging: the D-Bus service file, the `user-preset`, the metrics package's `postinst` (enable for every user, restart for those logged in) and `prerm` (disable), `install.sh` the same | `test_packaging`: the files and scripts |
+
+**Deviations from the design, and why:**
+- **One banner for the window, not one per page:** it's the same message
+  everywhere; a banner above the pages says it once.
+- **Intel GPU *Details* aren't shown yet:** their views need
+  `intel_gpu_top`'s own process (clients, labels), and the collector
+  can't ask for the password it needs: open question 2, in 19c.
+- **The existing UI tests keep local devices:** `make_context` builds
+  them as before (the window's code paths are the same); new tests build
+  the window on a collector over a private bus (`test_ui_remote`).
+- ***Record in the Background*** stays until 19c: turning it off now
+  stops the window's readings too (the banner says so).
+
+*Found after 79 (Bug 8, fixed in it):* Lightweight Mode's Overview
+charted remote devices before their first reading, whose lines didn't
+exist yet: every draw raised, and Ubuntu's crash reporter froze the
+window for ~20 s. Lines now come with `Devices()`.
+
+*Found while doing 79:*
+- **A window counted as connected before the collector had it down for
+  readings,** so the first updates went nowhere; it's connected once
+  `Subscribe` returns.
+- **Sort names lived in the UI** (`sort_name_for` read each monitor's
+  interface or block name); they're `Monitor.sort_name()` now, so the
+  collector can send them.
+- **The window's GPU switch acted on its own controller;** with the
+  collector reading, the collector's controller follows the setting.
+
+## Milestone 78: The collector serves every reading (Idea 19a)
+
+The first of Idea 19's three parts (kept below with the whole design):
+`proccoli-metrics` serves what it reads; the window doesn't use it yet,
+so nothing changes for it.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 78.1 | `devices/snapshot_codec.py`: `encode` / `decode` (and `dumps` / `loads`), every snapshot type and the detail samples (`GpuSummary`, `GpuProcessUsage`, `AmdgpuSample`, `NvidiaSample`) | Unit: every snapshot of two fixture machines round-trips equal; a detail sample; `None` and NaN; an unknown type decodes as plain data; a newer and an older collector's fields |
+| 78.2 | `metrics_service.py`: `MetricsService` (the D-Bus object, name owning, subscribers watched by bus name, `Readings` after each update while anyone's subscribed, `DeviceAdded` / `DeviceRemoved`, `Status`); `Collector` starts it (`bus=False` for tests); `watch()` and `proccoli-metrics --watch` | Unit on a private `dbus-daemon`: devices with properties; readings only while subscribed, and none once the client unsubscribes; a client that leaves is forgotten; status; `watch` prints a line per update. By hand: the collector and `--watch` as two processes on the real session bus |
+
+**Deviations from the design, and why:**
+- **JSON strings, not `a{sv}`:** GVariant has no null, and snapshots are
+  full of `None` (a reading a device doesn't have); JSON round-trips them
+  exactly, nested dataclasses and lists included, at a few kilobytes a
+  second.
+- **No `Detail()` method:** a GPU's Details state, message, source,
+  sample and per-process use travel in each reading (`"gpu"`), so the
+  window gets them at the same moment as the snapshot.
+
+*Found while doing 78:*
+- **Synchronous D-Bus calls deadlock in one process:** a client's
+  `call_sync` blocks the main loop the service answers from. The window
+  and `--watch` are other processes, but `watch()` and the tests call
+  asynchronously anyway.
+- **`Gio.TestDBus` changes the whole test run's session bus:** every
+  later test registering a GTK application failed. The service tests run
+  their own `dbus-daemon`, reached by address.
+
+**Measured** (the real collector on the laptop, 60 s each): 1.22 % of a
+core with nobody subscribed, 1.12 % with `--watch` subscribed: serving
+is within the noise.
+
+## Milestone 77: The collector's name and app
+
+Asked for after M76: the collector showed as `proccoli-metric` on the
+Processes page and under *System Processes* on the Apps page.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 77.1 | `processes/model.display_name`: when the kernel's 15-character name is cut, also try the second word of the command line (the script an interpreter runs) | Unit: `proccoli-metric` + `/usr/bin/python3 /usr/bin/proccoli-metrics` → `proccoli-metrics` (fails without the fix); a later argument never counts; an uncut name stays |
+| 77.2 | `data/proccoli-metrics.service`: `Slice=app-@APP_ID@.slice`, filled in by `install.sh`. The unit keeps its short name; systemd puts it under `app.slice/app-<app ID>.slice/`, the form GNOME uses for app slices, which `app_id_for_cgroup` already maps to the app | Unit: that cgroup → the app ID; `test_packaging`: the installed unit's `Slice=`. By hand: a transient unit in that slice (`systemd-run --user --slice=…`) got that cgroup, and the app ID back |
+| 77.3 | README (*Recording in the background*); DESIGN §13.12, §14.7 | – |
+
+**Decision:** a slice rather than renaming the unit to the app's name
+(`app-<app ID>@metrics.service`): the same grouping, and `systemctl
+--user … proccoli-metrics` stays short to type.
+
+## Milestone 76: Separate installs: `proccoli-metrics` and `proccoli-gui`
+
+Was Idea 15 (kept below with its design). Steps I15.1–I15.6, with the
+deviations listed after the table.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 76.1 | `packaging/split.py`: `part(path)` ("metrics" or "gui": `ui/`, `helper/`, `app.py`, `__main__.py` and `GUI_IN_DOMAIN`, the GPU tabs' views); `tests/test_static.py` takes `UI_IN_DOMAIN` from it | Static: nothing in the metrics part imports the GUI part, Gtk, Gdk or Adw at any level, except inside `create_views`; every source file is in exactly one part (and synthetic crossings are caught) |
+| 76.2 | `install.sh --metrics / --gui` (both by default), from `split.py`'s lists; the schema and the unit with the metrics part; uninstalling the metrics part refuses while the window is installed, and installing the window refuses without it | `test_packaging`: the two parts together are the whole install, with no file in both; the refusals; the metrics part installed alone builds the collector and reads a fixture machine with Gtk, Gdk and Adw blocked |
+| 76.3 | `build-deb.sh`: three packages; `Replaces: proccoli (<= version)`, `Breaks: proccoli (<< version)`; `proccoli-gui` depends on `proccoli-metrics (= version)`; `proccoli-metrics`' `prerm` stops each logged-in user's collector on removal | `test_packaging.DebTest`: the metrics package needs no GTK, the GUI the same metrics, no file in two packages, the meta package installs both, the takeover fields, the `prerm`. By hand: upgrade from the single 0.4.0 package in a scratch dpkg root (below) |
+| 76.4 | A newer schema stops a writer (I15.5) | Done in M75 (`NewerSchema`) |
+| 76.5 | README *Installing* (the three packages, a server install), *Uninstalling*; DESIGN §4.1, §13.14 as built | `test_meta`: the README's package versions |
+
+**Decisions on Idea 15's open questions** (the design's leanings):
+(1) three packages, `proccoli` installing both; (2) the window *depends*
+on `proccoli-metrics`, no third common package; (3) no command-line
+export yet (`--status` and `--once` came with M75).
+
+**Deviations from Idea 15, and why:**
+- **No committed `files-metrics.txt` / `files-gui.txt`:** `install.sh`
+  asks `split.py` at install time, so a new file can't be left out of a
+  stale list.
+- **`clients.py` keeps its name:** it's listed in `GUI_IN_DOMAIN`
+  beside the views, which is the one list both the split and the static
+  tests read.
+- **`Replaces` covers the same version (`<=`):** no release has been made
+  since 0.4.0, so the version is still 0.4.0; with `<<` the new packages
+  couldn't take files over from a 0.4.0 single package (yours is one).
+  `Breaks` stays `<<`, or it would break the new `proccoli` itself.
+- **No `deb-systemd-helper --user`:** `prerm` stops running collectors
+  with `systemctl --user -M user@`; an enabled user's
+  `default.target.wants` link is left pointing at nothing, which systemd
+  skips.
+
+**Checked by hand** (dpkg `--root` in a scratch folder, dependencies
+forced since the folder has no system packages): the previous single
+`proccoli` 0.4.0 package installed, then the three new ones together:
+"Replacing files in old package proccoli (0.4.0)", all three installed,
+`proccoli-metrics` owning 62 Python files, `proccoli-gui` 69, `proccoli`
+only its copyright. Removing `proccoli` and `proccoli-gui` left the
+metrics part complete; removing it too left no files.
+
+## Milestone 75: Record the history in the background
+
+Was Idea 13 (its full design is kept below). Steps I13.1–I13.8 as
+designed, with the deviations and findings listed after the table.
+
+| Step | Create / change | Test |
+|---|---|---|
+| 75.1 | `System.try_lock` / `release_lock` (`flock`, 0600); `core/history_lock.py`; `HistoryStore(lock, program, graphs)`: writer or reader, retry and take over at each commit, `meta` `writer`, `session_start()`, a deleted file restarts, a newer schema (`HistoryDb.NewerSchema`) never writes | Unit: only the holder writes; the reader fills graphs; takeover after the writer stops (2 sessions); a reader exports the writer's run; *Delete History…* from a reader; schema 99 refused and the lock let go; the real `flock` |
+| 75.2 | `Profile.metrics()` (`gpu_elevate=False`, no pins); `profile_settings` carries any non-full profile; `context.MetricsContext` and `build_metrics_context`; `GpuController`: sources that need a password stay off without asking | Unit: what's built; the Intel GPU's details off with "need administrator rights" and no `pkexec`; the Renoir APU's AMD details running; the ticker started by `start()` |
+| 75.3 | `proccoli/metrics.py`: `Collector`, `run` (SIGTERM / SIGINT), `--once`, `--status`, `--version`; its log `proccoli-metrics.log` | Unit: a run on a fake loop writes every reading, `meta` `writer`, a closed session, the lock freed; `--once` and `--status`; a fresh interpreter building and refreshing the collector loads no Gtk, Gdk, Adw or `proccoli.ui` |
+| 75.4 | Settings follow-through: nothing new needed (the store, the ticker and the device manager already follow their keys; the collector's store skips graph keys) | Covered by 75.1–75.3 |
+| 75.5 | `data/proccoli-metrics.service`; `install.sh` installs it and `bin/proccoli-metrics` (and removes them, disabling the unit globally); `build-deb.sh` through `install.sh` | `test_packaging`: paths for `/usr` and `/usr/local`, the unit's `ExecStart`, the deb's contents; `systemd-analyze --user verify` reports only the staged `ExecStart` path |
+| 75.6 | `core/background.py` (`systemctl --user`, `loginctl` through `System.run_async`); Preferences → *History*: *Record in the Background*, *Start at Boot*, *Recording*; `Application` passes it (not in `--demo`); the window's store takes the lock | Unit: parsing, the commands, without systemctl or the unit, the status lines; UI: the switches run the commands and follow the answers; greyed out without the unit |
+| 75.7 | Measured (below) | Run |
+| 75.8 | README (*Recording in the background*, *Preferences*, *Files*, *Uninstalling*); DESIGN §4.1, §4.2, §13.12 as built, §14.6 | – |
+
+**Decisions on Idea 13's open questions** (the design's leanings):
+(1) log-in by default; *Start at Boot* is a second switch; (2) no process
+list; (3) the window keeps its own live readings; (4) Intel details
+aren't recorded in the background; (5) a collector started while the
+window writes waits for the window to quit.
+
+**Deviations from Idea 13, and why:**
+- **The "not running" hover text stays "Proccoli wasn't running":** the
+  collector is part of Proccoli, so it's still true; a second wording
+  added nothing.
+- **No `mem.py --metrics` / `perf.py --metrics`:** the collector was
+  measured directly (RssAnon and `/proc/<pid>/stat` over two minutes,
+  twice), which is simpler and what those options would have done.
+- **The deb has no maintainer scripts yet:** removing the package leaves
+  an enabled user's `default.target.wants` link pointing at nothing
+  (harmless: systemd skips it). Idea 15's packaging adds the scripts.
+
+**Measured** on the Ryzen 3 4300U laptop, 7 devices including the AMD
+APU's Details source, 1 s update interval, two runs of two minutes:
+private memory (RssAnon) **15.6 MiB** (the window's full profile: 78–90
+MiB at start, M66), flat over the run; processor time **1.33 %** of one
+core before Bug 6's fix, **1.08–1.09 %** after. **The 0.5 % target is
+missed:** about half of each update is the GPU's per-process `fdinfo`
+reads (every process's GPU clients, needed for the AMD engine charts and
+per-app GPU use), the rest sysfs reads and the commit. Reading `fdinfo`
+less often in the collector (every few updates) would halve it, at the
+cost of coarser engine history; left as a choice for the user.
+
+*Found while doing 75:*
+- **Bug 6** (below): each update read every process's `fdinfo` twice
+  for an AMD GPU, once for its summary and once for its Details tab, in
+  the window too. Fixed here.
+- **The first real run recorded nothing:** `MetricsContext.start()`
+  didn't start the ticker (the window starts its own when it shows), and
+  the unit test had driven `refresh()` itself. Fixed, with a test where
+  only the ticker reads.
+- **Export as a reader:** a reader has no session of its own, so
+  *Export Statistics…* would have said "Nothing has been recorded yet";
+  it now exports the run the writer is recording (`session_start`).
+- **The no-Gtk check under the headless runner:** `tests/helpers.py`
+  installs the UI's CSS when `PROCCOLI_UI_TESTS=1`, so the check runs
+  its interpreter without that variable.
+
 ## Ideas
 
 Designed but not scheduled. Each becomes the next milestone when picked
@@ -1974,6 +2526,8 @@ cancelled.
 
 ### Idea 8: Lightweight Mode: small charts on the Overview, a minimal sidebar
 
+*Done as Milestone 71* (its decisions and measurements are there).
+
 **Goal:** in Lightweight Mode the Overview shows each device's trend
 again, as the small line chart the sidebar uses, and it keeps the
 busiest apps and processes. The sidebar can only be *Icons Only* or
@@ -2054,6 +2608,8 @@ measured and recorded against Milestone 66's.
    short?
 
 ### Idea 9: Custom graph time range
+
+*Done as Milestone 74* (its decisions and deviations are listed there).
 
 **Goal:** besides the presets (30 seconds to 1 day), the user can type
 any range: a number and a unit (seconds, minutes, hours or days), from
@@ -2269,6 +2825,1114 @@ looks like, and every detail it dropped is in the user guide.
 3. Is there a task your own use of Proccoli centres on that should come
    first?
 
+### Idea 12: A graph toolbar
+
+*Done as Milestone 72* (its decisions and deviations are listed there).
+
+**Goal:** the settings people change while looking at graphs are one
+click away, in a toolbar across the top of the pages, instead of in
+Preferences:
+
+- **Menus:** *Time Range* (the presets, and *Custom…* once Idea 9 is
+  built), to start with; *Update Interval* next.
+- **Toggles:** *Axes* and *Grids*, then *Logical CPUs*.
+- **Customizable:** drag a button to move it; right-click the toolbar
+  (or its overflow menu) for *Customize Toolbar…*, a list of every
+  button with a switch to show or hide it and *Reset*.
+
+**Why:** changing the range to look back an hour, or turning the grid on
+to read a value, takes four clicks into Preferences and a click back.
+They're view controls, so they belong next to the view.
+
+**Design (DESIGN.md §13.11):**
+
+- **One place for the buttons' meaning:** `ui/toolbar_items.py`
+  (display-free) lists each item: id, label, icon, kind (`menu` or
+  `toggle`), the settings key it changes and, for menus, the choices
+  (the schema's enum nicks with their labels, shared with Preferences so
+  the two never disagree). A toggle *is* the setting: the button binds
+  to it through `settings.bind`, so Preferences, the toolbar and the
+  graphs stay in step, and a Lightweight pin (`ProfileSettings.bind`)
+  shows the pinned value with the button greyed out, as Preferences
+  does.
+- **Where it goes:** an `Adw.HeaderBar` on the content side of the
+  split view (today only the sidebar has one), built by
+  `ui/widgets/graph_toolbar.py`. Pages without graphs (Apps, Processes)
+  hide the graph items, so the bar never offers a control that does
+  nothing there. In a narrow window, items that don't fit go into an
+  overflow menu, in order.
+- **Abstract the sidebar's ordering (the light refactoring):** the
+  sidebar's drag-to-reorder (`sidebar_order.arrange` / `move`, and the
+  `DragSource` / `DropTarget` wiring in `StackSidebar._wire_row`) moves
+  into a shared `ui/reorder.py`: the pure order functions (with pinned
+  heads) and a `Reorderable` helper that wires drag, drop and
+  Alt+arrow keys onto any widget given its id and a `move_before`
+  callback. The sidebar and the toolbar both use it; the sidebar's tests
+  keep passing unchanged.
+- **Settings:** `toolbar-items` (`as`, the shown items in order;
+  default `['time-range', 'axes', 'grids']`). `sidebar_order.arrange`'s
+  rule handles items a newer version adds: they appear where the default
+  puts them.
+- **Keyboard:** each item is a window action (`win.time-range`,
+  `win.graph-axes`...), so they get shortcuts and work from the menus
+  too, and the toolbar is reachable with F10 / Tab like any header bar.
+
+| Step | Create / change | Test |
+|---|---|---|
+| I12.1 | `ui/reorder.py` from `sidebar_order.py` and the sidebar's drag wiring; the sidebar switched to it | Unit: the order functions as before (the sidebar_order tests moved); UI: sidebar drag and Alt+Up still reorder |
+| I12.2 | `ui/toolbar_items.py`: the items table; Preferences' time-range and interval choices read from it | Unit: every item's key exists in the schema; every enum nick has a label; Preferences and toolbar list the same choices |
+| I12.3 | `data/…gschema.xml`: `toolbar-items`; `ui/widgets/graph_toolbar.py`: the content header bar with menus and toggles bound to settings | Unit: settings test for the key; UI: toggling *Grids* sets `show-graph-grids` and a graph redraws with a grid; picking *1 Hour* sets the range; a pinned key's button is insensitive in Lightweight Mode |
+| I12.4 | Dragging items; *Customize Toolbar…*; graph items hidden on Apps and Processes; overflow in a narrow window | UI: a drag stores the new order; hiding an item removes it; overflow holds what doesn't fit at 400 px |
+| I12.5 | README *Graphs* and keyboard shortcuts; DESIGN §13.11 as built; screenshot scenes | `make ui-test` |
+
+**Done when:** the time range and the axes and grids can be changed from
+the toolbar on every graph page, the change shows in Preferences and on
+every graph at once, the buttons can be reordered by dragging and
+hidden, and the sidebar still reorders by drag through the same helper.
+
+**Open questions for the user:**
+1. By "button-drag" did you mean dragging toolbar buttons to reorder
+   them (as designed here), or dragging across a graph to choose a time
+   range (zoom into a stretch)? The second is a bigger change of its own
+   (graphs would need a "from–to" range, not just "the last N").
+2. Should the toolbar be on by default, or shown from the main menu
+   (*Show Toolbar*, like the sidebar's F9)?
+3. Apart from the time range, axes and grids, which controls do you
+   want first: update interval, logical CPUs, temperature unit, bits or
+   bytes?
+
+### Idea 13: Record the history in the background (`proccoli-metrics`)
+
+*Done as Milestone 75* (its decisions, deviations and measurements are
+listed there).
+
+**Status (at design time): designed in full, awaiting review.** This replaces
+the first sketch of this idea (same goal; every part is now decided or
+listed as an open question). DESIGN.md §13.12 has the diagrams.
+
+**Goal:** the history keeps recording whether or not the window is
+open. `proccoli-metrics`, a small process without a window, starts with
+the user's session (or at boot), and is then the **only writer** of the
+history database. It follows the saved preferences the moment they
+change in Preferences. The window keeps working exactly as today when
+the collector isn't running.
+
+**Why:** a 1-day or 30-day graph (M74) only has data for the hours the
+window was open; the rest is the "not running" bar (M68). People open
+Proccoli *after* something went wrong and want to see what happened.
+
+#### 1. Scope
+
+| In | Out (for now) |
+|---|---|
+| Every device reading the window records today (`stats_values`), including GPU detail readings from sources that need no password (AMD, NVIDIA) | The process list (not in the history today; would need a new table and is the biggest cost: *open question 2*) |
+| Housekeeping: roll-ups, expiry, the size cap (`HistoryStore` as is) | Intel `intel_gpu_top` details: they need administrator rights, which a background process can't ask for |
+| Following *Keep History*, *Maximum Size*, *Keep Every Reading For*, *Update Interval*, the log settings, the device list settings | Serving data to the window or a browser (Idea 16) |
+| Turning it on and off from Preferences | A system-wide (root) service |
+
+#### 2. How it runs
+
+- **Command:** `proccoli-metrics` (`/usr/bin`), which runs
+  `python3 -m proccoli.metrics`: Python, PyGObject and GLib only. It
+  **never imports Gtk, Gdk or Adw** (a static test checks the whole
+  import graph from `proccoli.metrics`), so it runs with no display.
+- **Started by systemd, as the user:** a **user unit**,
+  `proccoli-metrics.service`, installed by the package and
+  `install.sh` but **disabled** until the user turns it on. The history
+  (`~/.local/state/proccoli/`) and the settings (dconf) are per user, so
+  a system service running as root couldn't use them.
+
+  ```ini
+  [Unit]
+  Description=Proccoli: record the history of every reading
+
+  [Service]
+  Type=exec
+  ExecStart=/usr/bin/proccoli-metrics
+  Restart=on-failure
+  RestartSec=10
+  Nice=10
+  IOSchedulingClass=idle
+
+  [Install]
+  WantedBy=default.target
+  ```
+
+  `default.target` of the user's systemd starts at log-in. **"At boot"**
+  is the same unit plus `loginctl enable-linger`, which starts the
+  user's systemd (and so the unit) at boot, before anyone logs in, and
+  keeps it after they log out.
+- **The main loop:** `GLib.MainLoop`; the `Ticker` (already GLib-based)
+  drives the `DeviceManager` at the update interval, and the
+  `HistoryStore` records each `updated`, as in the window. SIGTERM and
+  SIGINT (`GLib.unix_signal_add`) commit what's buffered, end the
+  session and quit; `systemctl --user stop` therefore loses nothing.
+
+#### 3. What it builds (the composition root)
+
+`context.build_metrics_context(settings, system, sysroot)`: the same
+discoverers as the window (`standard_discoverers`), a `DeviceManager`, a
+`Ticker`, and a `HistoryStore`. **Not** built: the process monitor, app
+icons, the window switcher, the privileged helper (`helper=None`), the
+performance log's per-tick timing (it keeps its log lines). A new
+profile, `Profile.metrics()`, says so for the parts that read the
+profile:
+
+| Flag | Window (full) | Collector |
+|---|---|---|
+| `gpu_details` | on | on, **never elevated**: a source that needs a password is reported as "needs administrator rights" in the log and skipped (the `gpu-elevate` setting is ignored: there's no one to ask) |
+| `app_icons`, `theme_css`, `lazy_pages`, `graph_toolbar` | per profile | off (no UI) |
+| `pins` | Lightweight Mode's, if on | **none**: Lightweight Mode is a window profile; the collector always uses the user's real settings |
+| `pci_on_demand` | per profile | on (look names up as needed; a long-running process shouldn't keep pci.ids parsed) |
+
+#### 4. One writer: the lock
+
+Two processes recording the same readings would double every row and
+fight over housekeeping. So exactly one writes, decided by a lock:
+
+- **The lock:** `~/.local/state/proccoli/history.lock`, an exclusive,
+  non-blocking `fcntl.flock` (through `System.try_lock(path)`, faked in
+  tests). The kernel releases it when its holder exits or crashes, so a
+  stale lock can't happen.
+- **Whoever holds it writes** (`HistoryStore(role=WRITER)`); everyone
+  else is a **reader** (`role=READER`): it opens the database read-only
+  (`HistoryDb(readonly=True)`, M62), still **fills graphs from it**
+  (backfill, refills on range changes), and records nothing (its
+  `record` only remembers clock offsets for backfill).
+- **Taking over:** a reader tries the lock again every
+  `COMMIT_EVERY_S` (10 s; one system call). When it gets it, it becomes
+  the writer: opens the database read-write and starts a session. So
+  when the collector stops, the window takes over within 10 s, and when
+  the window quits, a waiting collector takes over within 10 s.
+- **Who goes first:** whoever starts first. If the window is already
+  writing when the collector starts, the collector waits as a reader
+  (it has no graphs to fill, so it just retries) until the window quits.
+  Nothing is lost: the window records meanwhile. *Open question 5* asks
+  whether the window should hand over at once instead.
+- **Saying who writes:** the writer stores `meta` `writer` =
+  `{"program": "proccoli-metrics" | "proccoli", "pid", "version",
+  "since"}` on taking the lock. Preferences reads it to say
+  "Recording in the background since 08:12" or "Recording while
+  Proccoli is open".
+- **Sessions:** only the writer starts and ends sessions. With the
+  collector on, the "not running" bar (M68) now means "nothing was
+  recording": the machine was off or suspended, or the collector was
+  stopped. The hover text changes to "Nothing was recording" when the
+  collector is enabled (else it stays "Proccoli wasn't running").
+
+#### 5. Following the saved preferences
+
+Both processes read the same dconf keys through `Settings.load()`;
+GSettings delivers change notifications to every process that reads a
+key, over the session bus, so a change in Preferences reaches the
+collector with nothing extra. What each key does there:
+
+| Key | In the collector |
+|---|---|
+| `history` (*Keep History*) | off: commit, end the session, close the database, keep running idle (so turning it on again resumes at once) |
+| `history-max-size`, `history-detail-hours` | applied at the next housekeeping (`_tidy_soon`, as in the window) |
+| `update-interval` | the `Ticker` follows it (as in the window) |
+| `graph-time-range`, `graph-time-range-custom` | ignored: no graphs (the backfill listeners aren't connected) |
+| `log-level`, `log-max-size` | its own log follows them |
+| `gpu-details-disabled`, `show-virtual-drives`, `show-virtual-network-interfaces` | the `DeviceManager` and GPU controllers follow them, as in the window |
+| `lightweight` and every window-only key | ignored |
+
+At start the collector checks that the installed schema has the keys it
+needs (`schema_covers`, as the window does) and exits with a clear log
+line if not (an old schema left by a downgrade).
+
+#### 6. The window's side
+
+- **`HistoryStore(role)`:** the window starts as today and simply tries
+  the lock first; with the collector running it's a reader. Everything
+  the user sees stays the same: graphs fill from the history at start
+  and on range changes; live points come from the window's own readings
+  (both read the same files, so they agree).
+- **Export** (*Export Statistics…*) works in both roles: it already
+  opens its own read-only connection; a reader skips its own `commit()`
+  (the writer commits every 10 s, so an export is at most 10 s behind).
+- **Delete History…** in reader mode asks the collector to stop writing
+  first: it turns *Keep History* off (the collector closes the database),
+  deletes the files, and turns it back on if it was.
+- **Preferences → General → *History*:**
+  - *Record in the Background* (switch): `systemctl --user enable --now
+    proccoli-metrics.service`, or `disable --now`, through
+    `System.run_async`; its state comes from `systemctl --user
+    is-enabled` and `is-active`, so a change made with `systemctl` shows
+    too. Greyed out with a reason when the unit isn't installed or
+    there's no user systemd.
+  - *Start at Boot* (switch, under it): `loginctl enable-linger` /
+    `disable-linger` for the user; state from `loginctl show-user $USER
+    --property=Linger`. Its subtitle says it also keeps recording after
+    log-out.
+  - *Status* (row): who's writing and since when (from `meta`
+    `writer`), or why nothing is ("Keep History is off").
+- **No settings key** for "record in the background": the unit's
+  enabled state is the truth, so there's nothing to get out of sync.
+
+#### 7. Command line
+
+| Command | Does |
+|---|---|
+| `proccoli-metrics` | run (what the unit runs); logs to its own file and the journal |
+| `proccoli-metrics --once` | take one reading of every device, print it, write nothing (a quick check that it can read this machine) |
+| `proccoli-metrics --status` | who's writing and since when, the database's size and oldest reading, today's sessions; exit code 0 if something is recording |
+| `proccoli-metrics --version` | the version |
+
+#### 8. Logging
+
+`~/.local/state/proccoli/proccoli-metrics.log` (its own file, so two
+processes never rotate one file), same rotation and level as the
+window's (`FileLog` with a different name), plus stderr, which systemd
+puts in the journal (`journalctl --user -u proccoli-metrics`). One line
+on start (version, devices found, role), on each role change, on every
+setting it applies, and on stop.
+
+#### 9. When things go wrong
+
+| Situation | What happens |
+|---|---|
+| The database can't be opened or written (disk full, permissions) | logged once; recording stops; it retries at the next housekeeping (10 min) rather than exiting, so systemd doesn't restart-loop |
+| A newer schema than it knows (a newer Proccoli wrote it, then a downgrade) | it becomes a reader that never writes, and logs why |
+| The collector crashes | the kernel frees the lock; systemd restarts it after 10 s (`Restart=on-failure`); an open window takes over meanwhile if one is running |
+| Suspend and resume | a gap in the readings, as today; the session's end stops at the last commit, so the time asleep shows as not recording |
+| The clock is set back | as today (`INSERT OR REPLACE` at the same times; roll-ups redo those minutes) |
+| A device appears or goes (USB drive, dock) | the `DeviceManager` handles it as in the window |
+| The user logs out (no linger) | systemd stops the unit: SIGTERM, commit, session ends |
+| No session bus (a broken setup) | settings fall back to defaults with a warning (as `Settings.load` does); it still records, without following changes |
+
+#### 10. Cost, and how it's measured
+
+Two processes reading the same devices while the window is open costs a
+second set of reads (a few milliseconds per update interval). The
+collector alone should be well under the window's memory, since it
+loads no GTK. Targets, measured before the milestone is called done
+(`tests/ui/mem.py --metrics` and `tests/ui/perf.py --metrics`, new):
+
+- private memory (RssAnon) under a third of the window's (full profile)
+  after an hour;
+- processor time under 0.5 % of one core at a 1 s update interval on the
+  development laptop;
+- no growth over a day (`malloc_trim`ed RssAnon flat within 2 MiB).
+
+#### 11. Security and privacy
+
+It runs as the user, never as root, reads only what the window reads
+without a password, and writes only the user's own 0600 history. It
+listens on nothing (Idea 16 would add that, off by default). Turning it
+on is the user's choice; the README says plainly that it records while
+the window is closed, and how to stop it.
+
+#### 12. How it's tested
+
+- **Display-free unit tests** for everything: the lock (two stores on
+  one temporary database with a fake `System.try_lock`: only the holder
+  writes; the reader backfills; takeover when the holder stops; `meta`
+  `writer`), the collector's composition (`build_metrics_context` with
+  `FakeSystem` and a fixture `SysRoot`: devices found, no process
+  monitor, no helper, detail sources never elevated), the settings
+  table above (each key on a shared `Settings.for_tests()` store), the
+  command line (`--once` on a fixture root, `--status` on a temporary
+  database), signals (a fake `unix_signal_add`).
+- **A static test:** nothing reachable from `proccoli.metrics` imports
+  Gtk, Gdk, Adw or `proccoli.ui`.
+- **An end-to-end run without a display:** `proccoli-metrics` on the
+  fixture root for a few seconds with a fake clock, then the window's
+  `HistoryStore` as a reader on the same file sees its rows.
+- **Packaging:** the unit file is installed where systemd looks
+  (`/usr/lib/systemd/user/`, `$PREFIX/lib/systemd/user/`) and passes
+  `systemd-analyze --user verify` when that's available.
+- **By hand, once:** enable it, close the window, wait an hour, open a
+  1-hour graph: no "not running" bar.
+
+| Step | Create / change | Test |
+|---|---|---|
+| I13.1 | `System.try_lock` / `release_lock`; `core/history_lock.py`; `HistoryStore(role)`: reader mode (read-only, backfill only, retry every 10 s, take over), `meta` `writer` | Unit: the lock cases above; the window as it is today when it gets the lock |
+| I13.2 | `Profile.metrics()`; `context.build_metrics_context`; GPU controllers never elevate in it | Unit: what's built and what isn't; an Intel GPU's details reported as needing rights, AMD's started |
+| I13.3 | `proccoli/metrics.py`: main loop, signals, `--once`, `--status`, `--version`; its `FileLog` | Unit: start, ticks on a fake clock, SIGTERM: rows written, session closed; `--once` output; `--status` output and exit codes; static: no Gtk reachable |
+| I13.4 | Settings follow-through (table in 5); `history` off closes and on resumes; schema check | Unit: each key's effect without a restart |
+| I13.5 | `data/proccoli-metrics.service`; `install.sh` and `build-deb.sh` install it and `bin/proccoli-metrics`; README | `test_packaging`: installed paths, unit contents; `systemd-analyze verify` when available |
+| I13.6 | Preferences: *Record in the Background*, *Start at Boot*, *Status*; *Delete History…* in reader mode; the hover's "Nothing was recording" | UI: the switches run the right commands (faked) and show the unit's state; greyed out without the unit |
+| I13.7 | Measure (section 10): `mem.py --metrics`, `perf.py --metrics` | Run; figures in PLAN |
+| I13.8 | DESIGN §4.1, §4.2, §11, §13.12 as built; README *Files Proccoli keeps*, *History*, *Uninstalling* (stop the unit) | – |
+
+**Done when:** with *Record in the Background* on, closing the window
+and opening it an hour later shows that hour on a 1-hour graph with no
+"not running" bar; a change to *Keep History*, *Maximum Size* or *Update
+Interval* in Preferences takes effect in the collector without a
+restart; only one process ever writes (tested); and the collector meets
+the targets in section 10.
+
+**Open questions for the user:**
+1. Start at log-in (*Record in the Background* only) or truly at boot
+   by default (*Start at Boot* on too)? Boot also records while nobody is
+   logged in, and after log-out, which some people won't expect.
+2. Should the collector also record the busiest processes ("what was
+   using the processor at 3 am")? It's a new table, the largest cost,
+   and process names are personal; today only device readings are kept.
+3. Should the window take its live readings from the collector (over
+   D-Bus) instead of reading the devices too? It saves the second set of
+   reads while both run, at the cost of a D-Bus interface and the window
+   depending on the collector. *Leaning: not now.*
+4. Intel GPU details can't be recorded in the background (they need
+   administrator rights). Accept that, or offer an opt-in that grants
+   the collector the one capability `intel_gpu_top` needs (a polkit rule
+   or `setcap`, installed by an administrator)?
+5. When the window is writing and the collector starts, should the
+   window hand over at once (a lock request over D-Bus) rather than the
+   collector waiting until the window quits? Waiting loses nothing, it
+   just means the collector's session starts later.
+
+### Idea 14: Exported statistics describe their devices
+
+*Done as Milestone 73* (its decisions and deviations are listed there).
+
+**Goal:** an export can be read on its own, months later or on another
+machine. Next to the readings it says **what each device is**: its
+sidebar name and **description** ("wlp43s0", "Ryzen 3 4300U with Radeon
+Graphics"), and the **details** its page shows under *Properties*
+(model, driver, capacity, cores, link speed...), plus the machine they
+came from and the Proccoli version.
+
+**Why:** today a file is named after the device ID
+(`gpu-0000-03-00.0.csv`), and `export.json` adds only the name and kind.
+Someone looking at the numbers can't tell which GPU, drive model or
+network interface they belong to, which matters when comparing two
+machines or sending the files with a bug report.
+
+**What's missing today:** the history's `device` table keeps only `id`,
+`name` and `kind` (M62). `DeviceInfo` also has `description` and
+`properties` (what the page's *Properties* list shows), but they're never
+stored, so an export of earlier sessions can't know them, and they can
+change (a new driver, a different connection name, battery health going
+down).
+
+**Design (DESIGN.md §13.13):**
+
+- **Stored with the history:** a new table `device_info (tbl, time,
+  description, properties)`, where `properties` is JSON. A row is
+  written when a device is first recorded in a run **and only when
+  something changed** since its last row, so it costs a few rows per
+  device, not one per reading. `HistoryDb.device_info(tbl, start_ms,
+  end_ms)` returns the rows in effect over a range (the last one before
+  the start, then every change in it). Schema version 2: the table is
+  added on open (`CREATE TABLE IF NOT EXISTS`, nothing to migrate); an
+  older Proccoli opening a version 2 database just doesn't see it.
+- **Facts, not readings:** `properties` is what describes the device
+  (model, driver, capacity); readings already in a CSV column aren't
+  stored twice. Slow-changing facts like *Battery Health* are why a
+  change writes a new row.
+- **In the export:**
+  - `export.json`: each file's device gets `description`, `icon`,
+    `properties` (as in effect at the end of the range) and, when they
+    changed during it, `changes` (time and the values that changed).
+    A top-level `machine` block: Proccoli version, operating system
+    (`/etc/os-release` `PRETTY_NAME`), kernel release, architecture,
+    and the computer's model (DMI vendor and product, through
+    `SysRoot`, already read for memory devices). Times in UTC as
+    elsewhere.
+  - `devices.csv`: for spreadsheets, one row per device and property in
+    long form: `file, device_id, name, kind, description, property,
+    value, from_utc`. Long form because every kind of device has
+    different properties.
+  - Devices recorded before this version (no `device_info` rows): the
+    name and kind as today, and the current description and properties
+    if the device is present now, marked `"as_of": "export"`.
+- **Privacy:** an export is often shared. *Hardware Address* (a network
+  card's MAC) and the host name identify the machine, so they're left
+  out by default; the export dialog (Idea 7) gets *Include Hardware
+  Addresses*. Nothing else in *Properties* is personal (no serial
+  numbers are shown today; a static test keeps a list of the property
+  keys that are left out, so a new identifying one has to be added to
+  it on purpose).
+- **Works with Idea 7 and Idea 13:** any range, and whichever process
+  writes the history writes `device_info` the same way
+  (`HistoryStore`).
+
+| Step | Create / change | Test |
+|---|---|---|
+| I14.1 | `core/history_db.py`: `device_info` table, `record_info` (writes only on change), `device_info(tbl, start, end)`; schema 2 | Unit (temporary database): first sight writes a row; the same info again writes none; a changed driver writes one; a range gets the row before it and the changes in it; a version 1 database gains the table |
+| I14.2 | `core/history_store.py`: record each device's info on its first reading of a run and when `DeviceInfo` changes | Unit: two runs with the same info, one row; a run with a new description, two |
+| I14.3 | `core/machine_info.py`: OS, kernel, architecture, computer model through `SysRoot` / `System` | Unit with fixtures (`/etc/os-release`, DMI files), and missing files |
+| I14.4 | `core/history_export.py`: the `machine` block, device details and changes in `export.json`, `devices.csv`, identifying keys left out unless asked | Unit: the manifest for a fixture history; a MAC address absent by default and present with the option; an older history's devices marked `as_of: export`; static: the left-out keys list |
+| I14.5 | Export dialog: *Include Hardware Addresses* (with Idea 7's dialog, or a switch in today's flow); README *Exporting statistics*; DESIGN §13.13 as built | UI: the switch reaches `export_range` |
+
+**Done when:** an export of any range lists, for every file, the device's
+name, description and properties as they were during that range (and
+what changed), names the machine and Proccoli version, has the same in
+`devices.csv`, and leaves out the hardware address unless asked.
+
+**Open questions for the user:**
+1. Leave hardware addresses out by default (as designed), or always
+   include them?
+2. Is the computer's model and OS wanted in `machine`, or only the
+   Proccoli version?
+3. Besides `export.json` and `devices.csv`, a plain `README.txt` in the
+   folder summarizing the devices for someone without a JSON viewer?
+
+### Idea 15: Separate installs: `proccoli-metrics` and `proccoli-gui`
+
+*Done as Milestone 76* (its decisions and deviations are listed there).
+
+**Goal:** the background collector (Idea 13) and the window install
+separately, from the same source and version:
+
+- **`proccoli-metrics`**: the display-free part. The collector
+  (`proccoli-metrics`, a systemd user unit), and the library both parts
+  use: `core/`, `devices/`, `processes/`, the GPU summary and detail
+  backends without their views, the settings schema. Depends only on
+  `python3` and `python3-gi` (GLib, Gio, GObject): **no GTK, no
+  libadwaita**, so it fits a server or a headless box.
+- **`proccoli-gui`**: the window. `ui/`, the GPU tabs' views, the
+  privileged helper and its polkit policy, the desktop file, metainfo,
+  icons and the GNOME Shell extension. Depends on `proccoli-metrics` (=
+  the same version), GTK 4 and libadwaita.
+- **`proccoli`**: a small package that depends on both, so `apt install
+  proccoli` and upgrades from 0.4.0 (one package called `proccoli`) get
+  everything, as now.
+
+**Why:** a server, a NAS or a headless lab machine should record its
+history without pulling in GTK, and someone who only wants the window
+shouldn't have a service they don't use. Separate installs also make the
+collector's contract explicit: the database and the settings are the
+interface between the two, never Python imports from `ui/`.
+
+**Depends on Idea 13** (the collector must exist). Can be done in the
+same milestone or right after.
+
+**Design (DESIGN.md §13.14):**
+
+- **The split follows the layers that already exist** (UI → Domain →
+  Core, `tests/test_static.py`). Everything under `ui/`, plus the
+  domain packages' `views.py` (`UI_IN_DOMAIN`), the helper and `app.py`,
+  is the GUI; the rest is the library. A new static test turns the rule
+  into a list: no module in the library may import from `ui/`, `app`,
+  Gtk, Gdk or Adw, at any level (today only module level is checked),
+  and the GPU backends reach their views only through `create_views`'s
+  lazy import, which `proccoli-gui` provides.
+- **One Python package, two installs:** both install into the same
+  `share/proccoli/proccoli/` tree, each its own files (no file in both),
+  so `import proccoli.ui` works only with the GUI installed. A file list
+  per package, `packaging/files-metrics.txt` and `files-gui.txt`,
+  generated from the rule above, and a test that the two lists cover
+  every source file exactly once.
+- **The settings schema** ships in `proccoli-metrics`: the collector
+  reads it (*Keep History*, the limits, the update interval), and the
+  GUI depends on the library anyway. Its window-only keys are harmless
+  there.
+- **Commands:** `proccoli-metrics` (collector; `--once` for a single
+  reading, `--status` to print what it's recording and the database
+  size), and `proccoli` (the window) from `proccoli-gui`.
+- **The GUI without the service running** works as today: it records
+  the history itself (Idea 13's lock decides who writes). With
+  `proccoli-metrics` installed but its unit disabled, nothing changes
+  from today either; Preferences' *Record in the Background* turns the
+  unit on.
+- **Packaging:**
+  - `packaging/build-deb.sh` builds three `.deb`s (`proccoli-metrics`,
+    `proccoli-gui`, `proccoli`), the GUI's `Depends:` pinned to the same
+    metrics version, and `Breaks/Replaces: proccoli (<< 0.5)` so the
+    files that move from the old single package hand over cleanly.
+  - `packaging/install.sh --metrics` or `--gui` (default: both), with
+    `--uninstall` taking the same choice; uninstalling the library while
+    the GUI is installed refuses and says why.
+  - The systemd user unit and its `proccoli-metrics.log` belong to
+    `proccoli-metrics`; removing it stops and disables the unit for
+    every user (`deb-systemd-helper --user`), and leaves each user's
+    history, as removing the package does today.
+- **Versions in lockstep:** both read and write the same database
+  (schema version in `meta`) and settings. A collector that finds a
+  newer schema than it knows stops writing and logs why, rather than
+  guessing.
+
+| Step | Create / change | Test |
+|---|---|---|
+| I15.1 | `tests/test_static.py`: the library never imports `ui/`, `app`, Gtk, Gdk or Adw at any level | Static: today `gpu/intel_gpu_top/clients.py` (the Intel *Processes* tab) imports `ui.widgets.app_icon`; it's view code, so it moves with the views (renamed `clients_view.py`, in `UI_IN_DOMAIN`) |
+| I15.2 | `packaging/split.py`: the two file lists from the rule; `files-metrics.txt`, `files-gui.txt` | Unit: every source file in exactly one list; the metrics list imports with Gtk blocked (`sys.modules['gi.repository.Gtk'] = None`) |
+| I15.3 | `packaging/install.sh --metrics/--gui`; uninstall checks | `test_packaging`: a staged install of each alone has only its files; the metrics install runs `proccoli-metrics --once` with no display |
+| I15.4 | `packaging/build-deb.sh`: three packages, `Depends`, `Breaks/Replaces`, the user unit | `test_packaging`: control fields; `dpkg-deb -c` contents per package; upgrade from a 0.4.0 `.deb` in a scratch root (`dpkg --root`) |
+| I15.5 | `HistoryDb`: a newer schema than known stops writing | Unit: schema 3 in `meta` → read-only, logged |
+| I15.6 | README *Installing* (the three packages, server installs), *Uninstalling*; DESIGN §4.1, §13.14 as built | Run |
+
+**Done when:** `proccoli-metrics` installs and records on a machine
+without GTK, `proccoli-gui` installs on top and shows that history,
+`apt install proccoli` gives both as today, upgrading from 0.4.0 keeps
+the history and settings, and each package removes only its own files.
+
+**Open questions for the user:**
+1. Package names: `proccoli-metrics`, `proccoli-gui` and `proccoli` (the
+   one that installs both), or should `proccoli` itself be the GUI with
+   `proccoli-metrics` as its dependency (two packages, no
+   meta-package)?
+2. Should `proccoli-gui` *depend* on `proccoli-metrics` (shared library,
+   as designed) or only *recommend* it, with the library in a third
+   `proccoli-common` package? The second lets someone install the GUI
+   without the collector's unit file, at the cost of a third package.
+3. Does `proccoli-metrics` alone need a way to read the history without
+   the GUI (`proccoli-metrics --export FOLDER`, the Idea 7/14 export
+   from the command line)? Useful on a server.
+
+### Idea 16: A Web GUI, hosted locally (brainstorm)
+
+**Goal:** see Proccoli in a browser: the Overview, each device's charts
+and the history, served by the machine itself, without GTK. Useful on a
+machine without a desktop (with `proccoli-metrics` from Idea 15), from a
+phone on the couch, or in a second monitor's browser tab.
+
+**Status: a brainstorm, not a design yet.** The choices below need the
+user's answers before steps can be written.
+
+**What already makes it possible:**
+- **The data is already separate from the window:** the history
+  database (M62, with device details since M73) and, with Idea 13, a
+  display-free process that keeps it current. A web server inside
+  `proccoli-metrics` can read the same `Monitor`s and the same database.
+- **The rules for charts are display-free:** time ranges and points
+  (`ticker.history_plan`), units and formatting (`core/units.py`),
+  palettes (`core/palette.py`), axes ticks (`ui/axes.py` is pure). A web
+  page can be sent ready-to-draw series, so the browser only draws.
+
+**Where it runs (options):**
+
+| | Inside `proccoli-metrics` | Its own process, `proccoli-web` |
+|---|---|---|
+| Live readings | the collector's own, no second reader | reads the database (10 s behind) or asks the collector |
+| Install | one service | one more unit, its own package (Idea 15) |
+| Failure | a web bug can stop recording | isolated |
+
+*Leaning:* inside `proccoli-metrics`, off by default, behind a setting;
+split later if it grows.
+
+**How it's served, with only system packages** (no pip, no build step,
+the project's rule):
+- **Server:** Python's `http.server` on its own thread, or
+  `Gio.SocketService` on the main loop (already a dependency, no
+  threads). JSON for data; **Server-Sent Events** for live readings
+  (one-way, plain HTTP, reconnects by itself, no WebSocket library).
+- **Page:** static HTML, CSS and plain JavaScript modules shipped with
+  Proccoli, no framework and no bundler. Charts drawn on `<canvas>` with
+  the same look (fill, axes, the "not running" dither of M68) from a
+  small hand-written drawing module, or SVG. No CDN: everything is
+  served locally, so it works offline and leaks nothing.
+- **API sketch:** `GET /api/devices` (with details, M73),
+  `GET /api/history?device=…&range=1-hour` (points ready to draw, from
+  `HistoryDb.buckets`), `GET /api/live` (SSE: every reading),
+  `GET /api/processes?top=10` (optional, see privacy).
+
+**Security, which decides most of the design:**
+- **Listens on `127.0.0.1` only by default:** a browser on the same
+  machine, nothing else. Listening on the network is Idea 17's question.
+- **Even on localhost, other users and web pages can reach a local
+  port:** so a random per-user token in the URL or a cookie (printed by
+  `proccoli-metrics --web-url`, opened by the GUI's *Open in Browser*),
+  `Host` header checks against DNS rebinding, no CORS, and only `GET`.
+- **Read-only:** no ending processes or changing priorities from the
+  web, ever, at least to start: those need the root helper and a
+  password prompt the browser can't show safely.
+- **Process names and command lines are personal:** off by default in
+  the web view, a setting to turn on.
+
+**What it could show, in order of cost:**
+1. The Overview: a card per device with its current reading and a chart
+   of the chosen range (from the history, then live).
+2. A device page: its charts and its properties.
+3. The busiest apps and processes (if allowed).
+4. GPU Details tabs (the detail readings are already in the history as
+   `detail/<key>` columns).
+
+**Leaning, as a first slice:** inside `proccoli-metrics`, localhost only
+with a token, read-only, the Overview and device pages from the history
+plus SSE live readings, plain JS and canvas. Everything else waits.
+
+**Open questions for the user:**
+1. Who is it for first: you on the same machine, a phone or tablet on
+   the home network (that's Idea 17's security questions), or a
+   headless server?
+2. Should it look like the GTK app (same cards and colors), or be its
+   own simpler dashboard?
+3. Read-only forever, or eventually actions (end a process) behind
+   extra confirmation?
+4. Is a Prometheus-style `/metrics` endpoint wanted too, so existing
+   tools (Grafana and the like) can read Proccoli? It's cheap to add next
+   to the JSON API.
+
+### Idea 17: The Web GUI for machines on the local network (brainstorm)
+
+**Goal:** one Web GUI (Idea 16) showing several machines at home or in a
+small office, each running `proccoli-metrics`: a list of machines, each
+with its Overview, and charts that compare them.
+
+**Is it possible? Yes.** It's what tools like Netdata, Glances (server
+mode) and Cockpit with PCP do. The parts are well known; the work is in
+choosing a small, safe subset. This section is where to begin.
+
+**The pieces, each with the simplest option first:**
+
+1. **Each machine exposes its data.** Idea 16's API, listening on the
+   network instead of localhost (a setting, off by default). Nothing new
+   beyond that switch, which is exactly why the security below matters.
+2. **Finding machines.** *DNS-SD over mDNS* (what printers and Chromecasts
+   use): each collector announces `_proccoli._tcp` through Avahi, which
+   Ubuntu and Debian desktops already run, over D-Bus with Gio (no new
+   dependency). The hub lists what it hears. Fallback: type a host name
+   or address.
+3. **Trust (pairing).** The first time, the hub shows the machine's name
+   and a short code; the machine shows the same code (in its GUI, or
+   `proccoli-metrics --pair`); the user confirms both, like Bluetooth.
+   They exchange a long random token, and the hub remembers the
+   machine's TLS certificate fingerprint (self-signed, pinned, no
+   certificate authority needed). After that the hub sends the token on
+   every request and refuses a different certificate.
+4. **Encryption.** HTTPS with that pinned self-signed certificate,
+   through Python's `ssl` (standard library, no new package).
+5. **Getting the data to the hub (two models):**
+
+| | The hub pulls (asks each machine) | Machines push to the hub |
+|---|---|---|
+| Live view | SSE from each machine, straight to the browser or via the hub | each machine sends readings as they're taken |
+| History | asked when shown, from each machine's own database | the hub keeps a copy of everyone's history |
+| A machine off | shown as offline; its history comes back with it | the hub has the history up to when it went off |
+| Storage | nothing new | the hub's database grows per machine |
+| Firewall | the hub must reach each machine | each machine must reach the hub |
+
+   *Leaning:* **pull first**. Each machine keeps its own history (it
+   already does), the hub stores only the paired machines and their
+   tokens, and nothing is copied. Push (a hub that remembers machines
+   that are now off) can come later.
+6. **Comparing machines:** the API's time-aligned buckets
+   (`HistoryDb.buckets`) already put every device on the same grid, so
+   "processor use on all machines, last day" is one request per machine,
+   drawn on one chart. Clocks: times are UTC epoch milliseconds
+   everywhere, so machines line up as long as they keep time (NTP);
+   the hub shows a warning when a machine's clock is off by more than a
+   few seconds.
+
+**Risks and limits:**
+- **Exposure:** a network-facing service shows hardware details and
+  usage patterns (when someone's at the computer). Off by default,
+  paired-only, read-only, process names off, and the README says plainly
+  what's shared.
+- **Guest and public networks:** listening only on interfaces the user
+  picks, and never on a network NetworkManager marks as public.
+- **mDNS doesn't cross routers or VLANs:** typed addresses cover those.
+- **Scale:** a home or small office (2–20 machines) is the target, not
+  a fleet; larger setups are what Prometheus and Grafana are for (Idea
+  16's question 4).
+
+**Where to begin (a path in small, useful steps):**
+1. Idea 13 (the collector) and Idea 16's first slice (localhost web
+   view): everything else builds on them.
+2. A read-only API on the network with a token typed by hand (no
+   discovery, no pairing UI): proves the model between two of your own
+   machines.
+3. The hub page: a list of typed addresses, each machine's Overview
+   cards, offline shown as such.
+4. TLS with pinned certificates, and pairing with codes, replacing the
+   hand-typed token.
+5. mDNS discovery.
+6. Comparison charts across machines.
+7. Maybe later: push, so the hub remembers machines that are off.
+
+**Open questions for the user:**
+1. Which machines do you have in mind (all Linux? servers, laptops that
+   come and go?), and roughly how many?
+2. Should the hub be any machine's Web GUI (every install can be a hub),
+   or one chosen machine?
+3. Pull (each machine keeps its own history; an off machine shows
+   nothing new) or push (the hub keeps everyone's history) as the first
+   model?
+4. Is showing process names across the network ever wanted, or should
+   remote views be devices only?
+
+### Idea 18: Overview pages for groups of devices
+
+**Goal:** where a machine can have more than one of something (GPUs,
+drives, network connections, batteries), the sidebar groups them under
+one entry with its own **overview page**, and the devices become its
+children:
+
+- **GPUs** → a *GPUs* page: a card per GPU (usage, video memory,
+  temperature, power), side by side, then each GPU below it in the
+  sidebar.
+- **Drives** → a *Drives* page: a card per drive (activity, read and
+  write speeds, space used), and combined read/write throughput.
+- **Network** → a *Network* page with **Ethernet**, **Wi-Fi** and
+  **other connections** (VPN, mobile broadband, bridges, virtual ones
+  when shown) as children: a card per connection and the machine's total
+  download and upload.
+- **Batteries** → a *Batteries* page (laptops with two batteries, or a
+  connected UPS): charge and rate per battery.
+
+**Why:** today each device is its own top-level entry, so a machine
+with two GPUs shows "GPU" twice (this laptop's demo does), three drives
+take three rows, and there's no place to compare them or see the total
+(all network traffic, all drive activity). The Overview shows every
+device, but mixed with everything else.
+
+**Design (DESIGN.md §13.17):**
+
+- **When a group appears:** for a kind with two or more devices by
+  default; a single GPU or drive stays a plain entry as now (no extra
+  click). Network always groups once there's more than one connection.
+  *Open question 1* covers "always group".
+- **Sidebar:** a group row (icon, name, a summary line and a chart of
+  the total or the busiest child) with an expander; its children are
+  indented beneath it. Collapsing a group hides its children; the
+  choice is remembered (`sidebar-collapsed-groups`). Children reorder
+  within their group (the shared `reorder.py`, with the group as its
+  own list); groups move as a whole among the other entries. Colors:
+  children keep their own entry colors; the group row uses the first
+  child's.
+- **The group page** reuses the Overview's machinery (`OverviewPage`'s
+  cards, fitting and planner, M50–M51) filtered to the group's devices,
+  plus a combined chart where adding up makes sense (network download
+  and upload; drive read and write), never where it doesn't (GPU usage
+  percentages aren't summed; the cards sit side by side instead).
+- **Network:** children are grouped by connection type from the
+  interface's kind (`devices/network.py` already tells Ethernet from
+  Wi-Fi from virtual). Within Network, *Ethernet*, *Wi-Fi* and *Other*
+  are sub-headings, not extra pages, unless *open question 3* says
+  otherwise.
+- **Everything else follows the sidebar:** *Go To* lists groups with
+  their children indented; Back and Forward and the window's restored
+  page treat a group page like any page; the Overview page shows a card
+  per **device**, not per group (it's the whole machine), unless *open
+  question 4* says otherwise; the toolbar (M72) applies to group pages
+  (they have charts).
+- **Lightweight Mode:** group pages are built on visit and dropped like
+  any page; the group row's chart is the small one.
+- **Display-free logic:** `ui/sidebar_groups.py`: which kinds group, the
+  group of each page ID, the order (groups and children), collapsed
+  state, all pure and unit-tested; the sidebar and Go To read it.
+
+| Step | Create / change | Test |
+|---|---|---|
+| I18.1 | `ui/sidebar_groups.py`: grouping rules, order with groups, collapsed groups; `sidebar-collapsed-groups` key | Unit: one GPU → no group; two → a group with both; network types; order and moves within and across; a device added or removed |
+| I18.2 | Sidebar group rows with expanders and indented children; *Go To* nested | UI: two demo GPUs make a *GPUs* group; collapse hides children and is remembered; drag within a group |
+| I18.3 | `GroupPage`: the Overview's cards for the group's devices; combined network and drive charts | UI: the *GPUs* page has a card per GPU; *Network* totals equal the sum of its children |
+| I18.4 | Network: Ethernet, Wi-Fi and Other sub-headings | Unit: interface kinds to sections; UI: the demo's connections land in the right sections |
+| I18.5 | README (*Sidebar*), DESIGN §9.2, §9.6, §13.17; screenshots | `make ui-test` |
+
+**Done when:** a machine with two GPUs or drives shows one group entry
+with its devices beneath, a group page comparing them, Network groups
+its connections by type with total traffic, and a machine with one of
+each looks as it does today.
+
+**Open questions for the user:**
+1. Group only when there are two or more of a kind (as designed), or
+   always (a *GPUs* page even with one GPU, so the sidebar looks the
+   same on every machine)?
+2. Should the Processor and Memory be grouped too (a *System* group),
+   or stay top-level?
+3. Network: are Ethernet, Wi-Fi and Other sub-headings on one Network
+   page (as designed), or each its own overview page with children (a
+   three-level sidebar)?
+4. Should the main Overview show a card per group (fewer, summarised)
+   or keep a card per device?
+
+### Idea 19: The window reads nothing: `proccoli-metrics` serves every reading
+
+**Status: in three parts, each approved before the next** (asked for:
+"break it up into incremental sub-Ideas that I can periodically approve"):
+
+| Part | What | Status |
+|---|---|---|
+| **19a** | The collector serves every reading over D-Bus (steps I19.1–I19.2, and `--watch`); the window unchanged | Done as Milestone 78 |
+| **19b** | The window switches: `RemoteDeviceManager`, history read-only, the collector started on demand and always on (packaging), the "Not receiving readings" banner (I19.3–I19.5, I19.6's packaging); open question 1 | Done as Milestone 79 |
+| **19c** | The features that need administrator rights (open questions 2 and 3), Preferences' rows, the `strace` check and measurements (I19.6's Preferences, I19.7–I19.8) | After 19b |
+
+*Designed as one idea, first:* asked for after M77:
+"The GUI must not collect/write metrics, it should rely on
+proccoli-metrics to provide those", with two answers: **no device reads
+at all in the window**, and **`proccoli-metrics` always on** (the window
+starts it if it's stopped). This changes parts of M75 (marked below).
+
+**Goal:** one process, `proccoli-metrics`, reads every device and writes
+the history. The window only shows: live readings arrive from the
+collector, older ones come from the history database (read-only, as M75's
+reader already does).
+
+**Why:** today two processes read the same files every second while the
+window is open (M75 measured the collector alone at about 1 % of a core;
+the window costs about as much again), and the window's role (writer or
+reader) changes with what else is running. With one reader there's one
+set of numbers, one cost, and one role each.
+
+#### 1. What moves where
+
+| | Today | After |
+|---|---|---|
+| Device readings (processor, memory, GPUs, drives, network, batteries), GPU Details sources (AMD, NVIDIA) | read by the window, and by the collector when it runs | **collector only**; sent to the window each update |
+| The history database | written by whoever holds the lock | **collector only**; the window opens it read-only (graphs fill from it, exports read it) |
+| Device list and details (`DeviceInfo`, properties) | discovered by the window | discovered by the collector; sent on connect and when devices come and go |
+| Settings (dconf) | both read | both read: the window changes them, the collector follows them (as now) |
+| Per-process GPU use (fdinfo) | GPU controllers in the window | collector, sent with the GPU's readings |
+| The process list (Apps, Processes) | window | **open question 1** (leaning: stays in the window) |
+| Intel GPU Details (`intel_gpu_top`, needs root) | window, through `pkexec` | **open question 2** |
+| Memory module details (`dmidecode`, needs root when udev lacks them) | window, through the helper | **open question 3** |
+| `--demo` | window, made-up devices | window, made-up devices (not real readings; no collector needed) |
+
+#### 2. How the window gets readings: D-Bus
+
+The session bus, with Gio (already a dependency; no new packages), name
+`io.github.mamadingleberry.Proccoli.Metrics`, object
+`/io/github/mamadingleberry/Proccoli/Metrics`:
+
+| Member | Kind | Carries |
+|---|---|---|
+| `Devices()` → `aa{sv}` | method | every device: id, kind, name, description, icon, properties, sort name, and its snapshot type |
+| `DeviceAdded(a{sv})`, `DeviceRemoved(s)` | signals | as the device manager's signals |
+| `Readings(x time_ms, d mono, a{sa{sv}} snapshots)` | signal, each update | every device's snapshot as a dictionary (below), and the update's time on both clocks |
+| `Subscribe()`, `Unsubscribe()` | methods | the window asks for `Readings`; the collector watches each subscriber's bus name and forgets it when it goes |
+| `Status()` → `a{sv}` | method | version, schema, update interval, whether it's writing the history, since when |
+| `Detail(s device)` → `a{sv}` | method | a GPU's Details state (running, off, why), for the tab's banner |
+
+- **Snapshots on the wire:** every `Snapshot` subclass is a dataclass
+  (`CpuSnapshot`, `GpuSnapshot` with its `GpuSummary`, …). A small codec
+  (`core/snapshot_codec.py`, display-free) turns one into `{type: "cpu",
+  fields: {…}}` and back into the same class, so pages keep using
+  `CpuSnapshot` exactly as today. Detail samples (`AmdgpuSample`, the
+  NVIDIA sample) travel the same way inside the GPU's snapshot.
+- **Size and cost:** one signal a second of a few kilobytes (this laptop:
+  7 devices, about 300 values); D-Bus delivers it in well under a
+  millisecond. D-Bus doesn't tell a sender who listens, so the window
+  calls `Subscribe()` and the collector watches that caller's bus name:
+  with no window subscribed, nothing is encoded or sent.
+- **Why D-Bus, not a socket:** it starts the collector on demand (D-Bus
+  activation, section 4), it's already how desktop services talk, the
+  session bus only lets the same user in, and Gio has both sides.
+
+#### 3. The window's side
+
+- **`RemoteDeviceManager`** (`devices/remote.py`): the same interface as
+  `DeviceManager` (`monitors()`, `monitor(id)`, `device-added`,
+  `device-removed`, `start`, `stop`), filled from `Devices()` and the
+  signals. Its **`RemoteMonitor`**s have the same interface as
+  `Monitor` (`info`, `history`, `latest`, the `updated` signal,
+  `described_properties()`), so pages, the sidebar, the Overview and the
+  toolbar don't change: each `Readings` signal is decoded and fed to each
+  monitor's `refresh`, which records it in its `History` and emits
+  `updated`, as a local monitor does after sampling.
+- **GPUs:** a `RemoteGpuController` keeps the controller's interface for
+  the GPU page (`detail_state`, `detail_message`, `process_usage()`,
+  `detail_history()`, the Details views' `backend.sample`), fed from the
+  GPU's snapshot; the views (`DetailChartsView`) don't change.
+- **History:** the window's `HistoryStore` becomes **read-only for good**
+  (no lock, no writer role, no takeover: those parts of M75 go); it
+  fills graphs and serves exports as M75's reader does. The window's
+  clock offset for backfill comes from the `Readings` times.
+- **When the collector isn't there:** the window asks D-Bus to start it
+  (activation); while waiting, and if it can't (not installed, crashed
+  repeatedly), each page shows a banner, "Not receiving readings", with
+  the reason from systemd and a *Try Again* button; the history still
+  shows. It reconnects by itself when the name appears again (`Gio`
+  name watching).
+- **Live points line up with history points** because both come from the
+  same readings at the same times.
+
+#### 4. Always on
+
+- **Enabled for everyone on install:** the package ships the unit
+  enabled for all users (`systemctl --global enable`, in `postinst`; a
+  preset file `90-proccoli.preset` for systems that apply presets), so it
+  starts at every log-in.
+- **Started on demand:** a D-Bus service file
+  (`/usr/share/dbus-1/services/io.github.mamadingleberry.Proccoli.Metrics.service`
+  with `SystemdService=proccoli-metrics.service`) means the window's
+  first call starts it if it's stopped (for example after `systemctl
+  --user stop`).
+- **Preferences:** *Record in the Background* goes (it's always on);
+  *Start at Boot* stays (lingering); *Recording* stays (status). *Keep
+  History* still turns the history off: the collector then sends live
+  readings and writes nothing.
+- **`install.sh`** does the same for `/usr/local` (global enable,
+  D-Bus service file under `$PREFIX/share/dbus-1/services`).
+
+#### 5. What it costs and saves
+
+- **Saves:** the window's own device reads (about 1 % of a core at 1 s on
+  the laptop, measured for the collector in M75) and its GPU detail
+  sources; the window's memory drops by its device code's share.
+- **Costs:** the collector runs whenever the user is logged in (15.6
+  MiB, ~1 % of a core); a D-Bus signal per update while the window is
+  open.
+- **Latency:** a reading reaches the window a few milliseconds after
+  it's taken; the charts move at the same cadence as now.
+
+#### 6. Testing
+
+- **Codec:** every snapshot type round-trips (unit, no display).
+- **D-Bus:** the service and `RemoteDeviceManager` on a private bus
+  (`Gio.TestDBus`), with the collector built on fixture machines: the
+  window side sees the same devices, the same snapshots, additions and
+  removals, and a `Readings` signal per tick.
+- **The window without the collector:** the banner and *Try Again*;
+  reconnecting when the name returns.
+- **Pages unchanged:** the existing UI tests run against
+  `RemoteDeviceManager` fed by a local collector on a test bus (a
+  `make_context(remote=True)` helper), so every page is exercised the new
+  way.
+- **Static:** nothing in the window's composition (`build_context` for a
+  non-demo window) builds a `DeviceManager`, a discoverer or a
+  `HistoryStore` that can write.
+- **Packaging:** the D-Bus service file and preset installed; `postinst`
+  enables globally.
+
+| Step | Create / change | Test |
+|---|---|---|
+| I19.1 | `core/snapshot_codec.py`: snapshots (and detail samples) to and from `a{sv}`-ready dictionaries | Unit: every type round-trips; unknown fields ignored (a newer collector) |
+| I19.2 | `metrics_service.py` (collector side): the D-Bus object, `Devices`, `Subscribe`/`Unsubscribe` (with name watching), `Readings`, `DeviceAdded/Removed`, `Status`, `Detail`; readings only while someone is subscribed | Unit on `Gio.TestDBus`: a subscribed client sees devices and a signal per tick; none once it leaves the bus |
+| I19.3 | `devices/remote.py`: `RemoteDeviceManager`, `RemoteMonitor`, `RemoteGpuController`; name watching, activation, the "not receiving" state | Unit on a test bus: same monitors and snapshots as local; device added and removed; the collector going away and coming back |
+| I19.4 | `context.build_context`: a remote device manager for the window (local only for `--demo`); `HistoryStore` read-only in the window (M75's writer role and takeover removed from the window) | Static: the window builds no `DeviceManager` or writing store; UI: every existing page test against the remote manager |
+| I19.5 | The pages' "Not receiving readings" banner and *Try Again* | UI: with no collector on the test bus, the banner; it clears when one appears |
+| I19.6 | Packaging: D-Bus service file, preset, `postinst` global enable (`prerm` unchanged), `install.sh` the same; Preferences: *Record in the Background* removed, *Start at Boot* and *Recording* kept | `test_packaging`; UI: Preferences rows |
+| I19.7 | Open questions 1–3, as answered | – |
+| I19.8 | Measure the window's processor and memory before and after; README (*Installing*, *Recording in the background* → *How Proccoli records*), DESIGN §4.2, §13.12, §13.18 as built | Run |
+
+**Done when:** with the window open, only `proccoli-metrics` reads
+`/proc` and `/sys` device files (checked with `strace -f -e trace=openat`
+on the window: no device files), every page shows what it shows today,
+the window opening starts a stopped collector, and closing or killing the
+collector shows the banner and recovers when it's back.
+
+**Open questions for the user:**
+1. **The process list** (Apps, Processes, the Overview's busiest apps):
+   keep it in the window (leaning: it's a view of running programs, not
+   a recorded metric; the window needs the processes locally anyway to
+   end, pause or reprioritise them; and it costs nothing while those
+   pages aren't shown), or move it to the collector too (strictly "no
+   reads" in the window, but the collector would read every process
+   every second even when nobody looks)?
+2. **Intel GPU Details** need administrator rights (`intel_gpu_top`
+   through `pkexec`), and the collector can't ask for a password. Drop
+   them, keep that one exception in the window (it runs
+   `intel_gpu_top` and shows its readings, not recorded), or let an
+   administrator grant the collector the capability once (installed
+   rule)?
+3. **Memory module details** (`dmidecode`, the same kind of exception,
+   once per run): same three choices.
+
+### Idea 22: Recording from boot (lingering)
+
+**Goal:** the history has no gap between boot and log-in, or after
+log-out: the recorder runs whenever the machine does.
+
+**Today:** `proccoli.service` is a systemd *user* unit, enabled for every
+user by the package (`systemctl --global enable`), so it starts when a
+user logs in and stops when their last session ends. It runs from boot
+only with *lingering* on for that user (`loginctl enable-linger`), which
+Preferences → General → History → *Start at Boot* switches
+(`core/background.py`, `set_linger`); it's off unless the user finds it.
+Asked about in M84 ("does proccoli systemd start on boot now?"): on this
+machine it doesn't (`Linger=no`).
+
+**Ways to do it:**
+
+| | How | For | Against |
+|---|---|---|---|
+| A | **Offer lingering** where it matters: once, after the first install or first window (a dialog like *Show All Details?*), and from `proccoli --status` ("not recording before log-in: `proccoli --start-at-boot`"); a `--start-at-boot` / `--no-start-at-boot` option on the recorder | Stays the user's choice; no new parts; works on a server through the command | Still a step to take |
+| B | **The package turns lingering on** in `postinst` for each person with a login (UID ≥ 1000 with a login shell), and off again in `postrm` for the ones it turned on (remembered in `/var/lib/proccoli/linger`) | Nothing to do | Lingering starts *all* of that user's enabled user services at boot, not only Proccoli's; changes the system for users who didn't ask; new users after installing get nothing |
+| C | **A system-wide recorder**: a system unit (`proccoli-system.service`) running as its own user (`DynamicUser=`), writing `/var/lib/proccoli/history.sqlite3`; windows read it, and per-user recorders stand down | Runs from boot for everyone; one history per machine (fits a server, and the Web GUI of Ideas 16 and 17) | A large change: a second history location and its permissions, settings that aren't per-user (the user's *Update Interval*, *Keep History* limits), per-user process names need care |
+
+**Recommendation:** A now (small, keeps the choice with the person); C
+later, together with the Web GUI ideas, where one machine-wide history
+is the point. B only if asked: it does more than Proccoli needs.
+
+| Step (A) | Create / change | Test |
+|---|---|---|
+| I22.1 | `core/background.py`: `should_offer_linger(state, settings)` (pure: recorder enabled, lingering off, not offered before); a setting `linger-offered` | Unit: when to offer, and never twice |
+| I22.2 | The window: a one-time *Record from Boot?* dialog after start-up; Preferences' *Start at Boot* row unchanged | UI: shown once with lingering off; not with it on; *Turn On* calls `set_linger` (faked `System`) |
+| I22.3 | `metrics.py`: `--start-at-boot` / `--no-start-at-boot`, and a line in `--status` when lingering is off | Unit: arguments call `loginctl` through `System`; the status line |
+| I22.4 | README (*Background recording*, *Only the recorder*), DESIGN | `make ui-test` |
+
+**Open questions for the user:**
+1. A, B or C (or A now and C later)?
+2. For A: offer it in a dialog at the first start, or only show a note
+   on the *History* group until it's on?
+3. On a machine with several people, should one person's choice light
+   up recording from boot for the others too? (A and B: no, each
+   person's own; C: yes, it's machine-wide.)
+
+### Idea 21: Refactoring candidates
+
+**Goal:** places where the code would be clearer as classes, base
+classes or small helpers, found by size (files over 500 lines, classes
+with 35+ methods, functions over 60 lines) and by repeated patterns.
+Each is its own step when taken on; none changes what users see.
+
+| # | Where | Now | Proposed |
+|---|---|---|---|
+| R1 | 17 modules (`window.py`, `theme.py`, `chart_settings.py`, `sidebar_visibility.py`, `graph_toolbar.py`, `page.py`, `metrics_service.py`, …) | Each keeps its own list of `(source, handler id)` pairs and a loop that disconnects them | A `Connections` helper: `connect(source, signal, fn)`, `disconnect_all()`; one tested place for clean shutdown |
+| R2 | `devices/manager.py`, `devices/remote.py` | `DeviceManager` and `RemoteDeviceManager` share an interface only by duck typing; `app.py` and `window.py` ask `hasattr(devices, "connected")` | An abstract `DeviceSource` base (monitors, monitor, start, stop, refresh, rescan, retry, `connected`, `status`, the signals); the local one is always connected |
+| R3 | `metrics_service.device_info` | Probes each monitor with `hasattr` (`plan`, `thread_names`, `modules`, `detail_state`) to build what it sends | `Monitor.describe()` overridden by the processor, memory and GPU monitors, and `RemoteMonitor.from_description()` the matching reader: each class encodes and decodes its own fields |
+| R4 | `core/system.py` (`System`, 35 methods) | One seam for processes, locks, D-Bus, GNOME Shell windows and extensions, wmctrl, app launching | `System` as a facade over `ProcessControl`, `Locks`, `ShellIntegration` and `AppLauncher`; `FakeSystem` splits the same way |
+| R5 | `ui/widgets/graph.py` (`Graph`, 36 methods, 712 lines) | Data, axes, hover and drawing in one widget; `SidebarGraph` overrides `has_axes` and `y_tick_labels` | `GraphAxes` (ticks, `plot_rect`, drawing the axes) and `GraphHover` (pointer, readout) as helper objects; `PaneGraph` and `SidebarGraph` pick an axes policy instead of overriding |
+| R6 | `MainWindow.__init__` (157 lines) | Builds the sidebar, pages, banner, toolbar, Go To menu, back/forward, mouse buttons, Overview and authentication inline | `_build_*` methods, and a `NavigationController` class for back/forward, the mouse side buttons and Go To |
+| R7 | `PreferencesDialog` (35 methods, `__init__` 134 lines) | One class builds every page | A class per page (`AppearancePage`, …) from a layout table; with Idea 20 |
+| R8 | `app.py`, `metrics.py` | Each starts its own logging; only the window has the stall watchdog and crash hook | A shared `Runtime.start(settings, log name)` (file log, watchdog, exception hook), so the recorder gets the same diagnostics |
+| R9 | `ui/pages/table.py` (`TablePage`, 37 methods) | Columns, their settings keys, order and widths are worked out inside the widget | A display-free `ColumnSet` (which columns, order, widths, settings keys); the page renders it |
+| R10 | `ui/sidebar.py` (`StackSidebar`, 39 methods) | Rows, drag and drop, meters and selection in one class | `SidebarDragAndDrop` and `SidebarMeters` helpers; ordering already lives in `sidebar_order.py` |
+| R11 | 40 `settings.connect("changed::…")` calls | Each widget connects and later disconnects keys one by one | `settings.watch(keys, fn)` returning a handle that R1's `Connections` closes |
+| R12 | `tests/test_packaging.py` | Reads a deb's control scripts three times inline | A `control_script(deb, name)` helper |
+
+**Done already:** the program names (`COLLECTOR`, `WINDOW`) moved into
+`proccoli/__init__.py` with M83, instead of being spelled out in four
+modules. R1, R2 and R3 in M84; R11 with R1 (`Connections.watch`). The
+big classes (R4–R7, R9, R10) wait, by request.
+
+**Suggested order:** R1 and R11 (small, touch many files, make the rest
+safer), R2 and R3 (remove the duck typing between the window and the
+recorder), then R5, R6, R9, R10 one at a time; R7 with Idea 20.
+
+### Idea 20: Preferences in named sections
+
+**Goal:** Preferences stops being one long *General* page. Settings are
+grouped into a few named pages, and long lists open as subpages, so each
+page is short and its name says what's on it.
+
+**Why:** *General* holds eight groups today (Memory Use, Appearance,
+Administrator Rights, Units, User Interface, Diagnostics, Window
+Switching, History), mixing how Proccoli looks, what it records, what
+it may do, and how it runs. Some items aren't settings at all but
+actions or status (*Export…*, *Delete History…*, *Recording*, *Size on
+Disk*).
+
+**Proposed pages** (`Adw.PreferencesDialog` pages, chosen from the
+bottom switcher; long lists as subpages with `push_subpage`):
+
+| Page | Holds |
+|---|---|
+| **Appearance** | Style, Color Palette, Graph Axes, Graph Grid, Graph Time Range (and *Custom…*), Units |
+| **Sidebar** | as today (style, meters, entries), each entry's options as a subpage |
+| **Tables** | Apps columns and Processes columns (each a subpage), sorting, Normalize Processor Usage |
+| **Recording** | Keep History, its limits, *Start at Boot*, *Recording* status, *Export…*, Include Hardware Addresses, *Delete History…* |
+| **Devices** | virtual drives and connections, GPUs' detailed statistics (each GPU a subpage) |
+| **System** | Update Interval, Lightweight Mode, Administrator Rights, Window Switching, Diagnostics |
+
+- **Actions apart from settings:** within a page, actions (*Export…*,
+  *Delete History…*, *Install*) and status rows (*Recording*, *Size on
+  Disk*) sit in their own group at the end, so a page reads as settings
+  first.
+- **Search** keeps finding every row (`search_enabled` covers subpages).
+- **Lightweight Mode's notice and padlocks** move with their rows: each
+  page that has a fixed setting shows the notice.
+- **Display-free layout:** a `ui/preferences_layout.py` table maps each
+  settings key to its page, group and order, so a test can check every
+  key is somewhere, exactly once, and the dialog builds from it.
+
+| Step | Create / change | Test |
+|---|---|---|
+| I20.1 | `ui/preferences_layout.py`: pages, groups, order, subpages | Unit: every user-facing settings key placed once; no page over N rows |
+| I20.2 | `PreferencesDialog` built from the layout; subpages for columns, sidebar entries, GPUs | UI: each page's rows; subpages open and go back; search finds a subpage row |
+| I20.3 | README *Preferences*; DESIGN; screenshots of each page | `make ui-test` |
+
+**Open questions for the user:**
+1. Are these pages right, or would you name or split them differently?
+2. Should *Graph Time Range* and the units live on *Appearance*, or on
+   a *Graphs* page of their own?
+3. Six pages fit the bottom switcher on a narrow window; more would need
+   a sidebar-style list of sections instead. Six, or a list?
+
 ## Bugs
 
 Found but not fixed. Each is fixed as its own change, with a regression
@@ -2323,3 +3987,277 @@ the same database fills only the right-hand 3.2 hours (159 points).
 
 **Done when:** after any sequence of range changes, every graph's
 points are `step_s` apart in time and the axis matches the data.
+
+### Bug 2: An AMD APU's package power is shown as the GPU's
+
+*Fixed in Milestone 69.*
+
+**Seen:** on a Ryzen 3 4300U (Radeon Vega 6), the GPU page's *Power
+Usage* read 34 W under an all-core processor load with the GPU at 3 %.
+
+**Cause:** an APU's hwmon has one power reading, `power1` labelled
+`PPT`: the whole package's, processor cores included. The generic source
+reports `power1` as the GPU's power for every GPU.
+
+**Fix:** `GpuSummary.power_is_package` for an AMD APU, and the Overview
+tab names the row *Processor Package Power*. The AMD Details tab (M70)
+splits the package into cores and SoC from `gpu_metrics`.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B2.1 | `GpuSummary.power_is_package`; `GenericDrmBackend` sets it for an AMD APU | Unit on the fixture |
+| B2.2 | `GpuPage`: `power_title` | UI: the APU's title; a discrete GPU's unchanged |
+
+### Bug 3: An AMD APU's graphics memory is the carve-out alone
+
+*Fixed in Milestone 69.*
+
+**Seen:** the Vega 6's *Video Memory* read 85 % used at idle: 0.9 of
+1 GiB. The GPU had 7.3 GiB of GTT besides, 2 % used.
+
+**Cause:** an APU's `mem_info_vram_*` is the carve-out the firmware
+reserves; the GPU maps system memory (GTT, `mem_info_gtt_*`) as much.
+Only VRAM was read, on the Overview tab, the sidebar's facts and each
+process's *Video Memory*. And an APU was recognised only by a carve-out
+under 2 GiB, so a BIOS with a larger UMA setting made it look discrete.
+
+**Fix:** `GpuSummary` gains GTT, `shared_memory` and
+`memory_used/total/usage`; an APU's graphics memory is both together,
+named *Graphics Memory*. fdinfo counts an APU's clients' GTT. The APU
+is recognised by `gpu_metrics`' format revision (2).
+
+| Step | Create / change | Test |
+|---|---|---|
+| B3.1 | `GpuSummary` fields; `generic_drm`; `controller` records GTT | Unit on the fixture |
+| B3.2 | `info.amd_is_apu` | Unit: UMA 4 GiB APU, discrete revision 1, both fallbacks |
+| B3.3 | `FdinfoReader(shared_memory=True)` | Unit: GTT added only on an APU |
+| B3.4 | `GpuPage`: `memory_title`; `summaries`: facts | UI on the fixture |
+
+### Bug 4: AMD processes' video memory is counted twice
+
+*Fixed in Milestone 69.*
+
+**Seen:** a process with `drm-total-vram: 415160 KiB` showed about
+802 MB of video memory.
+
+**Cause:** amdgpu lists each memory region twice in fdinfo:
+`drm-total-vram` and the older `drm-memory-vram` (its resident part).
+`parse_fdinfo` added every `drm-total-*` and `drm-memory-*` key.
+
+**Fix:** each region counts once: `drm-total-*` when there is one (as
+i915 and xe report), `drm-memory-*` on kernels without it.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B4.1 | `gpu/fdinfo.py`: `parse_fdinfo` per region | Unit with this machine's fdinfo; fails on the old code |
+
+### Bug 5: The README installs an old version
+
+*Fixed in Milestone 69.*
+
+**Seen:** after Release 0.4.0 the README's install command was `sudo
+apt install ./dist/proccoli_0.3.0_all.deb`, a file `build-deb.sh` no
+longer makes.
+
+**Fix:** the command names 0.4.0, and a test checks every package name in
+the README against `__version__`, so the next release can't miss it.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B5.1 | README; `tests/test_meta.py` | `test_readme_installs_this_version` |
+
+### Bug 6: An AMD GPU's fdinfo is read twice per update
+
+*Fixed in Milestone 75.*
+
+**Seen:** profiling `proccoli-metrics` showed `FdinfoReader.read` called
+twice per update for the Ryzen's Vega 6, about half of each update's
+time. The window did the same.
+
+**Cause:** the GPU's summary backend (`GenericDrmBackend`) and its AMD
+Details backend (`AmdgpuBackend`, M70) each built their own
+`FdinfoReader` for the same GPU, so every process's DRM `fdinfo` files
+were read and parsed twice.
+
+**Fix:** `GpuDeps.fdinfo` holds one reader per GPU, `fdinfo.shared_reader`
+hands it to both backends, and a second `read()` at the same update time
+does nothing. 1.33 % → 1.08 % of one core in the collector.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B6.1 | `gpu/backend.py` (`GpuDeps.fdinfo`), `gpu/fdinfo.py` (`shared_reader`, the same-time check), `generic_drm.py`, `amdgpu/backend.py` | `test_amdgpu.SharedFdinfoTest`: one reader, two reads for two updates (four without the fix) |
+
+### Bug 7: The collector's process name is cut short
+
+*Fixed in Milestone 77.*
+
+**Seen:** with `proccoli-metrics` running, the Processes page listed it
+as `proccoli-metric`.
+
+**Cause:** the kernel keeps only 15 characters of a process's name
+(`comm`), and `display_name` restores a cut name from the command line's
+first word, the program. For a script that's the interpreter
+(`/usr/bin/python3`), which doesn't match, so the cut name stayed.
+
+**Fix:** it also tries the second word, the script.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B7.1 | `processes/model.py` | `test_processes`: `test_display_name_of_a_script_is_the_script` |
+
+### Bug 8: Lightweight Mode froze the window at start (a remote device's chart lines)
+
+*Fixed in Milestone 79 (found after it was first built).*
+
+**Seen:** after reinstalling with 19b, *Restart Now* into Lightweight
+Mode took a long time to show device data and the window froze for about
+20 s, then offered the administrator password. The log showed the stall
+watchdog catching Ubuntu's crash reporter (apport) gathering package
+information; `/var/crash` held the cause: `AttributeError: 'NoneType'
+object has no attribute 'offline'` in `Graph.offline_flags`.
+
+**Cause:** a local monitor defines its history's lines when it's
+created; a `RemoteMonitor` only got them with its first reading.
+Lightweight Mode's Overview charts every device at once, before any
+reading, so `history.series("usage")` was `None` and every draw raised.
+The password prompt was the usual start-up offer (other users' drive
+activity on *Processes*), shown late because of the freeze.
+
+**Fix:** `Devices()` carries each device's lines (`history`), and
+`RemoteMonitor` defines them up front; `Graph.set_series` skips a missing
+line with a warning instead of failing in every draw.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B8.1 | `metrics_service.device_info`, `devices/remote.py`, `ui/widgets/graph.py` | `test_remote`: every remote monitor has its local twin's lines before a reading; `test_ui_remote`: a Lightweight window on a collector that hasn't sent anything draws without error (fails without the fix); `test_ui_widgets`: a missing series is skipped |
+
+### Bug 9: A window's graphs miss the collector's last seconds
+
+*Fixed in Milestone 81.*
+
+**Seen:** "why are there gaps in data when I reinstall Proccoli? Shouldn't
+it be reading from the running service?" Before Idea 19 each window
+restart (Lightweight Mode's *Restart Now* included) ended the recording
+for 3–22 s. With the collector, restarts no longer stop the recording
+(reinstalling restarts the collector: 0.3 s), but every window still
+showed a gap where it opened.
+
+**Cause:** the collector commits every 10 s; a window fills its graphs
+from the database as it connects, so the rows still in the collector's
+buffer weren't there, and the history shows that stretch as nothing
+recording; the graphs never fill it in later.
+
+**Fix:** the collector commits when a window subscribes, before it
+answers, so the window's first fill has everything.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B9.1 | `metrics_service.MetricsService` (`Subscribe`) | `test_metrics_service`: `test_subscribing_writes_out_the_buffered_readings` |
+
+### Bug 10: The Lightweight switch shows the setting, not the mode
+
+*Fixed in Milestone 81.*
+
+**Seen:** "the Preferences menu's slidebar for lightweight mode should be
+set to the current state (i.e. turned on if currently in lightweight
+mode)".
+
+**Cause:** the switch showed the saved setting, which differs from the
+running mode after `--lightweight` (a one-off flag) and after a change
+that waits for a restart.
+
+**Fix:** the switch shows the running mode; flipping it chooses the next
+start's mode, and *Restart to Apply* says which way.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B10.1 | `ui/dialogs/preferences.py` | `test_ui_lightweight`: the switch shows the mode; a pending change |
+
+### Bug 11: Lightweight Mode's Processor and Memory pages are blank
+
+*Fixed in Milestone 81.*
+
+**Seen:** "why are the Processor and Memory tabs blank in lightweight
+mode?"
+
+**Cause:** since Idea 19 the window opens before the collector's devices
+arrive, so the Processor and Memory start as placeholder pages. When a
+device arrived, the window registered its lazy page and then removed the
+placeholder, and removing a page forgets its lazy entry: a visit never
+built the real page, and the empty stand-in stayed. Only devices with
+placeholders were affected; before Idea 19 they existed when the window
+opened.
+
+**Fix:** remove the placeholder (or error page) first, then register the
+new page.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B11.1 | `ui/window.py` (`_on_device_added`) | `test_ui_remote`: a Lightweight window on a collector builds the real Memory page when visited (fails without the fix) |
+
+### Bug 12: A test started the installed collector on the real history
+
+*Fixed in Milestone 82.*
+
+**Seen:** "what does this debug log imply? … WARNING
+proccoli.metrics_service: can't serve io.github.mamadingleberry.Proccoli.Metrics:
+no session bus, or another collector". Two collectors were running: the
+systemd one, and one started at 15:31:47 from the terminal the tests ran
+in, on a test bus that no longer existed.
+
+**Cause:** the tests' private `dbus-daemon` used the standard session
+configuration, which includes `/usr/share/dbus-1/services/`, where the
+installed packages now put the collector's activation file. A call to
+the collector's name with no owner (D-Bus calls auto-start by default)
+made that bus start the installed `proccoli-metrics`, with the real
+history. When the test bus closed it couldn't serve (the warning), but
+kept running, and took over writing the real history when the systemd
+collector restarted at the next reinstall. Its readings were the
+machine's own, so nothing wrong was recorded.
+
+**Fix:** the tests' bus has no service folders, so nothing can be started
+on it; and the window's calls never auto-start (only the name watcher
+may, when meant to).
+
+| Step | Create / change | Test |
+|---|---|---|
+| B12.1 | `tests/helpers.PrivateBus`, `devices/remote.py` (`NO_START`) | `test_remote.NoStrayCollectorTest` |
+
+### Bug 13: The Overview's tables change width as the busiest apps change
+
+*Fixed in Milestone 82.*
+
+**Seen:** "why do the table widths shift back and forth in size on the
+Overview page? Those should be static … likely something to do with
+longer process names".
+
+**Cause:** names were cut with "…", but a GTK label's *natural* width is
+its whole text, so a long name made the table ask for more room and the
+page re-laid out; "100.0 %" was also one character wider than its column.
+
+**Fix:** the name column's natural width is capped (it still fills the
+space the page gives it, and ends in "…", the full name as tooltip); the
+value columns are fixed at their widest values.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B13.1 | `ui/widgets/top_table.py` | `test_top.StableTableSizeTest` |
+
+### Bug 14: After *Restart Now* the window is listed as "python3"
+
+*Fixed in Milestone 84.*
+
+**Seen:** "i see a process named `python3` with a Proccoli logo icon in
+Overview pane's Processes table".
+
+**Cause:** *Restart Now* (after switching Lightweight Mode off) replaced
+the process with `execv(python3, [python3, /usr/bin/proccoli])`. The
+kernel names a process after the program it runs; started normally, it
+runs the launcher, whose `#!` line names it after the launcher. The icon
+was right: the process stays in Proccoli's app group.
+
+**Fix:** restart by running the launcher itself when it's executable.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B14.1 | `core/system.py` (`restart_command`) | `test_profile.RestartTest` |

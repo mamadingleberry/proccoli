@@ -1,4 +1,4 @@
-"""Left-click hides or shows a line; right-click shows only it (M58)."""
+"""Left-click hides or shows a line; right-click shows only it."""
 
 import os
 import sys
@@ -15,7 +15,7 @@ class SeriesVisibilityTest(unittest.TestCase):
         self.assertEqual(toggle([True, False, True], 1), [True, True, True])
 
     def test_deselecting_the_only_line_shows_every_line(self):
-        # M59: a single core selected (right-click), then deselected.
+        # a single core selected (right-click), then deselected.
         only = solo([True] * 4, 2)
         self.assertEqual(toggle(only, 2), [True] * 4)
         # Or hidden one by one: the last one brings them all back.

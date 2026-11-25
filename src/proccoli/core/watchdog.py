@@ -1,4 +1,4 @@
-"""Stall watchdog for the diagnostics log (DESIGN.md §11, Milestone 44).
+"""Stall watchdog for the diagnostics log.
 
 A frozen window leaves nothing in a log: the main loop that would write
 it is the thing that's stuck. So the main loop beats a heartbeat every
@@ -9,7 +9,7 @@ When the heartbeat comes back, it logs how long the stall lasted.
 
 PyGObject releases the GIL while GTK runs C code, so the thread runs even
 when the main thread is stuck inside GTK. Then the main thread's stack
-ends at the call into GTK (``app.run``, or one of our virtual functions
+ends at the call into GTK (``app.run()``, or one of our virtual functions
 GTK keeps calling), which is still the clue that's needed.
 
 Clock, sleeping, stack capture and scheduling are injectable for tests.

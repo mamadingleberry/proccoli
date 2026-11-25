@@ -1,0 +1,20 @@
+# Proccoli's background collector: records the history while the
+# window is closed. A systemd *user* unit, off until the user turns it on
+# (Preferences → General → History → Record in the Background, or
+# `systemctl --user enable --now proccoli.service`).
+[Unit]
+Description=Proccoli: record the history of every reading
+
+[Service]
+Type=exec
+# The desktop's app slice for Proccoli, so process lists (Proccoli's Apps
+# page among them) group it with the window instead of system processes.
+Slice=app-@APP_ID@.slice
+ExecStart=@BINDIR@/proccoli
+Restart=on-failure
+RestartSec=10
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target

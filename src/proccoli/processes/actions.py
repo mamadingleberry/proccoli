@@ -5,7 +5,7 @@ priority and CPU affinity.
 and passes whatever was denied to the privileged helper, which asks for
 authentication once. The helper gets each process's start time with its
 PID, read when the user acts, so it won't touch a process that got the PID
-while the password prompt was up (DESIGN.md §11, Security).
+while the password prompt was up (Security).
 """
 
 from __future__ import annotations
@@ -82,7 +82,7 @@ class ProcessActions:
     def __init__(self, system, helper=None,
                  start_time: Optional[Callable[[int], Optional[int]]] = None) -> None:
         """``start_time(pid)``: when the process started (None: it's gone),
-        e.g. ``processes.model.read_start_time`` on the SysRoot."""
+        e.g. ``processes.model.read_start_time()`` on the SysRoot."""
         self.system = system
         self.helper = helper            # core.privileged.PrivilegedHelper or None
         self.start_time = start_time

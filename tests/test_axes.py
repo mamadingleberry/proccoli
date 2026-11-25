@@ -1,4 +1,4 @@
-"""ui.axes: ticks and labels for percentage graphs (Milestone 29)."""
+"""ui.axes: ticks and labels for percentage graphs."""
 
 import os
 import sys
@@ -56,7 +56,7 @@ class TimeTicksTest(unittest.TestCase):
         charts = ChartSettings(s)
         self.assertEqual(charts.span_s, 60.0)
         s.set("update-interval", "5-seconds")
-        self.assertEqual(charts.span_s, 60.0)            # M58: the time range holds
+        self.assertEqual(charts.span_s, 60.0)            # the time range holds
         s.set("graph-time-range", "10-minutes")
         self.assertEqual(charts.span_s, 600.0)
         charts.release()

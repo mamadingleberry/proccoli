@@ -1,4 +1,4 @@
-"""Moving between panes without the sidebar: Go To (Milestone 48)."""
+"""Moving between panes without the sidebar: Go To."""
 
 import os
 import sys
@@ -48,7 +48,7 @@ class GotoMenuTest(unittest.TestCase):
 
 
 class HistoryTest(unittest.TestCase):
-    """Back and forward (Milestone 49), browser-style."""
+    """Back and forward, browser-style."""
 
     def walk(self, *pages):
         h = NavigationHistory()
@@ -221,7 +221,7 @@ class GotoWindowTest(unittest.TestCase):
 
     def goto_submenu(self, win):
         menu = win.menu_model
-        section = menu.get_item_link(1, Gio.MENU_LINK_SECTION)   # after About (M61)
+        section = menu.get_item_link(1, Gio.MENU_LINK_SECTION)   # after About
         label = section.get_item_attribute_value(0, "label", GLib.VariantType("s"))
         self.assertEqual(label.get_string(), GOTO_LABEL)
         return section.get_item_link(0, Gio.MENU_LINK_SUBMENU)

@@ -1,7 +1,7 @@
 """A property row: small title above a prominent value.
 
 ``set_value(None)`` hides the row: pages never show "N/A" for values a
-device doesn't have (DESIGN.md §9.1).
+device doesn't have.
 """
 
 from __future__ import annotations

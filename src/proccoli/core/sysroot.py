@@ -46,6 +46,15 @@ class SysRoot:
         except (OSError, ValueError):
             return None
 
+    def read_bytes(self, path: PathLike, limit: int = 65536) -> Optional[bytes]:
+        """Raw contents (at most ``limit`` bytes), for binary attributes such
+        as amdgpu's ``gpu_metrics``."""
+        try:
+            with open(self._p(path), "rb") as fh:
+                return fh.read(limit)
+        except (OSError, ValueError):
+            return None
+
     def read_line(self, path: PathLike) -> Optional[str]:
         """First line, stripped: the common shape of sysfs attributes."""
         text = self.read_text(path)

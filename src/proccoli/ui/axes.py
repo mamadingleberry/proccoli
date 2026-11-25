@@ -1,4 +1,4 @@
-"""Axis ticks and labels for percentage graphs (DESIGN.md §9.1).
+"""Axis ticks and labels for percentage graphs.
 
 Pure arithmetic and formatting, so it's unit-tested without a display.
 The y axis runs 0–100 %; the x axis is time, oldest on the left, "now" on
@@ -24,26 +24,33 @@ def percent_ticks(plot_height: float, label_height: float) -> list[tuple[float, 
     return [(v, f"{v} %" if v in labelled else None) for v in PERCENT_STEPS]
 
 
+DAY_S = 86400
+
+
 def span_unit(span_s: float) -> str:
     """One unit for a whole axis: "s" up to 2 minutes, "min" up to 2 hours,
-    else "h" (so labels never mix "1 min" with "48 s")."""
-    return "s" if span_s <= 120 else "min" if span_s <= 7200 else "h"
+    "h" up to 2 days, else "d" (so labels never mix "1 min" with "48 s")."""
+    return ("s" if span_s <= 120 else "min" if span_s <= 7200
+            else "h" if span_s <= 2 * DAY_S else "d")
 
 
 def format_span(seconds: float, unit: str = "") -> str:
-    """"45 s", "2 min", "1.5 min", "1 h"; ``unit`` forces one."""
+    """"45 s", "2 min", "1.5 min", "1 h", "3 d"; ``unit`` forces one."""
     seconds = max(0.0, seconds)
-    unit = unit or ("s" if seconds < 60 else "min" if seconds < 3600 else "h")
+    unit = unit or ("s" if seconds < 60 else "min" if seconds < 3600
+                    else "h" if seconds < 2 * DAY_S else "d")
     if unit == "s":
         return f"{seconds:.0f} s"
     if unit == "min":
         return f"{seconds / 60:.3g} min"
-    return f"{seconds / 3600:.3g} h"
+    if unit == "h":
+        return f"{seconds / 3600:.3g} h"
+    return f"{seconds / DAY_S:.3g} d"
 
 
 # Round tick steps, seconds.
 NICE_STEPS = (1, 2, 5, 10, 15, 20, 30, 60, 120, 300, 600, 900, 1200, 1800, 3600,
-              7200, 10800, 21600, 43200, 86400)
+              7200, 10800, 21600, 43200, 86400, 2 * 86400, 7 * 86400)    # days
 
 
 def nice_step(span_s: float, max_ticks: int) -> float:
@@ -79,7 +86,7 @@ def is_percent_graph(units: list[str], max_value: Optional[float]) -> bool:
 
 def value_divisions(plot_height: float, label_height: float) -> int:
     """Grid intervals on a value (non-percentage) axis: 4, 2 or 1, as
-    many as fit without crowding their labels (Idea 3)."""
+    many as fit without crowding their labels."""
     for d in (4, 2):
         if plot_height / d >= max(label_height * 1.6, 24):
             return d
@@ -94,7 +101,7 @@ def value_ticks(y_max: float, plot_height: float, label_height: float) -> list[f
 
 class AxisGutter:
     """One y-axis label width shared by several graphs, so their plots
-    line up in a column whatever their units (Idea 3; was the Intel
+    line up in a column whatever their units (was the Intel
     Details tab's ``AxisGroup``). Graphs ``report()`` the width they need;
     when the widest grows, ``redraw(graph)`` runs for every graph, once,
     through ``schedule`` (``GLib.idle_add`` in the app)."""

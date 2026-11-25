@@ -72,7 +72,7 @@ class ValidationTest(unittest.TestCase):
         ("processes", "--interval", "999999"),
         ("processes", "--interval"),
         ("processes", "--bogus"),
-        ("gpu-top",),                         # Milestone 42
+        ("gpu-top",),                 
         ("gpu-top", "1000"),
         ("gpu-top", "50", "card1"),           # too fast
         ("gpu-top", "1000", "card1;reboot"),
@@ -143,7 +143,7 @@ class OperationsTest(unittest.TestCase):
 
 
 class IdentityTest(unittest.TestCase):
-    """PID@STARTTIME: only the process the user picked (Milestone 40)."""
+    """PID@STARTTIME: only the process the user picked."""
 
     def setUp(self):
         self.p = child()
@@ -209,7 +209,7 @@ while True:
 
 
 class GpuTopTest(unittest.TestCase):
-    """Milestone 42: the helper stops intel_gpu_top when the app stops reading."""
+    """the helper stops intel_gpu_top when the app stops reading."""
 
     def fake(self, ignore_term=False):
         import tempfile

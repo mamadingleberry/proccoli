@@ -1,4 +1,4 @@
-"""ui.layout's chart-grid arithmetic (Idea 4; was the Intel tab's grid,
+"""ui.layout's chart-grid arithmetic (was the Intel tab's grid,
 test_igt_grid)."""
 
 import os

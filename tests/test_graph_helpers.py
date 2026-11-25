@@ -55,7 +55,7 @@ class GraphRunsTest(unittest.TestCase):
 
 
 class OfflineSpansTest(unittest.TestCase):
-    """Where the "wasn't running" bars go (M68): under the same points
+    """Where the "wasn't running" bars go: under the same points
     ``graph_runs`` places, half a point wider each side."""
 
     def test_a_run_in_the_middle(self):

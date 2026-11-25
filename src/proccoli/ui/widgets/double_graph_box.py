@@ -1,5 +1,5 @@
 """Two graphs side by side in one row (e.g. video encode and decode), or
-stacked when the page is narrow or portrait (DESIGN.md §9.1)."""
+stacked when the page is narrow or portrait."""
 
 from __future__ import annotations
 

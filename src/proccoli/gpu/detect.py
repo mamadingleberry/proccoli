@@ -1,4 +1,4 @@
-"""Which panel each GPU gets, and why (DESIGN.md §7.4, Milestone 55).
+"""Which panel each GPU gets, and why.
 
 ``plan_gpu`` asks every registered backend how well it can serve a GPU
 (``probe``) and records the answer, chosen or not:

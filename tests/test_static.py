@@ -24,6 +24,18 @@ SRC = os.path.join(ROOT, "src", "proccoli")
 ADWAITA = "/usr/share/icons/Adwaita"
 
 
+def _load_split():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "split", os.path.join(os.path.dirname(__file__), "..", "packaging", "split.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+SPLIT = _load_split()
+
+
 def modules():
     for dirpath, _dirs, files in os.walk(SRC):
         for name in files:
@@ -60,10 +72,8 @@ class DependencyInjectionTest(unittest.TestCase):
 
 class LayeringTest(unittest.TestCase):
     DOMAIN = ("core/", "devices/", "gpu/", "processes/", "context.py")
-    # Views shipped with the Intel backend (imported lazily by create_views).
-    UI_IN_DOMAIN = {"gpu/intel_gpu_top/views.py",
-                    "gpu/intel_gpu_top/clients.py",
-                    "gpu/nvidia/views.py"}
+    # Views shipped with the vendor backends (imported lazily by create_views).
+    UI_IN_DOMAIN = SPLIT.GUI_IN_DOMAIN       # packaging/split.py: one list (Idea 15)
 
     def test_domain_modules_import_no_gtk_at_module_level(self):
         offenders = []
@@ -95,10 +105,12 @@ class LayeringTest(unittest.TestCase):
 
     def test_graph_preferences_come_through_chart_settings(self):
         """One chart family (Idea 4): only ui/chart_settings.py applies the
-        graph preferences to graphs (Preferences sets them; domain code may
-        read the time range to size histories)."""
+        graph preferences to graphs (Preferences and the graph toolbar's
+        items set them; domain code may read the time range to size
+        histories)."""
         keys = re.compile(r"[\"'](show-graph-axes|show-graph-grids|graph-time-range)[\"']")
-        allowed = {"ui/chart_settings.py", "ui/dialogs/preferences.py"}
+        allowed = {"ui/chart_settings.py", "ui/dialogs/preferences.py",
+                   "ui/toolbar_items.py"}
         offenders = []
         for rel, text in modules():
             is_view = rel.startswith("ui/") or (rel.startswith("gpu/")
@@ -154,7 +166,9 @@ class SettingsKeysTest(unittest.TestCase):
         keys |= {f"{p}-sort-by-ascending" for p in ("apps", "processes")}
         from proccoli.ui.sidebar_style import STYLE_SETTING
         from proccoli.ui.sidebar_visibility import SETTING
-        keys |= {SETTING, STYLE_SETTING}
+        from proccoli.ui.toolbar_items import SETTING as TOOLBAR_SETTING, SHOW_SETTING
+        from proccoli.core.ticker import CUSTOM_KEY
+        keys |= {SETTING, STYLE_SETTING, TOOLBAR_SETTING, SHOW_SETTING, CUSTOM_KEY}
         return keys
 
     def test_used_keys_exist(self):
@@ -232,7 +246,7 @@ class TestSuiteTest(unittest.TestCase):
 class PlatformFloorTest(unittest.TestCase):
     """Ubuntu 24.04 ships libadwaita 1.5: newer classes are used only behind
     a ``hasattr`` check (or through ``ui/compat.py``). An unguarded
-    ``Adw.Spinner`` once crashed every GPU page there."""
+    ``Adw.Spinner()`` once crashed every GPU page there."""
 
     # Class -> the libadwaita version that added it (all newer than 1.5).
     NEWER = {
@@ -292,6 +306,94 @@ class UserTextTest(unittest.TestCase):
                         and id(node) not in docstrings:
                     for word in self.FORBIDDEN:
                         self.assertNotIn(word, node.value, f"{rel}: {node.value!r}")
+
+
+class InstallSplitTest(unittest.TestCase):
+    """Idea 15: proccoli installs without the GUI, so nothing on
+    its side imports the GUI side, Gtk, Gdk or Adw, at any level. The one
+    way across is a GPU backend's ``create_views``, which only the window
+    calls."""
+
+    GTK = {"Gtk", "Gdk", "Adw", "GdkPixbuf", "Graphene", "Gsk", "Pango"}
+
+    @staticmethod
+    def targets(rel, node):
+        """Source paths an import may load, relative to src/proccoli."""
+        if isinstance(node, ast.Import):
+            mods = [a.name for a in node.names]
+        else:
+            if node.level:
+                base = rel.split("/")[:-1]
+                base = base[:len(base) - (node.level - 1)] if node.level > 1 else base
+                prefix = "/".join(base + ([node.module.replace(".", "/")] if node.module else []))
+            else:
+                if not (node.module or "").startswith("proccoli"):
+                    return []
+                prefix = node.module[len("proccoli"):].lstrip(".").replace(".", "/")
+            mods = [prefix] + [f"{prefix}/{a.name}".strip("/") for a in node.names]
+            return [m + suffix for m in mods for suffix in (".py", "/__init__.py")]
+        return [m[len("proccoli."):].replace(".", "/") + ".py" for m in mods
+                if m.startswith("proccoli.")]
+
+    def test_the_library_never_imports_the_gui(self):
+        offenders = []
+        for rel, text in modules():
+            if SPLIT.part(rel) != "metrics":
+                continue
+            tree = ast.parse(text)
+            allowed = {id(n) for f in ast.walk(tree)
+                       if isinstance(f, ast.FunctionDef) and f.name == "create_views"
+                       for n in ast.walk(f)}
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.Import, ast.ImportFrom)) or id(node) in allowed:
+                    continue
+                if isinstance(node, ast.ImportFrom) and node.module == "gi.repository" \
+                        and {a.name for a in node.names} & self.GTK:
+                    offenders.append(f"{rel}:{node.lineno} Gtk")
+                for target in self.targets(rel, node):
+                    if os.path.exists(os.path.join(SRC, target)) and SPLIT.part(target) == "gui":
+                        offenders.append(f"{rel}:{node.lineno} {target}")
+        self.assertEqual(offenders, [])
+
+    def test_every_source_file_is_in_one_install(self):
+        everything = SPLIT.sources()
+        metrics, gui = set(SPLIT.files("metrics")), set(SPLIT.files("gui"))
+        self.assertEqual(metrics | gui, set(everything))
+        self.assertEqual(metrics & gui, set())
+        self.assertIn("metrics.py", metrics)
+        self.assertIn("__init__.py", metrics)
+        self.assertIn("app.py", gui)
+        self.assertTrue(SPLIT.GUI_IN_DOMAIN <= gui)
+
+
+
+class NoPlanningReferencesTest(unittest.TestCase):
+    """Code, comments, docstrings and tests carry no planning metadata
+    (milestone, idea, bug or step numbers, DESIGN.md / PLAN.md sections):
+    that history lives in docs/PLAN.md and docs/DESIGN.md (CLAUDE.md)."""
+
+    PATTERN = re.compile(r"\bM\d{1,3}(\.\d+)?\b|\bMilestones? \d+|\bIdeas? \d+[a-z]?\b"
+                         r"|\bBugs? \d+\b|DESIGN\.md|PLAN\.md|§ ?\d+")
+    # SVG path data ("M-2 -2 C…") isn't a milestone.
+    EXEMPT = {("packaging/make-logo.py", "<path d=")}
+    SUFFIXES = (".py", ".sh", ".service", ".in", ".xml", ".preset", ".desktop")
+
+    def test_none_in_code(self):
+        offenders = []
+        for top in ("src", "tests", "packaging", "data"):
+            for dirpath, _dirs, files in os.walk(os.path.join(ROOT, top)):
+                if "fixtures" in dirpath or "__pycache__" in dirpath:
+                    continue
+                for name in files:
+                    path = os.path.join(dirpath, name)
+                    rel = os.path.relpath(path, ROOT)
+                    if not name.endswith(self.SUFFIXES) or rel == "tests/test_static.py":
+                        continue
+                    for n, line in enumerate(read_file(path).splitlines(), 1):
+                        if self.PATTERN.search(line) and not any(
+                                rel == f and mark in line for f, mark in self.EXEMPT):
+                            offenders.append(f"{rel}:{n}: {line.strip()[:90]}")
+        self.assertEqual(offenders, [])
 
 
 if __name__ == "__main__":

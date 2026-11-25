@@ -1,0 +1,3 @@
+# Proccoli's collector is on for every user: the window shows
+# what it reads.
+enable proccoli.service

@@ -1,5 +1,5 @@
 """A reusable chart of many lines with a legend inside its card
-(Milestone 59; first made for the per-CPU chart, M55–M58).
+(first made for the per-CPU chart).
 
 ``LegendChart`` is a ``GraphBox`` whose graph draws lines only (filled
 areas would muddy many lines), each in its own color (however many), with
@@ -12,7 +12,7 @@ a ``Legend`` under the graph inside the same card:
   get the area a plain graph would (``legend_height``);
 - when the values in the legend would leave the graph under ``comfort``
   pixels, the legend goes compact: swatch and name, the value on hover
-  (``fit_legend``; ``layout.use_compact_legend``).
+  (``fit_legend``; ``layout.use_compact_legend()``).
 
 Standalone (outside a ``DevicePage``) it's an ordinary card: nothing fits
 it, and its legend keeps its values.
@@ -21,7 +21,7 @@ Use::
 
     chart = page.add_legend_chart(group, "Usage per Logical CPU")
     chart.set_lines(series, ["CPU 0", "CPU 1", ...])
-    chart.set_values(["12 %", "3.0 %", ...])      # each refresh
+    chart.set_values(["12 %", "3.0 %", ...]) # each refresh
 """
 
 from __future__ import annotations

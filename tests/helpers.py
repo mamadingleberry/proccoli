@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import time
 import unittest
 from typing import Mapping, Optional
 
@@ -14,13 +15,15 @@ from proccoli.core.sysroot import SysRoot  # noqa: E402
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 LAPTOP = os.path.join(FIXTURES, "alderlake-laptop")
+# An AMD Ryzen 3 4300U: the Renoir APU's amdgpu files (70).
+RENOIR = os.path.join(FIXTURES, "renoir-apu")
 
 
 def _prepare_headless_display() -> None:
     """Make widget tests see what the app sees: a font DPI (Broadway has
     none, so libadwaita 1.5's ``sp`` breakpoints would never match: see
-    ``ui.compat.ensure_font_dpi``) and the app's own CSS, which
-    ``Application`` installs (M57: the legend's compact slots)."""
+    ``ui.compat.ensure_font_dpi()``) and the app's own CSS, which
+    ``Application`` installs (the legend's compact slots)."""
     if os.environ.get("PROCCOLI_UI_TESTS") != "1":
         return
     import gi
@@ -103,7 +106,7 @@ class FakeRoot:
                         links={"/sys/class/net/eth0/device/driver": "../e1000e"},
                         dirs=["/sys/class/net/wlan0/wireless"])
         monitor = Thing(root.sysroot)
-        root.write("/proc/stat", "cpu 2 3 4 5\\n")   # next sample
+        root.write("/proc/stat", "cpu 2 3 4 5\\n") # next sample
     """
 
     def __init__(self, test: unittest.TestCase, files: Mapping[str, str] = (),
@@ -123,6 +126,11 @@ class FakeRoot:
         p = self.sysroot.path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
+
+    def write_bytes(self, path: str, data: bytes) -> None:
+        p = self.sysroot.path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(data)
 
     def link(self, path: str, target: str) -> None:
         p = self.sysroot.path(path)
@@ -166,6 +174,8 @@ class FakeSystem:
         # Paths only root can change (core.trust): anything under /usr by
         # default, so the usual fixtures look like a system install.
         self.trusted: Optional[set] = None
+        # File locks: share one dict between fakes to stand for one machine.
+        self.locks: dict = {}
 
     def which(self, name):
         return self.programs.get(name)
@@ -216,6 +226,19 @@ class FakeSystem:
         self._check(pid)
         self.affinities[pid] = set(cpus)
 
+    def try_lock(self, path):
+        key = str(path)
+        if key in self.locks:
+            return None
+        token = object()
+        self.locks[key] = token
+        return token
+
+    def release_lock(self, handle):
+        for key, token in list(self.locks.items()):
+            if token is handle:
+                del self.locks[key]
+
     def stream_reader(self):
         reader = FakeStreamReader()
         self.readers.append(reader)
@@ -237,7 +260,7 @@ class FakeSystem:
         self.launch_contexts = getattr(self, "launch_contexts", []) + [launch_context]
         return app_id in self.switchable
 
-    # Windows (Idea 5): set ``windows`` to a list of (id, pid, app id, title,
+    # Windows: set ``windows`` to a list of (id, pid, app id, title,
     # last used) for a running extension; None means it isn't running.
     windows = None
     extension_info = None          # None: not GNOME Shell; {}: unknown
@@ -323,7 +346,7 @@ class FakeStreamReader:
 
 def make_context(test: unittest.TestCase, *, demo: bool = False, sysroot=None,
                  system=None, settings=None, pci=None, helper_command=None,
-                 gpu_registry=None):
+                 gpu_registry=None, remote=False):
     """An AppContext built by the real composition root, with fakes: test
     settings, a FakeSystem, a fixture SysRoot and no NetworkManager."""
     from proccoli.context import build_context
@@ -335,7 +358,8 @@ def make_context(test: unittest.TestCase, *, demo: bool = False, sysroot=None,
         system=system or FakeSystem(),
         sysroot=sysroot or SysRoot(LAPTOP),
         pci=pci or pciids.load(os.path.join(FIXTURES, "pci", "pci.ids")),
-        helper_command=helper_command, connection_name=None, gpu_registry=gpu_registry)
+        helper_command=helper_command, connection_name=None, gpu_registry=gpu_registry,
+        remote=remote)
     test.addCleanup(ctx.stop)
     return ctx
 
@@ -399,3 +423,68 @@ class FakeStyleManager:
         self.accent = rgb
         self._obj.accent_color += 1
 
+
+
+class PrivateBus:
+    """A dbus-daemon of the tests' own, reached by address: the
+    process's session bus, which GTK applications in other tests use, is
+    never touched (Gio.TestDBus would replace it for the whole run).
+
+        bus = PrivateBus # in setUpClass; bus.stop() in tearDownClass
+        conn = bus.connect(test) # closed at the test's end
+    """
+
+    # A bus of its own: no service folders, so nothing installed on this
+    # machine (proccoli' D-Bus activation file included) can ever
+    # be started on it.
+    CONFIG = """<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:tmpdir=/tmp</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+"""
+
+    def __init__(self) -> None:
+        import subprocess
+        self._config = tempfile.NamedTemporaryFile("w", suffix=".conf", delete=False)
+        self._config.write(self.CONFIG)
+        self._config.close()
+        self.daemon = subprocess.Popen(["dbus-daemon", f"--config-file={self._config.name}",
+                                        "--nofork", "--print-address=1"],
+                                       stdout=subprocess.PIPE, text=True)
+        self.address = self.daemon.stdout.readline().strip()
+
+    def connect(self, test):
+        from gi.repository import Gio
+        conn = Gio.DBusConnection.new_for_address_sync(
+            self.address, Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
+            | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+        test.addCleanup(lambda: conn.is_closed() or conn.close_sync(None))
+        return conn
+
+    def stop(self) -> None:
+        self.daemon.terminate()
+        self.daemon.wait(5)
+        self.daemon.stdout.close()
+        os.unlink(self._config.name)
+
+
+def pump_until(until, timeout: float = 5.0) -> bool:
+    """Run the default main context until ``until`` or ``timeout``."""
+    from gi.repository import GLib
+    ctx = GLib.MainContext.default()
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        while ctx.pending():
+            ctx.iteration(False)
+        if until():
+            return True
+        time.sleep(0.005)
+    return until()

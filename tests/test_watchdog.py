@@ -1,4 +1,4 @@
-"""core.watchdog: a frozen main loop is logged with stacks (Milestone 44)."""
+"""core.watchdog: a frozen main loop is logged with stacks."""
 
 import logging
 import os

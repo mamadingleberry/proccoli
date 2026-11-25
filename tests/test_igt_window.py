@@ -36,7 +36,7 @@ class GroupMetaTest(unittest.TestCase):
 
 class IntervalMenuTest(unittest.TestCase):
     def test_nothing_faster_than_a_second(self):
-        # Idea 6: the Update Interval menu has the app's choices.
+        # the Update Interval menu has the app's choices.
         from proccoli.core.ticker import UPDATE_INTERVALS_MS
         from proccoli.gpu.intel_gpu_top.views import INTERVALS
         nicks = [n for n, _ in INTERVALS]

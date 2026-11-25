@@ -1,5 +1,5 @@
 """gpu.intel_gpu_top.labels: the Intel Details tab's legend names. Its
-numbers are formatted by core.units since Idea 4 (test_units)."""
+numbers are formatted by core.units (test_units)."""
 
 import os
 import sys

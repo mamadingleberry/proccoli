@@ -1,4 +1,4 @@
-"""The GPU backend interface (DESIGN.md §7.1).
+"""The GPU backend interface.
 
 Every GPU has a SUMMARY source (always running; feeds the Overview tab, the
 sidebar and the process columns) and optionally a DETAIL source: a vendor
@@ -45,7 +45,7 @@ class DetailServices:
     """What a detail backend's views may use (injected by the page
     factory): preferences, the app icon of a PID (None: no icon), and
     ``charts`` (``ui.chart_settings.ChartSettings``): where every graph
-    gets its preferences, units and the GPU entry's color (Idea 4). The
+    gets its preferences, units and the GPU entry's color. The
     GPU page makes a new one for each set of views and releases it with
     them."""
     settings: object
@@ -95,17 +95,41 @@ class GpuSummary:
     combined_video: bool = False            # encode and decode share one engine
     vram_used: Optional[int] = None         # bytes
     vram_total: Optional[int] = None
+    # amdgpu's GTT: system memory the GPU has mapped (bytes).
+    gtt_used: Optional[int] = None
+    gtt_total: Optional[int] = None
+    # An APU: its "VRAM" is a carve-out of system memory and it
+    # uses GTT as much, so its graphics memory is both together.
+    shared_memory: bool = False
     frequency_hz: Optional[float] = None
     vram_frequency_hz: Optional[float] = None
     power_w: Optional[float] = None
     power_cap_w: Optional[float] = None
+    # ``power_w`` is the whole processor package's (an APU's PPT),
+    # not the GPU's own.
+    power_is_package: bool = False
     temperature_c: Optional[float] = None
 
     @property
-    def vram_usage(self) -> Optional[float]:
-        if self.vram_used is None or not self.vram_total:
+    def memory_used(self) -> Optional[int]:
+        """The GPU's memory in use: VRAM, plus GTT on an APU."""
+        if self.shared_memory and self.gtt_used is not None:
+            return (self.vram_used or 0) + self.gtt_used
+        return self.vram_used
+
+    @property
+    def memory_total(self) -> Optional[int]:
+        if self.shared_memory and self.gtt_total:
+            return (self.vram_total or 0) + self.gtt_total
+        return self.vram_total
+
+    @property
+    def memory_usage(self) -> Optional[float]:
+        """``memory_used`` as a percentage of ``memory_total``."""
+        used, total = self.memory_used, self.memory_total
+        if used is None or not total:
             return None
-        return 100.0 * self.vram_used / self.vram_total
+        return 100.0 * used / total
 
 
 @dataclass
@@ -130,8 +154,11 @@ class GpuDeps:
     settings: object
     system: object          # core.system.System
     # core.privileged.PrivilegedHelper, or None: runs vendor tools as root
-    # in a way that stops them with Proccoli (DESIGN.md §11.1).
+    # in a way that stops them with Proccoli.
     helper: object = None
+    # One GPU's fdinfo readers, shared by its summary and detail backends
+    # so each update reads /proc/*/fdinfo once (fdinfo.shared_reader()).
+    fdinfo: dict = field(default_factory=dict, compare=False, hash=False)
 
 
 class GpuBackend(GObject.Object):

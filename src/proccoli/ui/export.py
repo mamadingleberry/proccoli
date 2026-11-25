@@ -1,4 +1,4 @@
-"""*Export Statistics…* (main menu and Preferences → History, Idea 2): the
+"""*Export Statistics…* (main menu and Preferences → History): the
 user picks a folder, the running session's readings are written to a new
 folder in it off the main loop (``core.history_export``), and toasts on the
 window tell how it went.
@@ -7,6 +7,12 @@ Everything that touches the desktop is injected: ``choose_folder(window,
 callback)`` (default: ``Gtk.FileDialog``, which goes through the desktop
 portal), ``run(work, done)`` (default: a worker thread, ``done`` back on the
 main loop) and ``launcher(folder)`` for *Open Folder*.
+
+Each export also says what the machine and each device are:
+``describe`` gives ``(machine, current)`` on the main loop (by default
+nothing; the application passes ``export_details(ctx)``), and the
+``export-hardware-addresses`` setting decides whether network cards'
+addresses go in.
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ from typing import Callable, Optional
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from ..core.history_export import export_session
+from ..core.machine_info import machine_info
 
 log = logging.getLogger(__name__)
 
@@ -50,14 +57,25 @@ def run_in_thread(work: Callable[[], object], done: Callable[[object], None]) ->
     threading.Thread(target=target, name="proccoli-export", daemon=True).start()
 
 
+def export_details(ctx) -> tuple[dict, dict]:
+    """The machine, and each device's details as they are now (for
+    devices the history recorded before it kept them)."""
+    monitors = ctx.devices.monitors() if ctx.devices is not None else []
+    current = {m.info.id: {"description": m.info.description,
+                           "properties": m.described_properties()} for m in monitors}
+    return machine_info(ctx.sysroot, ctx.system), current
+
+
 def open_with_launcher(window, folder: Path) -> None:
     Gtk.FileLauncher.new(Gio.File.new_for_path(str(folder))).launch(window, None, None)
 
 
 class StatisticsExport:
     def __init__(self, history, version: str = "", choose_folder=None, run=None,
-                 launcher=None, wall_clock=None) -> None:
+                 launcher=None, wall_clock=None, describe=None, settings=None) -> None:
         self.history = history
+        self.describe = describe or (lambda: ({}, {}))
+        self.settings = settings
         self.version = version
         self.choose_folder = choose_folder or choose_folder_with_dialog
         self.run = run or run_in_thread
@@ -79,12 +97,15 @@ class StatisticsExport:
         if folder is None:
             return
         self.history.commit()                  # what's buffered goes too
-        start = self.history.session
+        # This run; with proccoli writing, the run it's recording.
+        start = self.history.session_start()
         if start is None or self.history.db is None:
             self._toast("Nothing has been recorded yet")
             return
         end = int(round(self.wall_clock() * 1000))
         path, version = self.history.path, self.version
+        machine, current = self.describe()
+        addresses = bool(self.settings and self.settings.get("export-hardware-addresses"))
         self.busy = True
         self._toast("Exporting statistics…", timeout=0)
 
@@ -92,7 +113,9 @@ class StatisticsExport:
             GLib.idle_add(lambda: self._progress(done, total) and False)
 
         self.run(lambda: export_session(path, folder, start, end, version,
-                                        progress=progress), self._done)
+                                        progress=progress, machine=machine,
+                                        current=current, include_addresses=addresses),
+                 self._done)
 
     def _progress(self, done: int, total: int) -> None:
         if self.busy and self.toast is not None:

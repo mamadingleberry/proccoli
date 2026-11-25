@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from helpers import FIXTURES, LAPTOP, FakeRoot, FakeSystem  # noqa: E402
+from helpers import FIXTURES, LAPTOP, RENOIR, FakeRoot, FakeSystem  # noqa: E402
 
 from gi.repository import GLib  # noqa: E402
 
@@ -145,9 +145,110 @@ class GenericBackendTest(unittest.TestCase):
         b.refresh(1.0)
         s = b.summary()
         self.assertEqual((s.usage, s.frequency_hz, s.vram_frequency_hz), (37.0, 2.4e9, 1e9))
-        self.assertAlmostEqual(s.vram_usage, 12.5)
+        self.assertAlmostEqual(s.memory_usage, 12.5)
         self.assertEqual((s.power_w, s.power_cap_w, s.temperature_c), (45.0, 200.0, 61.0))
         self.assertFalse(s.combined_video)
+
+
+AMDGPU_FDINFO = """drm-driver:\tamdgpu
+drm-client-id:\t{cid}
+drm-pdev:\t0000:03:00.0
+drm-total-gtt:\t39240 KiB
+drm-resident-gtt:\t67272 KiB
+drm-total-vram:\t415160 KiB
+drm-resident-vram:\t387128 KiB
+drm-memory-vram:\t387128 KiB
+drm-memory-gtt: \t67272 KiB
+drm-engine-gfx:\t{gfx} ns
+drm-engine-compute:\t0 ns
+"""
+
+
+class AmdApuBugsTest(unittest.TestCase):
+    """The generic source's readings on an AMD APU (3 and 4),
+    against this Ryzen 3 4300U's own files."""
+
+    def apu(self):
+        [gpu] = discover_gpus(SysRoot(RENOIR), PCI)
+        return gpu
+
+    def test_the_apu_is_found_as_integrated(self):
+        gpu = self.apu()
+        self.assertEqual((gpu.card, gpu.pci_slot, gpu.driver), ("card1", "0000:03:00.0",
+                                                                "amdgpu"))
+        self.assertEqual(gpu.name, "AMD Radeon RX Vega 6 (Ryzen 4000/5000 Mobile Series)")
+        self.assertTrue(gpu.integrated)
+
+    def test_integrated_is_decided_by_the_metrics_table(self):
+        dev = "/sys/class/drm/card0/device"
+        base = {f"{dev}/vendor": "0x1002\n", f"{dev}/device": "0x1636\n",
+                f"{dev}/uevent": "DRIVER=amdgpu\nPCI_SLOT_NAME=0000:03:00.0\n"}
+        for table, vram, integrated in ((b"\x80\x00\x02\x02", 4 << 30, True),  # 4 GiB UMA
+                                        (b"\x60\x00\x01\x03", 1 << 29, False),  # dGPU
+                                        (None, 1 << 29, True), (None, 8 << 30, False)):
+            root = FakeRoot(self, {**base, f"{dev}/mem_info_vram_total": f"{vram}\n"})
+            if table:
+                root.write_bytes(f"{dev}/gpu_metrics", table)
+            with self.subTest(table=table, vram=vram):
+                [gpu] = discover_gpus(root.sysroot, PCI)
+                self.assertIs(gpu.integrated, integrated)
+
+    def test_graphics_memory_includes_gtt(self):
+        """the carve-out alone read 85 % used; the GPU mostly uses GTT."""
+        b = GenericDrmBackend(self.apu(), deps(SysRoot(RENOIR)))
+        b.refresh(1.0)
+        s = b.summary()
+        self.assertTrue(s.shared_memory)
+        self.assertEqual(s.vram_total, 1073741824)
+        self.assertEqual(s.gtt_total, 7822807040)
+        self.assertEqual(s.memory_total, 1073741824 + 7822807040)
+        self.assertEqual(s.memory_used, s.vram_used + s.gtt_used)
+        self.assertLess(s.memory_usage, 20)
+        self.assertGreater(100 * s.vram_used / s.vram_total, 80)
+
+    def test_power_is_the_packages(self):
+        """hwmon's PPT on an APU is the whole package, cores included."""
+        b = GenericDrmBackend(self.apu(), deps(SysRoot(RENOIR)))
+        b.refresh(1.0)
+        s = b.summary()
+        self.assertEqual(s.power_w, 12.0)
+        self.assertTrue(s.power_is_package)
+        self.assertEqual(s.temperature_c, 32.0)
+
+    def test_a_discrete_gpu_is_unchanged(self):
+        dev = "/sys/class/drm/card0/device"
+        root = FakeRoot(self, {f"{dev}/mem_info_vram_used": "1073741824\n",
+                               f"{dev}/mem_info_vram_total": "8589934592\n",
+                               f"{dev}/mem_info_gtt_used": "4294967296\n",
+                               f"{dev}/mem_info_gtt_total": "8589934592\n",
+                               f"{dev}/hwmon/hwmon5/power1_average": "45000000\n"})
+        b = GenericDrmBackend(AMD, deps(root.sysroot))
+        b.refresh(1.0)
+        s = b.summary()
+        self.assertFalse(s.shared_memory or s.power_is_package)
+        self.assertEqual((s.memory_used, s.memory_total), (1 << 30, 8 << 30))
+        self.assertEqual(s.gtt_used, 4 << 30)                  # kept, not counted
+
+    def test_amdgpu_process_memory_counts_each_region_once(self):
+        """drm-memory-vram repeats drm-total-vram's region (as resident)."""
+        _cid, c = parse_fdinfo(AMDGPU_FDINFO.format(cid=1, gfx=0), 7)
+        self.assertEqual(c.vram, 415160 * 1024)
+        _cid, c = parse_fdinfo(AMDGPU_FDINFO.format(cid=1, gfx=0), 7,
+                               ("vram", "local", "gtt"))
+        self.assertEqual(c.vram, (415160 + 39240) * 1024)
+        # An older kernel with only drm-memory-*: those count.
+        _cid, c = parse_fdinfo("drm-driver:\tamdgpu\ndrm-client-id:\t2\n"
+                               "drm-memory-vram:\t1024 KiB\n", 7)
+        self.assertEqual(c.vram, 1 << 20)
+
+    def test_apu_processes_count_gtt(self):
+        root = FakeRoot(self)
+        root.link("/proc/50/fd/3", "/dev/dri/renderD128")
+        root.write("/proc/50/fdinfo/3", AMDGPU_FDINFO.format(cid=4, gfx=0))
+        for shared, expected in ((False, 415160), (True, 415160 + 39240)):
+            reader = FdinfoReader(root.sysroot, "0000:03:00.0", shared_memory=shared)
+            reader.read(1.0)
+            self.assertEqual(reader.processes[50].vram, expected * 1024)
 
 
 class FakeSummary(GpuBackend):
@@ -341,7 +442,8 @@ class RegistryAndControllerTest(unittest.TestCase):
 
     def test_standard_registry_prefers_detail(self):
         reg = standard_registry()
-        self.assertEqual([c.id for c in reg.classes()], ["intel_gpu_top", "nvidia", "generic"])
+        self.assertEqual([c.id for c in reg.classes()], ["intel_gpu_top", "nvidia", "amdgpu",
+                                                         "generic"])
         ids = [c.id for c, _ in reg.candidates(
             INTEL, deps(programs={"intel_gpu_top": "/usr/bin/intel_gpu_top"}))]
         self.assertEqual(ids, ["intel_gpu_top", "generic"])
@@ -411,7 +513,7 @@ class IntelGpuTopTest(unittest.TestCase):
         self.assertEqual(b.summary().decode, 5)
 
     def test_elevated_runs_only_a_root_owned_copy(self):
-        # Milestone 40: PATH might find ~/.local/bin/intel_gpu_top first.
+        # PATH might find ~/.local/bin/intel_gpu_top first.
         b = self.backend(programs={"intel_gpu_top": "/home/u/.local/bin/intel_gpu_top"})
         self.assertEqual(b.executable(False), "/home/u/.local/bin/intel_gpu_top")
         self.assertEqual(b.executable(True), "/usr/bin/intel_gpu_top")
@@ -429,7 +531,7 @@ class IntelGpuTopTest(unittest.TestCase):
         return igt.IntelGpuTopBackend(INTEL, dataclasses.replace(d, helper=helper))
 
     def test_elevated_goes_through_the_helper(self):
-        # Milestone 42: the helper stops intel_gpu_top when Proccoli stops reading.
+        # the helper stops intel_gpu_top when Proccoli stops reading.
         b = self.with_helper(3)
         b.start(elevate=True)
         self.assertEqual(b.reader.started, (["/usr/libexec/proccoli/proccoli-helper",

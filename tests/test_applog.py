@@ -1,4 +1,4 @@
-"""core.applog: the size-capped diagnostics log (Milestone 34)."""
+"""core.applog: the size-capped diagnostics log."""
 
 import logging
 import os
@@ -21,9 +21,9 @@ STATUS = "Name:\tproccoli\nVmRSS:\t  51200 kB\nThreads:\t7\n"
 
 class PathTest(unittest.TestCase):
     def test_xdg_state_home(self):
-        self.assertEqual(log_path({"XDG_STATE_HOME": "/s"}), Path("/s/proccoli/proccoli.log"))
+        self.assertEqual(log_path({"XDG_STATE_HOME": "/s"}), Path("/s/proccoli/proccoli-gui.log"))
         self.assertEqual(log_path({}, home=Path("/h")),
-                         Path("/h/.local/state/proccoli/proccoli.log"))
+                         Path("/h/.local/state/proccoli/proccoli-gui.log"))
 
 
 class UtcTest(unittest.TestCase):
@@ -98,7 +98,7 @@ class FileLogTest(unittest.TestCase):
         self.assertIn("line 03999", self.path.read_text())   # newest kept
 
     def test_files_are_private(self):
-        # Milestone 40: they can name processes and devices.
+        # they can name processes and devices.
         for i in range(4000):                               # forces a rollover
             self.logger.info("line %05d %s", i, "x" * 80)
         for f in self.path.parent.iterdir():

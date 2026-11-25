@@ -11,7 +11,8 @@ import logging
 
 from gi.repository import GLib
 
-from ...core.ticker import history_plan, interval_for, time_range_s
+from ...core.connections import Connections
+from ...core.ticker import RANGE_KEYS, history_plan, interval_for, time_range_s
 from ...core.trust import find_trusted
 from ..backend import (Capability, DetailBackend, GpuBackend, GpuDeps, GpuProcessUsage,
                        GpuSummary, Probe, SupportLevel, TabSpec)
@@ -62,20 +63,18 @@ class IntelGpuTopBackend(DetailBackend):
         self.reader = deps.system.stream_reader()
         self.reader.connect("record", self._on_record)
         self.reader.connect("exited", self._on_exited)
-        self._handlers = [
-            settings.connect_changed("graph-time-range",
-                                     lambda *_: self.history.set_plan(*self._plan())),
-            settings.connect_changed("intel-gpu-top-interval", lambda *_: self._on_interval()),
-            settings.connect_changed("update-interval", lambda *_: self._on_interval()),
-        ]
+        self.connections = Connections()
+        self.connections.watch(settings, RANGE_KEYS,
+                               lambda *_: self.history.set_plan(*self._plan()))
+        self.connections.watch(settings, ("intel-gpu-top-interval", "update-interval"),
+                               lambda *_: self._on_interval())
         self._interval = self.interval_ms
 
     def _plan(self) -> tuple[int, int, float]:
         """``(points, every, step_s)`` for the app's *Graph Time Range*
-        (Idea 3; was the tab's own History Length) at intel_gpu_top's
+        (was the tab's own History Length) at intel_gpu_top's
         update interval; long ranges average samples."""
-        points, every = history_plan(time_range_s(self.settings.get("graph-time-range")),
-                                     self.interval_ms)
+        points, every = history_plan(time_range_s(self.settings), self.interval_ms)
         return points, every, self.interval_ms * every / 1000
 
     def history_readings(self) -> tuple[dict, dict]:
@@ -106,7 +105,7 @@ class IntelGpuTopBackend(DetailBackend):
     def executable(self, elevate: bool) -> Optional[str]:
         """The intel_gpu_top to run. As root (pkexec), only a copy in the
         system folders that only root can change, never one found on PATH
-        (DESIGN.md §11, Security); None if there's no such copy."""
+        (Security); None if there's no such copy."""
         system = self.deps.system
         if elevate:
             return find_trusted(INTEL_GPU_TOP, system.trusted_executable)
@@ -117,7 +116,7 @@ class IntelGpuTopBackend(DetailBackend):
         self.started = True
         if elevate and self.deps.helper is not None:
             # Through the helper, which stops intel_gpu_top when we stop
-            # reading: it ignores SIGPIPE and we can't signal it (M42).
+            # reading: it ignores SIGPIPE and we can't signal it.
             argv = self.deps.helper.gpu_top_argv(self.interval_ms, self.gpu.card)
             if argv is not None:
                 self.reader.start(argv, elevate=True)
@@ -139,9 +138,7 @@ class IntelGpuTopBackend(DetailBackend):
     def stop(self) -> None:
         self.started = False
         self.reader.stop()
-        for h in self._handlers:
-            self.settings.disconnect(h)
-        self._handlers = []
+        self.connections.disconnect_all()
 
     def _on_interval(self) -> None:
         """Samples at a different rate can't share a time axis: clear the

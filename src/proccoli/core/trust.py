@@ -1,5 +1,4 @@
-"""Which programs Proccoli may start as root (DESIGN.md §11, Security;
-Milestone 40).
+"""Which programs Proccoli may start as root (Security).
 
 pkexec runs whatever path it's given as root once the user types their
 password. If that file, or any directory above it, can be changed by the

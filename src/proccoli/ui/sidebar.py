@@ -6,7 +6,7 @@ Descriptions* and *Sidebar Meter Type*. Overview, Apps and Processes stay
 at the top;
 the user can reorder the rest (row menu or drag and drop) and minimise
 them to icon and name (``sidebar-order``, ``sidebar-minimized``; the order
-rules are in ``sidebar_order.py``). In the icons-only style (``set_compact``,
+rules are in ``reorder.py``). In the icons-only style (``set_compact``,
 ``sidebar_style.py``) every row shows just its icon, with its name,
 description and usage as hover text.
 """
@@ -17,7 +17,8 @@ from typing import Optional
 
 from gi.repository import Gdk, Gio, GLib, GObject, Gtk, Pango
 
-from . import sidebar_order
+from . import reorder
+from .widgets.reorderable import make_reorderable
 from .sidebar_fields import FIELD_LABELS, Field, hidden, set_shown, visible
 from .sidebar_style import compact_tooltip
 from .chart_settings import ChartKind, ChartSettings
@@ -35,13 +36,17 @@ ICON_SPACING = 10
 
 
 class StackSidebarItem(Gtk.ListBoxRow):
-    def __init__(self, page: ResourcePage) -> None:
+    def __init__(self, page: ResourcePage, charts: Optional[ChartSettings] = None,
+                 compact: bool = False) -> None:
+        """``charts`` binds the meter's graph when it's built;
+        ``compact``: icons only from the start (no meter is built)."""
         super().__init__()
+        self.charts = charts
         self.page: Optional[ResourcePage] = None
         self._summary_handler = 0
         self.show_details = True
         self.show_description = True
-        self.compact = False             # icons only (sidebar-style)
+        self.compact = compact           # icons only (sidebar-style)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         for side in ("top", "bottom"):
@@ -71,13 +76,15 @@ class StackSidebarItem(Gtk.ListBoxRow):
         self.usage_label = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
         self.usage_label.add_css_class("caption")
         self.usage_label.add_css_class("numeric")
-        self.meter = Meter()
-        self.meter.progress.update_property([Gtk.AccessibleProperty.LABEL], ["Usage"])
+        # The meter is built when the entry first shows one: an
+        # icons-only sidebar never does.
+        self._meter: Optional[Meter] = None
+        self.meter_type = MeterType.GRAPH
+        self.entry_color: Optional[int] = None
         details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4,
                           margin_start=ICON_SIZE + ICON_SPACING)
         details.append(self.detail_label)
         details.append(self.usage_label)
-        details.append(self.meter)
         self.details = details
         box.append(details)
         self.set_child(box)
@@ -86,6 +93,33 @@ class StackSidebarItem(Gtk.ListBoxRow):
     @property
     def page_id(self) -> str:
         return self.page.page_id
+
+    @property
+    def has_meter(self) -> bool:
+        return self._meter is not None
+
+    @property
+    def meter(self) -> Meter:
+        """The usage meter, built on first use."""
+        if self._meter is None:
+            meter = Meter(self.meter_type)
+            meter.set_visible(False)              # update shows it when wanted
+            meter.progress.update_property([Gtk.AccessibleProperty.LABEL], ["Usage"])
+            meter.set_entry_color(self.entry_color)
+            self.details.append(meter)
+            if self.charts is not None:
+                self.charts.bind(meter.graph, ChartKind.METER, show_axes=meter.set_show_axes)
+            self._meter = meter
+        return self._meter
+
+    def set_entry_color(self, index: Optional[int]) -> None:
+        self.entry_color = index
+        if self._meter is not None:
+            self._meter.set_entry_color(index)
+
+    def release_meter(self) -> None:
+        if self._meter is not None and self.charts is not None:
+            self.charts.unbind(self._meter.graph)
 
     def set_page(self, page: ResourcePage) -> None:
         """Show ``page`` (also used when a page is swapped in place)."""
@@ -139,7 +173,9 @@ class StackSidebarItem(Gtk.ListBoxRow):
                   meter_type: str) -> None:
         self.show_details = show_details
         self.show_description = show_description
-        self.meter.set_meter_type(MeterType(meter_type))
+        self.meter_type = MeterType(meter_type)
+        if self._meter is not None:
+            self._meter.set_meter_type(self.meter_type)
         self.update()
 
     def update(self) -> None:
@@ -151,12 +187,13 @@ class StackSidebarItem(Gtk.ListBoxRow):
         self.usage_label.set_visible(has_summary and self.shows(Field.USAGE))
         # Without a percentage there's nothing for a progress bar to show;
         # the graph meter still works, scaled to the data.
-        graph_mode = self.meter.meter_type == MeterType.GRAPH
-        self.meter.set_visible(has_summary and self.shows(Field.CHART)
-                               and (summary.usage is not None
-                                    or (graph_mode and bool(summary.series))))
+        graph_mode = self.meter_type == MeterType.GRAPH
+        wants_meter = (has_summary and self.shows(Field.CHART)
+                       and (summary.usage is not None or (graph_mode and bool(summary.series))))
+        if wants_meter or self._meter is not None:
+            self.meter.set_visible(wants_meter)
         self.details.set_visible(self.detail_label.get_visible()
-                                 or self.usage_label.get_visible() or self.meter.get_visible())
+                                 or self.usage_label.get_visible() or wants_meter)
         text = summary.text() if has_summary else None
         tooltip = (compact_tooltip(self.page.title, self.page.description, text)
                    if self.compact else None)
@@ -166,12 +203,15 @@ class StackSidebarItem(Gtk.ListBoxRow):
             return
         self.usage_label.set_label(text)
         self.update_property([Gtk.AccessibleProperty.DESCRIPTION], [text])
-        self.meter.set_fraction(None if summary.usage is None else summary.usage / 100)
-        if self.meter.graph.series != summary.series:
-            self.meter.set_series(summary.series)
-        if self.meter.graph.max_value != summary.max_value:
-            self.meter.graph.set_max(summary.max_value)
-        self.meter.refresh()
+        meter = self._meter
+        if meter is None:
+            return
+        meter.set_fraction(None if summary.usage is None else summary.usage / 100)
+        if meter.graph.series != summary.series:
+            meter.set_series(summary.series)
+        if meter.graph.max_value != summary.max_value:
+            meter.graph.set_max(summary.max_value)
+        meter.refresh()
 
 
 class StackSidebar(Gtk.ScrolledWindow):
@@ -206,7 +246,7 @@ class StackSidebar(Gtk.ScrolledWindow):
         self.list_box.connect("row-selected", self._on_row_selected)
         self.set_child(self.list_box)
 
-        # The meters' axes and time span (Idea 4).
+        # The meters' axes and time span.
         self.charts = ChartSettings(settings) if settings is not None else None
         if settings is not None:
             for key in ("sidebar-details", "sidebar-description", "sidebar-meter-type"):
@@ -220,7 +260,7 @@ class StackSidebar(Gtk.ScrolledWindow):
     def add_item(self, page: ResourcePage) -> StackSidebarItem:
         if page.page_id in self.items:
             raise ValueError(f"duplicate page {page.page_id!r}")
-        item = StackSidebarItem(page)
+        item = StackSidebarItem(page, self.charts, self.compact)
         self.items[page.page_id] = item
         item.set_compact(self.compact)
         self._style(item)
@@ -234,8 +274,7 @@ class StackSidebar(Gtk.ScrolledWindow):
 
     def remove_item(self, page_id: str) -> None:
         item = self.items.pop(page_id)
-        if self.charts is not None:
-            self.charts.unbind(item.meter.graph)
+        item.release_meter()
         self.list_box.remove(item)
         self._rearrange()
         self.assign_colors()
@@ -264,9 +303,9 @@ class StackSidebar(Gtk.ScrolledWindow):
         for page_id in self.default_order():
             item = self.items[page_id]
             if item.page.kind in UNCHARTED:
-                item.meter.set_entry_color(None)
+                item.set_entry_color(None)
             else:
-                item.meter.set_entry_color(index)
+                item.set_entry_color(index)
                 item.page.set_entry_color(index)
                 self.colors[page_id] = index
                 index += 1
@@ -327,7 +366,7 @@ class StackSidebar(Gtk.ScrolledWindow):
             self.select(name)
             self._syncing = False
 
-    # -- the user's order and minimised entries (DESIGN.md §9.2) ------------------------
+    # -- the user's order and minimised entries ------------------------
 
     def saved_order(self) -> list[str]:
         return list(self.settings.get("sidebar-order")) if self.settings else self._saved_order
@@ -339,7 +378,7 @@ class StackSidebar(Gtk.ScrolledWindow):
         return [i for i in self.default_order() if self.items[i].page.kind in PINNED]
 
     def _rearrange(self, sort: bool = True) -> None:
-        order = sidebar_order.arrange(self.default_order(), self.saved_order(),
+        order = reorder.arrange(self.default_order(), self.saved_order(),
                                       self.pinned_ids())
         self._rank = {page_id: i for i, page_id in enumerate(order)}
         if sort:
@@ -356,11 +395,11 @@ class StackSidebar(Gtk.ScrolledWindow):
 
     def move(self, page_id: str, delta: int) -> None:
         """Move an entry ``delta`` places (negative: up)."""
-        self._save_order(sidebar_order.move(self.order(), page_id, delta, self.pinned_ids()))
+        self._save_order(reorder.move(self.order(), page_id, delta, self.pinned_ids()))
 
     def move_before(self, page_id: str, target: str) -> None:
         """Drop ``page_id`` where ``target`` is."""
-        self._save_order(sidebar_order.move_before(self.order(), page_id, target,
+        self._save_order(reorder.move_before(self.order(), page_id, target,
                                                    self.pinned_ids()))
 
     def set_minimized(self, page_id: str, minimized: bool) -> None:
@@ -438,8 +477,8 @@ class StackSidebar(Gtk.ScrolledWindow):
         target = GLib.Variant.new_string(page_id)
         menu, entries = Gio.Menu(), Gio.Menu()
         for label, action, enabled in (
-                ("Move Up", "move-up", sidebar_order.can_move(order, page_id, -1, pinned)),
-                ("Move Down", "move-down", sidebar_order.can_move(order, page_id, 1, pinned)),
+                ("Move Up", "move-up", reorder.can_move(order, page_id, -1, pinned)),
+                ("Move Down", "move-down", reorder.can_move(order, page_id, 1, pinned)),
                 ("Expand" if page_id in self.minimized_ids() else "Minimize",
                  "toggle-minimized", True)):
             if enabled:
@@ -496,22 +535,13 @@ class StackSidebar(Gtk.ScrolledWindow):
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", lambda _c, key, _code, state: self._on_key(item, key, state))
         item.add_controller(keys)
-
-        drag = Gtk.DragSource(actions=Gdk.DragAction.MOVE)
-        drag.connect("prepare", lambda *_: Gdk.ContentProvider.new_for_value(item.page_id)
-                     if item.movable else None)
-        item.add_controller(drag)
-        drop = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
-        drop.connect("drop", lambda _t, value, _x, _y: self._on_drop(value, item.page_id))
-        item.add_controller(drop)
+        # Drag and drop, Alt+Up / Alt+Down (shared with the graph toolbar).
+        make_reorderable(item, item.page_id, self._on_drop, self.move,
+                         can_drag=lambda: item.movable)
 
     def _on_key(self, item: StackSidebarItem, key: int, state) -> bool:
         if key == Gdk.KEY_Menu or (key == Gdk.KEY_F10 and state & Gdk.ModifierType.SHIFT_MASK):
             return self.popup_menu(item) is not None
-        if state & Gdk.ModifierType.ALT_MASK and key in (Gdk.KEY_Up, Gdk.KEY_Down) \
-                and item.movable:
-            self.move(item.page_id, -1 if key == Gdk.KEY_Up else 1)
-            return True
         return False
 
     def _on_drop(self, page_id, target: str) -> bool:
@@ -529,9 +559,6 @@ class StackSidebar(Gtk.ScrolledWindow):
         item.set_style(self.settings.get("sidebar-details"),
                        self.settings.get("sidebar-description"),
                        self.settings.get("sidebar-meter-type"))
-        if item.meter.graph not in self.charts.bound():
-            self.charts.bind(item.meter.graph, ChartKind.METER,
-                             show_axes=item.meter.set_show_axes)
 
     def _apply_style(self) -> None:
         for item in self.items.values():

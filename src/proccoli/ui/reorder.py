@@ -1,9 +1,10 @@
-"""The user's sidebar order (DESIGN.md §9.2). Pure functions on page IDs.
+"""A user-ordered list of IDs: the sidebar's entries and
+the graph toolbar's buttons. Pure functions on IDs.
 
-Pinned entries (Apps, Processes) always come first, in their own order.
-The rest follow the order the user saved; entries the saved order doesn't
-know (a new drive, a first start) go where they'd be by default: right
-after the entry that precedes them in the default order.
+Pinned IDs (the sidebar's Apps and Processes) always come first, in their
+own order. The rest follow the order the user saved; IDs the saved order
+doesn't know (a new drive, a first start) go where they'd be by default:
+right after the ID that precedes them in the default order.
 """
 
 from __future__ import annotations

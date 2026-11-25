@@ -10,6 +10,7 @@ touches the OS goes through ``System``:
 - priorities and CPU affinity
 - child processes, both one-shot and streaming
 - desktop-file lookups
+- file locks (who writes the history)
 
 Production code receives a ``System`` from the composition root
 (``proccoli.context``); tests pass a fake with the same methods.
@@ -54,12 +55,23 @@ def activation_token(launch_context, info=None) -> str:
         return ""
 
 
-def restart_argv(argv0: str) -> list[str]:
-    """How to start Proccoli again: ``-m proccoli`` when it was started as a
-    module (argv[0] is the package's ``__main__.py``), else the launcher."""
+def restart_command(argv0: str, interpreter: str,
+                    runnable: bool) -> tuple[str, list[str]]:
+    """How to start Proccoli again, as ``(program, argv)`` for ``execv``.
+
+    - Started as a module (argv[0] is the package's ``__main__.py``):
+      ``python3 -m proccoli``.
+    - Started from its launcher (``runnable``: an executable file): run the
+      launcher itself, not the interpreter with the launcher as argument.
+      The kernel names a process after the program it runs, so going
+      through the interpreter would list the window as "python3".
+    - Otherwise (a script that isn't executable): the interpreter with it.
+    """
     if os.path.basename(argv0) == "__main__.py":
-        return ["-m", "proccoli"]
-    return [argv0]
+        return interpreter, [interpreter, "-m", "proccoli"]
+    if runnable:
+        return argv0, [argv0]
+    return interpreter, [interpreter, argv0]
 
 
 class System:
@@ -82,7 +94,10 @@ class System:
         started the way this one was: the installed launcher, or
         ``python3 -m proccoli`` from a checkout."""
         import sys
-        os.execv(sys.executable, [sys.executable, *restart_argv(sys.argv[0]), *args])
+        argv0 = sys.argv[0]
+        runnable = os.path.isfile(argv0) and os.access(argv0, os.X_OK)
+        program, argv = restart_command(argv0, sys.executable, runnable)
+        os.execv(program, [*argv, *args])
 
     def geteuid(self) -> int:
         return os.geteuid()
@@ -109,6 +124,29 @@ class System:
 
     def machine(self) -> str:
         return os.uname().machine
+
+    # -- file locks ---------------------------------------------------------------------
+
+    def try_lock(self, path) -> Optional[int]:
+        """An exclusive lock on ``path`` (created 0600), or None when
+        another process (or another open of it) holds it. The kernel frees
+        it when the holder exits, so it can't go stale."""
+        import fcntl
+        os.makedirs(os.path.dirname(os.fspath(path)), mode=0o700, exist_ok=True)
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            return None
+        return fd
+
+    def release_lock(self, handle: int) -> None:
+        import fcntl
+        try:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+        finally:
+            os.close(handle)
 
     # -- processes ----------------------------------------------------------------------
 
@@ -190,7 +228,7 @@ class System:
         if info.get_boolean("SingleMainWindow"):
             return "launch"
         # A running GApplication owns its app ID on the bus even when its
-        # .desktop file doesn't say so (Idea 5); terminals open a new
+        # .desktop file doesn't say so; terminals open a new
         # window on Activate, so they're left out.
         if app_id not in NEW_WINDOW_ON_ACTIVATE and self.bus_name_owned(app_id):
             return "dbus"
@@ -199,7 +237,7 @@ class System:
     def activate_app(self, app_id: str, launch_context=None) -> bool:
         """Ask the app to show its window (see ``app_switch_method``).
         ``launch_context`` (``Gdk.AppLaunchContext``) gives the activation
-        token that lets GNOME bring it to the front (Idea 5)."""
+        token that lets GNOME bring it to the front."""
         method = self.app_switch_method(app_id)
         if method == "dbus":
             from gi.repository import Gio, GLib
@@ -218,7 +256,7 @@ class System:
             return bool(self._desktop_info(app_id).launch([], launch_context))
         return False
 
-    # -- windows (Idea 5; core.windows decides) ------------------------------------
+    # -- windows (core.windows decides) ------------------------------------
 
     def _session_call(self, dest: str, path: str, iface: str, method: str, args=None,
                       reply: Optional[str] = None, timeout_ms: int = 1000):

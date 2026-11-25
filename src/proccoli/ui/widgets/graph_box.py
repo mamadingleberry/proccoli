@@ -7,7 +7,7 @@ from typing import Optional, Sequence
 from gi.repository import Adw, Gtk, Pango
 
 from ...core.history import Series
-from .graph import RGB, Graph, GraphStyle
+from .graph import RGB, Graph, PaneGraph
 
 
 class GraphPane(Gtk.Box):
@@ -18,7 +18,7 @@ class GraphPane(Gtk.Box):
                  min_max: float = 0.0) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.set_hexpand(True)
-        self.graph = Graph(GraphStyle.NORMAL, max_value, min_max)
+        self.graph = PaneGraph(max_value, min_max)
         self.append(self.graph)
 
         labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
@@ -36,7 +36,7 @@ class GraphPane(Gtk.Box):
 
     def set_footer(self, widget: Gtk.Widget) -> None:
         """Put ``widget`` right under the graph, inside the card (the
-        per-CPU legend, M57)."""
+        per-CPU legend)."""
         self.insert_child_after(widget, self.graph)
 
     def set_title(self, title: str) -> None:

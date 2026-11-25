@@ -6,11 +6,19 @@ code is our own, with pixel-snapping and palette helpers ported from
 intel_gpu_top_gui.
 
 Stretches filled from the history for a time Proccoli wasn't running
-(``Series.offline``) get a dithered bar under the lines (M68).
+(``Series.offline``) get a dithered bar under the lines.
+
+Two kinds: ``PaneGraph``, every chart on a pane (device pages, GPU
+Details, the Overview's cards), and ``SidebarGraph``, the sidebar's small
+charts (and the Overview's in Lightweight Mode, which are the same): no
+grid, the time axis whenever axes are on (network graphs too), and a
+value axis, when the graph has one, with only its minimum and maximum.
+``Graph`` is what both draw with.
 """
 
 from __future__ import annotations
 
+import logging
 import math
 from enum import Enum
 from typing import Callable, Optional, Sequence
@@ -32,6 +40,8 @@ from ..axes import (AxisGutter, is_percent_graph, percent_ticks, time_ticks,  # 
 from ..hover import ago_text, box_origin, hover_point, offline_text  # noqa: E402
 from ..layout import aspect_height  # noqa: E402
 from ..theme import DEFAULT_ACCENT, default_theme_colors, theme_of  # noqa: E402
+
+log = logging.getLogger(__name__)
 
 
 class GraphStyle(str, Enum):
@@ -152,7 +162,7 @@ def accent_rgb() -> RGB:
 
 
 def entry_rgb(index: int, series: int, widget=None) -> RGB:
-    """A sidebar entry's color (``Theme.entry_rgb``), or the default
+    """A sidebar entry's color (``Theme.entry_rgb()``), or the default
     palette's without a theme."""
     theme = theme_of(widget)
     if theme is not None:
@@ -203,13 +213,13 @@ class Graph(Gtk.DrawingArea):
         # Palette slot of the first series; 1 skips the accent color (for a
         # graph that sits next to another, like Write next to Read).
         self.color_offset = 0
-        # Many lines in one graph (the per-CPU chart, M55): no fill, which
+        # Many lines in one graph (the per-CPU chart): no fill, which
         # would muddy them; a distinct color each (entry_colors makes as
         # many as needed); lines the legend switched off.
         self.fill = True
         self.distinct = False
         self.hidden: set[int] = set()
-        # Value axes (Idea 3): a label for a tick value turns axes on for a
+        # Value axes: a label for a tick value turns axes on for a
         # graph that isn't a percentage (MHz, W, ...); a shared gutter lines
         # up the plots of several graphs.
         self.axis_format: Optional[Callable[[float], str]] = None
@@ -217,7 +227,7 @@ class Graph(Gtk.DrawingArea):
         # Rounds the automatic maximum (default nice_ceiling); a graph whose
         # labels switch unit (MiB/s to GiB/s) rounds in the shown unit.
         self.nice_max: Optional[Callable[[float], float]] = None
-        # Hover crosshair (Idea 3): each line's name and value at the pointer.
+        # Hover crosshair: each line's name and value at the pointer.
         self.names: list[str] = []
         self.value_format: Optional[Callable[[int, Optional[float]], str]] = None
         self.hover = False
@@ -235,7 +245,7 @@ class Graph(Gtk.DrawingArea):
         self.add_controller(motion)
         self.set_hover(self.style == GraphStyle.NORMAL)
 
-    # -- hover (Idea 3) ------------------------------------------------------------
+    # -- hover ------------------------------------------------------------
 
     def set_hover(self, on: bool,
                   value_format: Optional[Callable[[int, Optional[float]], str]] = None) -> None:
@@ -307,6 +317,11 @@ class Graph(Gtk.DrawingArea):
     def set_series(self, series: Sequence[Series],
                    colors: Optional[Sequence[Optional[RGB]]] = None,
                    color_offset: int = 0) -> None:
+        if any(s is None for s in series):
+            # A line its history doesn't have: skip it rather than
+            # fail in every draw.
+            log.warning("graph given a missing series; skipped")
+            series = [s for s in series if s is not None]
         self.series = list(series)
         self.colors = list(colors) if colors else []
         self.color_offset = color_offset
@@ -414,7 +429,7 @@ class Graph(Gtk.DrawingArea):
             return surface.get_scale() or 1.0
         return float(self.get_scale_factor() or 1)
 
-    # -- axes (DESIGN.md §9.1) -----------------------------------------------------
+    # -- axes -----------------------------------------------------
 
     def set_show_axes(self, show: bool) -> None:
         """Axis labels and ticks, for percentage graphs only."""
@@ -460,21 +475,22 @@ class Graph(Gtk.DrawingArea):
 
     def plot_rect(self, width: int, height: int) -> tuple[float, float, float, float]:
         """(x, y, w, h) of the plot inside the widget: the whole widget, or
-        what's left beside the y labels and above the time labels."""
+        what's left beside the y labels (if any) and above the time labels."""
         if not self.has_axes():
             return 0.0, 0.0, float(width), float(height)
         label_w, label_h = self._layout("100 %").get_pixel_size()
+        # The same plot height _draw_axes uses, so the same ticks.
+        plot_h = max(1.0, height - label_h - self.TICK - label_h / 2)
+        labels = [t for _f, t in self.y_tick_labels(plot_h, label_h) if t]
         if not self.is_percent():
-            # The same plot height _draw_axes uses, so the same ticks.
-            plot_h = max(1.0, height - label_h - self.TICK - label_h / 2)
-            label_w = max((self._layout(t).get_pixel_size()[0]
-                           for _f, t in self.y_tick_labels(plot_h, label_h) if t), default=0)
-        left = label_w + 2 * self.TICK
+            label_w = max((self._layout(t).get_pixel_size()[0] for t in labels), default=0)
+        left = label_w + 2 * self.TICK if labels else 0.0
         if self.axis_gutter is not None:
             self.axis_gutter.report(self, left)
             left = max(left, self.axis_gutter.width)
+        top = label_h / 2 if labels else 0.0       # room for the top label's lower half
         bottom = label_h + self.TICK
-        return left, label_h / 2, max(1.0, width - left), max(1.0, height - bottom - label_h / 2)
+        return left, top, max(1.0, width - left), max(1.0, height - bottom - top)
 
     TICK = 4
 
@@ -653,3 +669,44 @@ class Graph(Gtk.DrawingArea):
                 cr.set_source_rgb(r, g, b)
                 cr.stroke()
         cr.restore()
+
+
+class PaneGraph(Graph):
+    """A chart on a pane (device pages, GPU Details, the Overview's cards):
+    the grid when *Show Graph Grids* is on, and, with *Show Graph Axes*,
+    the time axis and a value axis with as many labelled ticks as fit."""
+
+    def __init__(self, max_value: Optional[float] = 100.0, min_max: float = 0.0) -> None:
+        super().__init__(GraphStyle.NORMAL, max_value, min_max)
+
+
+class SidebarGraph(Graph):
+    """A sidebar chart, also the Overview's in Lightweight Mode:
+
+    - no grid, whatever *Show Graph Grids* says (too small to read);
+    - with *Show Graph Axes*, the time axis on every one, network speeds
+      included (which have no percentage scale);
+    - a value axis only where the graph has one (a percentage, or an
+      ``axis_format``), and then just its minimum and maximum, each with a
+      tick mark.
+    """
+
+    def __init__(self, max_value: Optional[float] = 100.0, min_max: float = 0.0) -> None:
+        super().__init__(GraphStyle.SMALL, max_value, min_max)
+
+    def set_show_grid(self, show: bool) -> None:
+        """Never a grid on a sidebar chart."""
+        self.show_grid = False
+
+    def has_axes(self) -> bool:
+        return self.show_axes
+
+    def has_value_axis(self) -> bool:
+        return self.is_percent() or self.axis_format is not None
+
+    def y_tick_labels(self, plot_h: float, label_h: float) -> list[tuple[float, Optional[str]]]:
+        if not self.has_value_axis():
+            return []
+        if self.is_percent() or self.axis_format is None:
+            return [(0.0, "0 %"), (1.0, "100 %")]
+        return [(0.0, self.axis_format(0.0)), (1.0, self.axis_format(self.y_max()))]

@@ -1,10 +1,23 @@
-"""Color palettes for graphs, meters and the accent color (DESIGN.md §9.3).
+"""Color palettes for graphs, meters and the accent color.
 
-Eight palettes after GNOME Terminal's built-in schemes (and Nord). Each
-has a light variant (the terminal's normal colors, for light surfaces) and
-a dark variant (its bright colors, for dark surfaces), in series order:
-blue, red, green, yellow, magenta, cyan. *System* keeps the desktop's
-accent color as the first series, followed by color-blind-friendly steps.
+Each palette has a light variant (for light surfaces) and a dark variant
+(for dark surfaces), in series order, starting with a blue:
+
+- *System* keeps the desktop's accent color as the first series, followed
+  by color-blind-friendly steps.
+- **Color-blind safe:** Okabe–Ito, Paul Tol's Bright, Vibrant and Muted,
+  and Viridis: told apart with the common forms of color blindness.
+- **Data visualization:** Tableau 10, Matplotlib's default, ColorBrewer's
+  Set 1 and Dark 2.
+- **Editor themes** with their own light and dark variants: Catppuccin
+  (Latte and Mocha), Gruvbox, One (Light and Dark), Tokyo Night (Day and
+  Night).
+- **Terminal schemes** after GNOME Terminal's built-in ones (and Nord):
+  normal colors on light surfaces, bright ones on dark.
+
+Colors are the published ones; a palette's order may differ from its
+source so it starts with a blue, and a color too pale for a light surface
+(or too dark for a dark one) is left out of that variant.
 
 Pure data and arithmetic: no GTK, so it's testable anywhere.
 """
@@ -35,6 +48,55 @@ PALETTES: tuple[Palette, ...] = (
             ("#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"),
             ("#d95926", "#199e70", "#c98500", "#d55181", "#0ca30c", "#9085e9", "#e66767"),
             follows_accent=True),
+    # Color-blind safe.
+    Palette("okabe-ito", "Okabe–Ito (Color-Blind Safe)",
+            ("#0072b2", "#d55e00", "#009e73", "#e69f00", "#cc79a7", "#56b4e9"),
+            ("#56b4e9", "#e69f00", "#009e73", "#f0e442", "#cc79a7", "#d55e00")),
+    Palette("tol-bright", "Tol Bright (Color-Blind Safe)",
+            ("#4477aa", "#ee6677", "#228833", "#ccbb44", "#aa3377", "#66ccee"),
+            ("#4477aa", "#ee6677", "#228833", "#ccbb44", "#aa3377", "#66ccee")),
+    Palette("tol-vibrant", "Tol Vibrant (Color-Blind Safe)",
+            ("#0077bb", "#ee7733", "#009988", "#ee3377", "#33bbee", "#cc3311"),
+            ("#0077bb", "#ee7733", "#009988", "#ee3377", "#33bbee", "#cc3311")),
+    Palette("tol-muted", "Tol Muted (Color-Blind Safe)",
+            ("#332288", "#cc6677", "#117733", "#ddcc77", "#882255", "#88ccee",
+             "#44aa99", "#999933", "#aa4499"),
+            ("#88ccee", "#cc6677", "#44aa99", "#ddcc77", "#aa4499", "#999933",
+             "#117733", "#882255", "#6699cc")),
+    Palette("viridis", "Viridis (Color-Blind Safe)",
+            ("#3b528b", "#21918c", "#5ec962", "#fde725", "#440154", "#2c728e"),
+            ("#31688e", "#35b779", "#fde725", "#90d743", "#21918c", "#3e4989")),
+    # Data visualization.
+    Palette("tableau", "Tableau 10",
+            ("#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948",
+             "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac"),
+            ("#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948",
+             "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac")),
+    Palette("matplotlib", "Matplotlib",
+            ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b",
+             "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"),
+            ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b",
+             "#e377c2", "#7f7f7f", "#bcbd22", "#17becf")),
+    Palette("brewer-set1", "ColorBrewer Set 1",
+            ("#377eb8", "#e41a1c", "#4daf4a", "#984ea3", "#ff7f00", "#a65628", "#f781bf"),
+            ("#377eb8", "#e41a1c", "#4daf4a", "#984ea3", "#ff7f00", "#a65628", "#f781bf")),
+    Palette("brewer-dark2", "ColorBrewer Dark 2",
+            ("#7570b3", "#d95f02", "#1b9e77", "#e7298a", "#66a61e", "#e6ab02", "#a6761d"),
+            ("#7570b3", "#d95f02", "#1b9e77", "#e7298a", "#66a61e", "#e6ab02", "#a6761d")),
+    # Editor themes.
+    Palette("catppuccin", "Catppuccin",
+            ("#1e66f5", "#d20f39", "#40a02b", "#df8e1d", "#8839ef", "#179299"),
+            ("#89b4fa", "#f38ba8", "#a6e3a1", "#f9e2af", "#cba6f7", "#94e2d5")),
+    Palette("gruvbox", "Gruvbox",
+            ("#076678", "#9d0006", "#79740e", "#b57614", "#8f3f71", "#427b58"),
+            ("#83a598", "#fb4934", "#b8bb26", "#fabd2f", "#d3869b", "#8ec07c")),
+    Palette("one", "One",
+            ("#4078f2", "#e45649", "#50a14f", "#c18401", "#a626a4", "#0184bc"),
+            ("#61afef", "#e06c75", "#98c379", "#e5c07b", "#c678dd", "#56b6c2")),
+    Palette("tokyo-night", "Tokyo Night",
+            ("#2e7de9", "#f52a65", "#587539", "#8c6c3e", "#9854f1", "#007197"),
+            ("#7aa2f7", "#f7768e", "#9ece6a", "#e0af68", "#bb9af7", "#7dcfff")),
+    # Terminal schemes.
     Palette("gnome", "GNOME",
             ("#12488b", "#c01c28", "#26a269", "#a2734c", "#a347ba", "#2aa1b3"),
             ("#2a7bde", "#f66151", "#33da7a", "#e9ad0c", "#c061cb", "#33c7de")),
@@ -137,7 +199,7 @@ def secondary(color: RGB, dark: bool) -> RGB:
     return mix(color, BLACK if dark else WHITE, 0.45)
 
 
-# Time Proccoli wasn't running, on graphs filled from the history (M68): a
+# Time Proccoli wasn't running, on graphs filled from the history: a
 # dithered bar in a near-black shade of the palette's accent. Not a series
 # color, so it never reads as data; tinted, so it belongs to the palette.
 # Dark surfaces need it denser to show at all.

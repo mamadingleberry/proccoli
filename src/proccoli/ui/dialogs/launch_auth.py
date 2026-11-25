@@ -1,4 +1,4 @@
-"""The optional start-up authentication dialog (DESIGN.md §9.4)."""
+"""The optional start-up authentication dialog."""
 
 from __future__ import annotations
 

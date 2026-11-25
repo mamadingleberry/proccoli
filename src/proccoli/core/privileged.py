@@ -38,7 +38,7 @@ class HelperResult:
 
 
 # Developers running from a source checkout can opt in to the checkout's
-# helper (DESIGN.md §11, Security): it runs as root although the user's own
+# helper (Security): it runs as root although the user's own
 # account can change it.
 DEV_HELPER_ENV = "PROCCOLI_DEV_HELPER"
 
@@ -68,14 +68,14 @@ def helper_argv(installed: Sequence[str] = INSTALLED_HELPERS,
 
 
 PROTOCOL_IDENTITY = 2      # the helper understands PID@STARTTIME
-PROTOCOL_GPU_TOP = 3       # ... and gpu-top (Milestone 42)
+PROTOCOL_GPU_TOP = 3       # ... and gpu-top
 
 
 def helper_protocol(argv: Optional[Sequence[str]],
                     read: Callable[[str], str] = lambda p: open(p, encoding="utf-8").read()
                     ) -> int:
     """The ``PROTOCOL`` the helper file declares (1 if it declares none,
-    i.e. a helper installed before Milestone 40). Read from the file
+    i.e. a helper from an older version). Read from the file
     itself, so it needs no administrator rights."""
     if not argv:
         return 1

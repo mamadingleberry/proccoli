@@ -1,5 +1,4 @@
-"""The busiest apps and processes, for the Overview's tables (DESIGN.md
-§9.6, Milestone 41). Pure functions, unit-tested without a display.
+"""The busiest apps and processes, for the Overview's tables. Pure functions, unit-tested without a display.
 
 Ranked by processor use or by memory (``overview-top-by``); ties go to the
 other measure, then the name, so rows don't swap places on equal values.

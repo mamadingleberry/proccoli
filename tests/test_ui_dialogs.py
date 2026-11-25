@@ -1,4 +1,4 @@
-"""Dialogs (Milestones 12, 13, 15). Headless display only (``make ui-test``)."""
+"""Dialogs (13, 15). Headless display only (``make ui-test``)."""
 
 import argparse
 import os
@@ -145,6 +145,14 @@ class FakeHistory:
     def commit(self):
         self.commits += 1
 
+    def session_start(self):
+        return self.session
+
+    writer = True
+
+    def writer_info(self):
+        return None
+
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class PreferencesTest(unittest.TestCase):
@@ -158,6 +166,8 @@ class PreferencesTest(unittest.TestCase):
         # Processes 1 + columns, Devices 2, GPU 1.
         self.assertEqual(len(switches), 9 + len(APP_COLUMNS) + 1 + len(PROCESS_COLUMNS) + 2 + 1)
         for key, row in switches.items():
+            if key == "lightweight":
+                continue      # shows the running mode, not the setting (its own tests)
             before = self.settings.get(key)
             self.assertEqual(row.get_active(), before, key)
             row.set_active(not before)
@@ -166,16 +176,17 @@ class PreferencesTest(unittest.TestCase):
             self.assertEqual(row.get_active(), before, key)
 
     def test_style_combo(self):
+        from proccoli.core.styles import STYLES, style_by_id
+        ids = [s.id for s in STYLES]
         row = self.dialog.rows["color-scheme"]
-        self.assertEqual(row.get_model().get_n_items(), 7)
+        self.assertEqual(row.get_model().get_n_items(), len(STYLES))
         self.assertEqual(row.get_selected(), 0)                 # Follow System
-        row.set_selected(2)
+        row.set_selected(ids.index("dark"))
         self.assertEqual(self.settings.get("color-scheme"), "dark")
-        row.set_selected(6)
-        self.assertEqual(self.settings.get("color-scheme"), "midnight")
+        row.set_selected(ids.index("high-contrast-dark"))
+        self.assertEqual(self.settings.get("color-scheme"), "high-contrast-dark")
         self.settings.set("color-scheme", "sand")
-        self.assertEqual(row.get_selected(), 3)
-        from proccoli.core.styles import style_by_id
+        self.assertEqual(row.get_selected(), ids.index("sand"))
         self.assertEqual(self.dialog.style_swatch_colors(style_by_id("sky")),
                          ("#ecf3fb", "#1d2b3c"))
         import cairo
@@ -186,19 +197,21 @@ class PreferencesTest(unittest.TestCase):
         b, g, r, _a = surface.get_data()[0:4]
         self.assertEqual((r, g, b), (0x0f, 0x14, 0x20))
 
-    def test_palette_combo_lists_eight_palettes_with_swatches(self):
+    def test_palette_combo_lists_every_palette_with_swatches(self):
         from proccoli.core.palette import PALETTES
         row = self.dialog.rows["palette"]
-        self.assertEqual(row.get_model().get_n_items(), 8)
+        self.assertEqual(row.get_model().get_n_items(), len(PALETTES))
         self.assertEqual(row.get_selected(), 0)                 # System
-        row.set_selected(7)
+        ids = [p.id for p in PALETTES]
+        row.set_selected(ids.index("nord"))
         self.assertEqual(self.settings.get("palette"), "nord")
         self.settings.set("palette", "tango")
-        self.assertEqual(row.get_selected(), 2)
+        self.assertEqual(row.get_selected(), ids.index("tango"))
         self.assertIsNotNone(row.get_factory())
         import cairo
         surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 84, 12)
-        self.dialog._draw_swatch(None, cairo.Context(surface), 84, 12, PALETTES[2])
+        self.dialog._draw_swatch(None, cairo.Context(surface), 84, 12,
+                                 PALETTES[ids.index("tango")])
         surface.flush()
         i = 6 * surface.get_stride() + 6 * 4                  # centre of the first dot
         b, g, r, a = surface.get_data()[i:i + 4]               # Tango blue
@@ -206,7 +219,7 @@ class PreferencesTest(unittest.TestCase):
 
     def test_diagnostics(self):
         rows = self.dialog.rows
-        self.assertEqual(rows["log-level"].get_selected(), 4)          # Everything (Debug), M55
+        self.assertEqual(rows["log-level"].get_selected(), 4)          # Everything (Debug)
         rows["log-level"].set_selected(0)
         self.assertEqual(self.settings.get("log-level"), "off")
         rows["log-max-size"].set_value(2048)
@@ -224,7 +237,7 @@ class PreferencesTest(unittest.TestCase):
         self.assertTrue(opened[0].is_dir())
 
     def test_history_group(self):
-        # Idea 2: on by default, its limits, and no size or export rows
+        # on by default, its limits, and no size or export rows
         # without a store.
         rows = self.dialog.rows
         self.assertTrue(rows["history"].get_active())
@@ -254,7 +267,7 @@ class PreferencesTest(unittest.TestCase):
         self.assertEqual(dialog.size_row.get_subtitle(), "Empty")
 
     def test_window_switching_row(self):
-        # Idea 5: the extension's state, Install from a checkout, Turn On.
+        # the extension's state, Install from a checkout, Turn On.
         from proccoli.core.windows import WindowSwitcher
         system = FakeSystem()
         system.extension_info = {}
@@ -280,7 +293,7 @@ class PreferencesTest(unittest.TestCase):
         rows = self.dialog.rows
         rows["update-interval"].set_selected(4)
         self.assertEqual(self.settings.get("update-interval"), "10-seconds")
-        self.assertNotIn("refresh-speed", rows)                    # replaced (Idea 6)
+        self.assertNotIn("refresh-speed", rows)                    # replaced
         self.settings.set("temperature-unit", "kelvin")
         self.assertEqual(rows["temperature-unit"].get_selected(), 2)
         rows["intel-gpu-top-interval"].set_selected(0)
@@ -319,7 +332,7 @@ class PreferencesTest(unittest.TestCase):
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class SidebarPreferencesTest(unittest.TestCase):
-    """Milestone 35: a Preferences sub-page per sidebar entry."""
+    """a Preferences sub-page per sidebar entry."""
 
     def setUp(self):
         from test_ui_shell import FakeDevicePage
@@ -342,7 +355,7 @@ class SidebarPreferencesTest(unittest.TestCase):
         self.assertEqual(PreferencesDialog(self.settings).entry_rows, {})    # no sidebar given
 
     def test_style_row_is_bound_both_ways(self):
-        row = self.dialog.rows["sidebar-style"]           # Milestone 54
+        row = self.dialog.rows["sidebar-style"]
         self.assertEqual(row.get_selected(), 0)               # Full
         row.set_selected(1)
         self.assertEqual(self.settings.get("sidebar-style"), "icons")
@@ -381,7 +394,7 @@ class SidebarPreferencesTest(unittest.TestCase):
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class LaunchAuthTest(unittest.TestCase):
-    """Milestone 26: an optional prompt at start-up; every button stays."""
+    """an optional prompt at start-up; every button stays."""
 
     @classmethod
     def setUpClass(cls):
@@ -509,7 +522,7 @@ class ApplicationTest(unittest.TestCase):
         app.show_about()
         app.show_shortcuts()
         self.assertEqual(len(shown), 3)
-        self.assertEqual(list(shown[0].gpu_rows), ["0000:00:02.0"])
+        self.assertEqual(list(shown[0].gpu_rows), ["0000:00:02.0", "0000:04:00.0"])
         self.assertEqual(str(app.file_log.path), log_file)          # never the real home
         win.close()
         app.ctx.stop()
@@ -591,6 +604,104 @@ class ExportFlowTest(unittest.TestCase):
         self.chosen[1](Path("/tmp/out"))
         self.assertEqual(self.export.toast.get_title(), "Nothing has been recorded yet")
         self.assertEqual(len(self.runs), 1)
+
+
+    def test_the_export_says_what_the_machine_and_devices_are(self):
+        from pathlib import Path
+        from unittest import mock
+        from proccoli.ui.export import StatisticsExport
+        settings = Settings.for_tests({"export-hardware-addresses": True})
+        export = StatisticsExport(self.store, "9.9",
+                                  choose_folder=lambda w, cb: cb(Path("/tmp/out")),
+                                  run=lambda work, done: self.runs.append(work),
+                                  describe=lambda: ({"kernel": "6.8"}, {"cpu": {}}),
+                                  settings=settings)
+        export.start(self.window)
+        with mock.patch("proccoli.ui.export.export_session") as export_session:
+            self.runs[0]()
+        kwargs = export_session.call_args.kwargs
+        self.assertEqual(kwargs["machine"], {"kernel": "6.8"})
+        self.assertEqual(kwargs["current"], {"cpu": {}})
+        self.assertTrue(kwargs["include_addresses"])
+
+    def test_export_details_from_the_context(self):
+        from proccoli.ui.export import export_details
+        ctx = make_context(self)
+        ctx.start()
+        machine, current = export_details(ctx)
+        self.assertIn("architecture", machine)
+        self.assertNotIn("hostname", machine)
+        self.assertIn("cpu", current)
+        self.assertIn("Logical Cores", current["cpu"]["properties"])
+
+    def test_record_in_the_background(self):
+        from helpers import FakeSystem
+        from proccoli.core.background import BackgroundService
+        from proccoli.ui.dialogs.preferences import PreferencesDialog
+        system = FakeSystem(programs={"systemctl": "/usr/bin/systemctl",
+                                      "loginctl": "/usr/bin/loginctl"})
+        system.run_results = [(1, "disabled\n", ""), (3, "inactive\n", ""), (0, "no\n", "")]
+        dialog = PreferencesDialog(Settings.for_tests(), history=FakeHistory(),
+                                   background=BackgroundService(system))
+        self.assertFalse(dialog.background_row.get_active())
+        self.assertTrue(dialog.background_row.get_sensitive())
+        self.assertFalse(dialog.linger_row.get_sensitive())        # needs the first on
+        self.assertEqual(dialog.recording_row.get_subtitle(), "Recording while Proccoli is open")
+        system.run_results = [(0, "", ""), (0, "enabled\n", ""), (0, "active\n", ""),
+                              (0, "no\n", "")]
+        dialog.background_row.set_active(True)
+        self.assertIn(["systemctl", "--user", "enable", "--now", "proccoli.service"],
+                      system.runs)
+        self.assertTrue(dialog.linger_row.get_sensitive())
+        system.run_results = [(0, "", ""), (0, "enabled\n", ""), (0, "active\n", ""),
+                              (0, "yes\n", "")]
+        dialog.linger_row.set_active(True)
+        self.assertIn(["loginctl", "enable-linger", "1000"], system.runs)
+        self.assertTrue(dialog.linger_row.get_active())
+
+    def test_record_in_the_background_without_the_unit(self):
+        from helpers import FakeSystem
+        from proccoli.core.background import BackgroundService
+        from proccoli.ui.dialogs.preferences import PreferencesDialog
+        system = FakeSystem(programs={"systemctl": "/usr/bin/systemctl"})
+        system.run_results = [(1, "", "No such file or directory")]
+        dialog = PreferencesDialog(Settings.for_tests(), history=FakeHistory(),
+                                   background=BackgroundService(system))
+        self.assertFalse(dialog.background_row.get_sensitive())
+        self.assertEqual(dialog.background_row.get_subtitle(), "proccoli isn't installed")
+
+    def test_custom_time_range_in_preferences(self):
+        from proccoli.ui.dialogs.preferences import PreferencesDialog
+        settings = Settings.for_tests()
+        dialog = PreferencesDialog(settings)
+        combo, row = dialog.rows["graph-time-range"], dialog.rows["graph-time-range-custom"]
+        self.assertFalse(row.get_visible())                    # only for Custom…
+        combo.set_selected(combo.get_model().get_n_items() - 1)
+        self.assertEqual(settings.get("graph-time-range"), "custom")
+        self.assertTrue(row.get_visible())
+        dialog.range_editor.number.set_value(90)
+        dialog.range_editor.unit.set_selected(1)               # minutes
+        self.assertEqual(settings.get("graph-time-range-custom"), 5400)
+        dialog.range_editor.unit.set_selected(3)               # 90 days: too long
+        self.assertEqual(settings.get("graph-time-range-custom"), 30 * 86400)
+        self.assertEqual(row.get_subtitle(), "At most 30 Days")
+        combo.set_selected(0)
+        self.assertFalse(row.get_visible())
+
+    def test_custom_time_range_is_greyed_out_in_lightweight_mode(self):
+        from proccoli.core.profile import Profile, profile_settings
+        from proccoli.ui.dialogs.preferences import PreferencesDialog
+        settings = profile_settings(Settings.for_tests(), Profile.lightweight())
+        dialog = PreferencesDialog(settings)
+        self.assertFalse(dialog.rows["graph-time-range-custom"].get_sensitive())
+
+    def test_preferences_offers_hardware_addresses_with_export(self):
+        from proccoli.ui.dialogs.preferences import PreferencesDialog
+        dialog = PreferencesDialog(Settings.for_tests(), export=lambda: None)
+        row = dialog.rows["export-hardware-addresses"]
+        self.assertFalse(row.get_active())
+        row.set_active(True)
+        self.assertTrue(dialog.settings.get("export-hardware-addresses"))
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")

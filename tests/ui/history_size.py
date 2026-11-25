@@ -1,4 +1,4 @@
-"""Measures the history database on this machine (Idea 2, step I2.3).
+"""Measures the history database on this machine.
 
 Reads every device once for real (to get this machine's readings), then
 simulates an hour at 1 s per refresh into a temporary database, with

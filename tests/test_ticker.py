@@ -9,7 +9,7 @@ from proccoli.core.ticker import UPDATE_INTERVALS_MS, Ticker, interval_for  # no
 
 
 class FakeLoop:
-    """Stands in for GLib.timeout_add / source_remove and the clock."""
+    """Stands in for GLib.timeout_add() / source_remove and the clock."""
 
     def __init__(self):
         self.now = 100.0
@@ -106,7 +106,7 @@ class TickerTest(unittest.TestCase):
         nicks = settings.spec.keys["update-interval"].choices
         self.assertEqual(sorted(nicks), sorted(UPDATE_INTERVALS_MS))
         self.assertEqual(interval_for("bogus"), 1000)
-        self.assertEqual(min(UPDATE_INTERVALS_MS.values()), 1000)     # never faster (Idea 6)
+        self.assertEqual(min(UPDATE_INTERVALS_MS.values()), 1000)     # never faster
 
     def test_old_refresh_speeds_map_to_intervals(self):
         self.assertEqual(interval_for("very-fast"), 1000)
@@ -116,7 +116,7 @@ class TickerTest(unittest.TestCase):
 
 
 class TimeRangeTest(unittest.TestCase):
-    """Graphs keep a time range, not a number of points (M58)."""
+    """Graphs keep a time range, not a number of points."""
 
     def test_points_follow_range_and_refresh(self):
         from proccoli.core.settings import Settings
@@ -146,8 +146,54 @@ class TimeRangeTest(unittest.TestCase):
         self.assertEqual(graph_plan(s), (901, 2, 4.0))
 
     def test_unknown_nick_is_one_minute(self):
+        from proccoli.core.ticker import preset_s
+        self.assertEqual(preset_s("forever"), 60)
+        self.assertEqual(preset_s("custom"), 60)
+
+
+class CustomRangeTest(unittest.TestCase):
+    """any range from 10 seconds to 30 days."""
+
+    def range_s(self, **overrides):
         from proccoli.core.ticker import time_range_s
-        self.assertEqual(time_range_s("forever"), 60)
+        return time_range_s(Settings.for_tests(overrides))
+
+    def test_presets_unchanged(self):
+        self.assertEqual(self.range_s(), 60)
+        self.assertEqual(self.range_s(**{"graph-time-range": "6-hours"}), 21600)
+        # A stored custom value doesn't matter until Custom is chosen.
+        self.assertEqual(self.range_s(**{"graph-time-range-custom": 999}), 60)
+
+    def test_custom_seconds(self):
+        self.assertEqual(self.range_s(**{"graph-time-range": "custom",
+                                         "graph-time-range-custom": 5400}), 5400)
+
+    def test_clamped_at_both_ends_and_to_two_intervals(self):
+        from proccoli.core.ticker import MAX_RANGE_S, clamp_range_s
+        self.assertEqual(clamp_range_s(3), 10)
+        self.assertEqual(clamp_range_s(40 * 86400), MAX_RANGE_S)
+        self.assertEqual(clamp_range_s(10, 10_000), 20)            # 10 s interval
+        self.assertEqual(self.range_s(**{"graph-time-range": "custom",
+                                         "graph-time-range-custom": 10,
+                                         "update-interval": "10-seconds"}), 20)
+
+    def test_thirty_days_stays_under_the_point_cap(self):
+        from proccoli.core.ticker import MAX_GRAPH_POINTS, MAX_RANGE_S, graph_plan, history_plan
+        for interval in (1000, 2000, 10000):
+            points, every = history_plan(MAX_RANGE_S, interval)
+            self.assertLessEqual(points, MAX_GRAPH_POINTS)
+        s = Settings.for_tests({"graph-time-range": "custom",
+                                "graph-time-range-custom": MAX_RANGE_S})
+        points, every, step_s = graph_plan(s)
+        self.assertLessEqual(points, MAX_GRAPH_POINTS)
+        # Covers the range to within one point, as every long range does.
+        self.assertGreater(step_s * points, MAX_RANGE_S)
+
+    def test_every_listener_follows_the_custom_key(self):
+        from proccoli.core.ticker import CUSTOM_KEY, PLAN_KEYS, RANGE_KEYS
+        from proccoli.ui.chart_settings import GRAPH_KEYS
+        self.assertIn(CUSTOM_KEY, RANGE_KEYS)
+        self.assertTrue(set(PLAN_KEYS) <= set(GRAPH_KEYS))
 
 
 if __name__ == "__main__":

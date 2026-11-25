@@ -1,7 +1,7 @@
-"""Showing and hiding the sidebar (DESIGN.md §9.2, Milestone 46).
+"""Showing and hiding the sidebar.
 
 The sidebar can be hidden at any width, not only on narrow windows, and
-the main menu (the app's logo, M61) always stays at the window's top left:
+the main menu (the app's logo) always stays at the window's top left:
 
 - sidebar shown and beside the content: the logo sits at the start of
   the sidebar's header;
@@ -9,11 +9,13 @@ the main menu (the app's logo, M61) always stays at the window's top left:
   shows it at its start instead.
 
 F9 shows and hides the sidebar through the stateful ``win.toggle-sidebar``
-action made here (Milestone 52). The main menu offers three modes instead
-(Milestone 54): *Full*, *Icons Only* and *Hidden*, radio items of the
+action made here. The main menu offers three modes instead
+: *Full*, *Icons Only* and *Hidden*, radio items of the
 stateful ``win.sidebar-mode`` action, also made here. The style (full or
 icons only, ``sidebar-style``) reaches the window through the injected
 ``on_style`` callback, which narrows the sidebar (``sidebar_style.py``).
+In Lightweight Mode the style is pinned to icons only: the menu
+has no *Full*, and a request for it shows icons only.
 
 ``SidebarVisibility`` keeps ``Adw.OverlaySplitView.show-sidebar`` in line
 with the user's choice (``sidebar-shown``) on wide windows. On narrow
@@ -28,6 +30,8 @@ from typing import Callable, Optional
 
 from gi.repository import Gio, GLib
 
+from ..core.connections import Connections
+from ..core.profile import is_pinned
 from .sidebar_style import MODE_ACTION, STYLE_SETTING, SidebarStyle, choose, mode_of, parse_style
 
 SETTING = "sidebar-shown"
@@ -55,12 +59,10 @@ class SidebarVisibility:
         self.mode_action = Gio.SimpleAction.new_stateful(
             MODE_ACTION, GLib.VariantType.new("s"), GLib.Variant.new_string(self.mode().value))
         self.mode_action.connect("change-state", self._on_mode_change)
-        self._handlers = [
-            split_view.connect("notify::collapsed", lambda *_: self._on_collapsed()),
-            split_view.connect("notify::show-sidebar", lambda *_: self._on_shown()),
-        ]
-        self._style_handler = settings.connect_changed(STYLE_SETTING,
-                                                       lambda *_: self._on_style())
+        self.connections = Connections()
+        self.connections.connect(split_view, "notify::collapsed", lambda *_: self._on_collapsed())
+        self.connections.connect(split_view, "notify::show-sidebar", lambda *_: self._on_shown())
+        self.connections.watch(settings, STYLE_SETTING, lambda *_: self._on_style())
         self._on_collapsed()
         self._on_style()
 
@@ -77,8 +79,12 @@ class SidebarVisibility:
         """What the menu marks now (``sidebar_style.Mode``)."""
         return mode_of(self.split.get_show_sidebar(), self.style)
 
+    @property
+    def full_allowed(self) -> bool:
+        return not is_pinned(self.settings, STYLE_SETTING)
+
     def _on_mode_change(self, _action, value: GLib.Variant) -> None:
-        shown, style = choose(value.get_string(), self.style)
+        shown, style = choose(value.get_string(), self.style, self.full_allowed)
         if style != self.style:
             self.settings.set(STYLE_SETTING, style.value)
         self.split.set_show_sidebar(shown)
@@ -122,9 +128,4 @@ class SidebarVisibility:
             self.split.set_show_sidebar(False)
 
     def shutdown(self) -> None:
-        for h in self._handlers:
-            self.split.disconnect(h)
-        self._handlers = []
-        if self._style_handler:
-            self.settings.disconnect(self._style_handler)
-            self._style_handler = 0
+        self.connections.disconnect_all()

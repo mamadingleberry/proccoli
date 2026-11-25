@@ -44,7 +44,7 @@ class SchemaFileTest(unittest.TestCase):
         for k in ("window-width", "window-height", "is-maximized",
                   "base", "temperature-unit", "graph-time-range", "gpu-details-disabled", "gpu-view"):
             self.assertIn(k, spec.keys)
-        self.assertNotIn("last-viewed-page", spec.keys)   # M55: always the Overview
+        self.assertNotIn("last-viewed-page", spec.keys)   # always the Overview
 
 
 class Probe(GObject.Object):
@@ -129,7 +129,7 @@ class DictSettingsTest(SettingsBehaviour, unittest.TestCase):
 
 
 class MigrateTest(unittest.TestCase):
-    """Idea 6: an old Refresh Speed carries over to Update Interval, once."""
+    """an old Refresh Speed carries over to Update Interval, once."""
 
     def test_each_old_speed(self):
         from proccoli.core.settings import migrate

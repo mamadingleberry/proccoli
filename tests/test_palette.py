@@ -1,4 +1,4 @@
-"""core.palette and the Theme's colors (Milestone 18)."""
+"""core.palette and the Theme's colors."""
 
 import os
 import re
@@ -18,12 +18,23 @@ UBUNTU_ORANGE = hex_to_rgb("#e95420")
 
 
 class PaletteDataTest(unittest.TestCase):
-    def test_eight_palettes_with_unique_ids_matching_the_schema(self):
-        self.assertEqual(len(PALETTES), 8)
+    def test_palettes_have_unique_ids_matching_the_schema(self):
         ids = [p.id for p in PALETTES]
-        self.assertEqual(len(set(ids)), 8)
+        self.assertEqual(len(set(ids)), len(ids))
         self.assertEqual(ids, Settings.for_tests().spec.keys["palette"].choices)
         self.assertEqual(Settings.for_tests().get("palette"), "system")
+        self.assertEqual(len(set(p.name for p in PALETTES)), len(PALETTES))
+
+    def test_color_blind_safe_palettes_come_first(self):
+        # Right after System, where people looking for them see them first.
+        safe = [p.id for p in PALETTES if "Color-Blind Safe" in p.name]
+        self.assertEqual(safe, ["okabe-ito", "tol-bright", "tol-vibrant", "tol-muted", "viridis"])
+        self.assertEqual([p.id for p in PALETTES[1:6]], safe)
+
+    def test_okabe_ito_is_the_published_set(self):
+        okabe = palette_by_id("okabe-ito")
+        published = {"#e69f00", "#56b4e9", "#009e73", "#f0e442", "#0072b2", "#d55e00", "#cc79a7"}
+        self.assertTrue(set(okabe.light + okabe.dark) <= published)
 
     def test_colors_are_valid_and_light_dark_match(self):
         for p in PALETTES:
@@ -115,7 +126,7 @@ class EntryColorsTest(unittest.TestCase):
 
 
 class OfflineColorTest(unittest.TestCase):
-    """The "wasn't running" dither (M68)."""
+    """The "wasn't running" dither."""
 
     def test_near_black_in_the_palettes_hue(self):
         for p in PALETTES:

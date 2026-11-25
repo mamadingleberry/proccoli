@@ -1,4 +1,4 @@
-"""One GpuController per GPU (DESIGN.md §7.2).
+"""One GpuController per GPU.
 
 It owns the GPU's summary source (always running) and, if the GPU has a
 vendor tool, its detail source with its lifecycle (``DetailState``). To the
@@ -16,6 +16,7 @@ from typing import Mapping, Optional
 from gi.repository import GObject
 
 from .. import GPU_ICON
+from ..core.connections import Connections
 from ..core.units import format_frequency, format_percent
 from ..devices.base import DeviceInfo, DeviceKind, Monitor, Snapshot
 from ..devices.manager import Discoverer
@@ -50,7 +51,7 @@ class GpuSnapshot(Snapshot):
     def history_values(self):
         s = self.summary
         return {"usage": s.usage, "encode": s.encode, "decode": s.decode,
-                "vram": s.vram_usage, "temperature": s.temperature_c,
+                "vram": s.memory_usage, "temperature": s.temperature_c,
                 "power": s.power_w, "frequency": s.frequency_hz}
 
     def history_units(self) -> Mapping[str, str]:
@@ -60,11 +61,13 @@ class GpuSnapshot(Snapshot):
     def stats_values(self):
         s = self.summary
         return {**self.history_values(), "vram-used": s.vram_used, "vram-total": s.vram_total,
+                "gtt-used": s.gtt_used, "gtt-total": s.gtt_total,
                 "vram-frequency": s.vram_frequency_hz,
                 **{DETAIL_PREFIX + k: v for k, v in self.detail.items()}}
 
     def stats_units(self) -> Mapping[str, str]:
         return {**self.history_units(), "vram-used": "B", "vram-total": "B",
+                "gtt-used": "B", "gtt-total": "B",
                 "vram-frequency": "Hz",
                 **{DETAIL_PREFIX + k: self.detail_units.get(k, "") for k in self.detail}}
 
@@ -91,7 +94,7 @@ class GpuController(Monitor):
         self.registry = registry
         self.deps = deps
         self.settings = deps.settings
-        # Which panel this GPU gets, and why (M55): logged, shown on the page,
+        # Which panel this GPU gets, and why: logged, shown on the page,
         # and the error page's text if nothing can serve it.
         self.plan: GpuPlan = plan_gpu(gpu, registry, deps)
         log.info("%s: %s", info.id, self.plan.explain())
@@ -106,9 +109,17 @@ class GpuController(Monitor):
         self.detail_state = DetailState.UNAVAILABLE
         self.detail_message = ""
         self.detail_can_elevate = False
-        self._detail_handlers: list[int] = []
+        self._detail_connections = Connections()
         for name, unit in GpuSnapshot(0, summary=GpuSummary()).history_units().items():
             self.history.define(name, unit)
+
+
+    def sort_name(self) -> str:
+        return self.gpu.pci_slot
+    def described_properties(self) -> dict[str, str]:
+        """The GPU's properties and its detail source, as its page lists them."""
+        return {**super().described_properties(),
+                "Detailed Statistics": self.plan.detail_text()}
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -124,8 +135,23 @@ class GpuController(Monitor):
         self.summary_backend = self.summary_class(self.gpu, self.deps)
         self.summary_backend.start(False)
         self._start_details_if_allowed()
+        # Another process may turn this GPU's details on or off (the window
+        # changes the setting; the collector does the reading).
+        self._disabled_handler = self.settings.connect_changed(
+            "gpu-details-disabled", lambda *_: self._follow_details_setting())
+
+    def _follow_details_setting(self) -> None:
+        if self.detail_class is None:
+            return
+        if self.details_enabled and self.detail_state == DetailState.OFF:
+            self._start_details_if_allowed()
+        elif not self.details_enabled and self.detail_backend is not None:
+            self.stop_details()
 
     def stop(self) -> None:
+        if getattr(self, "_disabled_handler", 0):
+            self.settings.disconnect(self._disabled_handler)
+            self._disabled_handler = 0
         if self.summary_backend is not None:
             self.summary_backend.stop()
         self._drop_detail_backend()
@@ -140,6 +166,9 @@ class GpuController(Monitor):
                             "(Preferences → General)")
         elif not self.details_enabled:
             self._set_state(DetailState.OFF, "Detailed statistics are turned off")
+        elif self.needs_elevation and not profile_of(self.settings).gpu_elevate:
+            # The background collector: nobody to ask for a password.
+            self._set_state(DetailState.OFF, "Detailed statistics need administrator rights")
         elif self.needs_elevation and not self.settings.get("gpu-elevate"):
             self._set_state(DetailState.NEEDS_AUTH,
                             "Detailed statistics need administrator rights",
@@ -154,8 +183,8 @@ class GpuController(Monitor):
         self._drop_detail_backend()
         backend = self.detail_class(self.gpu, self.deps)
         self.detail_backend = backend
-        self._detail_handlers = [backend.connect("failed", self._on_detail_failed),
-                                 backend.connect("updated", self._on_detail_updated)]
+        self._detail_connections.connect(backend, "failed", self._on_detail_failed)
+        self._detail_connections.connect(backend, "updated", self._on_detail_updated)
         self._set_state(DetailState.STARTING, "Starting " + self.detail_class.display_name)
         backend.start(elevate)
 
@@ -178,9 +207,7 @@ class GpuController(Monitor):
     def _drop_detail_backend(self) -> None:
         backend, self.detail_backend = self.detail_backend, None
         if backend is not None:
-            for h in self._detail_handlers:
-                backend.disconnect(h)
-            self._detail_handlers = []
+            self._detail_connections.disconnect_all()
             backend.stop()
 
     def _set_state(self, state: DetailState, message: str = "",
@@ -218,12 +245,38 @@ class GpuController(Monitor):
 
     def process_usage(self):
         # The detail source's figures while it has any (NVIDIA's tools have
-        # none: M55), otherwise the summary source's.
+        # none), otherwise the summary source's.
         if self.detail_running:
             usage = self.detail_backend.process_usage()
             if usage:
                 return usage
         return self.summary_backend.process_usage() if self.summary_backend else {}
+
+    def describe(self, encode) -> dict:
+        """The GPU's identity, what detection chose and its Details source."""
+        detail = self.detail_class
+        return {**super().describe(encode),
+                "gpu": {"info": encode(self.gpu),
+                        "plan_text": self.plan.detail_text(),
+                        "plan_explain": self.plan.explain(),
+                        "detail_source": detail.id if detail is not None else None,
+                        "needs_elevation": self.needs_elevation}}
+
+    def reading(self, encode) -> Optional[dict]:
+        """The Details state, sample and per-process use too."""
+        out = super().reading(encode)
+        if out is None:
+            return None
+        backend = self.detail_backend
+        out["gpu"] = {
+            "detail_state": self.detail_state.name,
+            "detail_message": self.detail_message,
+            "detail_source": getattr(backend, "id", None),
+            "detail_note": getattr(backend, "source_note", ""),
+            "detail_sample": encode(getattr(backend, "sample", None)),
+            "processes": encode(self.process_usage()),
+        }
+        return out
 
     def refresh(self, now: float) -> None:
         if self.summary_backend is not None:

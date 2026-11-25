@@ -10,6 +10,7 @@ from ...core.units import (format_duration, format_frequency, format_percent,
 from ...core.profile import is_pinned
 from ...devices.cpu import CpuMonitor, CpuSnapshot, busiest_thread
 from ..page import PageKind
+from ..toolbar_items import SHOW_SETTING, toolbar_shown
 from .device import DevicePage
 
 
@@ -18,23 +19,28 @@ class CpuPage(DevicePage):
         super().__init__(monitor, settings, PageKind.CPU)
         self.thread_names: list[str] = []
 
-        options = self.add_group("Options")
+        # The toolbar's Logical CPUs switch, here only while there's no
+        # toolbar (Show Toolbar off, Lightweight Mode), so there's one.
+        self.options = options = self.add_group("Options")
         self.logical_switch = Adw.SwitchRow(title="Show Usages of Logical CPUs")
         options.add(self.logical_switch)
+        options.set_visible(not toolbar_shown(settings))
+        self.track(settings, settings.connect_changed(
+            SHOW_SETTING, lambda *_: options.set_visible(not toolbar_shown(settings))))
         settings.bind("show-logical-cpus", self.logical_switch, "active")
         if is_pinned(settings, "show-logical-cpus"):
             self.logical_switch.set_sensitive(False)
             self.logical_switch.set_subtitle("Off in Lightweight Mode")
 
         # Total usage, or one chart with a line per logical CPU and a legend
-        # (M55; it replaced a grid of small graphs).
+        # (it replaced a grid of small graphs).
         self.usage_stack = Gtk.Stack(vhomogeneous=False, interpolate_size=True)
         total_group = Adw.PreferencesGroup(title="Usage")
         self.total = self.graph_box(total_group, "Total Usage", [("usage", "%")])
         self.usage_stack.add_named(total_group, "total")
         logical_group = Adw.PreferencesGroup(title="Usage")
-        # A reusable LegendChart (M59): one line per CPU, the legend in its
-        # card, chart and legend fitted into the total chart's area (M57).
+        # A reusable LegendChart: one line per CPU, the legend in its
+        # card, chart and legend fitted into the total chart's area.
         self.threads = self.add_legend_chart(logical_group, "Usage per Logical CPU")
         self.legend = self.threads.legend
         self.usage_stack.add_named(logical_group, "logical")

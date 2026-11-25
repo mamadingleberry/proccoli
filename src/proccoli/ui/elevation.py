@@ -1,4 +1,4 @@
-"""Optional authentication at launch (DESIGN.md §9.4).
+"""Optional authentication at launch.
 
 Pages that can show more with administrator rights offer it as an
 ``ElevationOffer``; the launch dialog (and the main menu's *Show All

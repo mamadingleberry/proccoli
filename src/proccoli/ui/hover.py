@@ -1,5 +1,5 @@
-"""Hover crosshair arithmetic for graphs (Idea 3; ported from the Intel
-Details tab's ``GraphView._draw_hover``).
+"""Hover crosshair arithmetic for graphs (ported from the Intel
+Details tab's ``GraphView._draw_hover()``).
 
 Pure, so it's unit-tested without a display. A graph holds ``capacity``
 points across its plot, newest at the right edge; ``n`` of them are

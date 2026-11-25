@@ -1,7 +1,7 @@
 """Memory: RAM and swap use from /proc/meminfo. Module details (DDR type,
 speed, form factor, slots) from udev's database, which any user can read;
 ``dmidecode -t 17`` through the privileged helper is the fallback when udev
-has none (DESIGN.md §6)."""
+has none."""
 
 from __future__ import annotations
 
@@ -204,6 +204,19 @@ class MemoryMonitor(Monitor):
         self.modules: Optional[list[MemoryModule]] = None
         self.history.define("usage", "%")
         self.history.define("swap", "%")
+
+    def describe(self, encode) -> dict:
+        """The memory modules too, once known."""
+        out = super().describe(encode)
+        if self.modules is not None:
+            out["memory_modules"] = encode(self.modules)
+        return out
+
+    def described_properties(self) -> dict[str, str]:
+        """The memory modules' summary, once read (udev or administrator
+        rights): the Memory page's *Properties*."""
+        modules = summarize_modules(self.modules or [])
+        return {**super().described_properties(), **{k: v for k, v in modules.items() if v}}
 
     def sample(self, now: float) -> MemorySnapshot:
         mi = parse_meminfo(self.sysroot.read_text("/proc/meminfo") or "")

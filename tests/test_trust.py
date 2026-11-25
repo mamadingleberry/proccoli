@@ -1,4 +1,4 @@
-"""core.trust: which programs may be run as root (Milestone 40)."""
+"""core.trust: which programs may be run as root."""
 
 import os
 import stat

@@ -1,10 +1,10 @@
-"""Which parts of each sidebar entry are shown (DESIGN.md §9.2).
+"""Which parts of each sidebar entry are shown.
 
 Every entry except Apps and Processes can hide its name, description
 (model, device ID, interface name...), usage line and chart. The choices
 live in ``sidebar-hidden-fields``: page ID → hidden field names. The global
 *Show Usage Details* and *Show Device Descriptions* preferences still apply
-to every entry, and a minimised entry (M28) shows only its icon and name.
+to every entry, and a minimised entry shows only its icon and name.
 
 Pure functions, unit-tested without a display.
 """

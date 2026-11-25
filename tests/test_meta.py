@@ -20,6 +20,14 @@ class MetaTest(unittest.TestCase):
         # Reverse-DNS with at least three parts, as desktop files expect.
         self.assertGreaterEqual(len(proccoli.APP_ID.split(".")), 3)
 
+    def test_readme_installs_this_version(self):
+        """The README's package name follows the release (it said 0.3.0
+        after 0.4.0 was tagged)."""
+        readme = os.path.join(os.path.dirname(__file__), "..", "README.md")
+        with open(readme, encoding="utf-8") as fh:
+            versions = set(re.findall(r"proccoli_(\d+\.\d+\.\d+)_all\.deb", fh.read()))
+        self.assertEqual(versions, {proccoli.__version__})
+
     def test_app_name(self):
         self.assertTrue(proccoli.APP_NAME.strip())
 

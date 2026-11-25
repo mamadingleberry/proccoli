@@ -183,6 +183,13 @@ class CpuMonitor(Monitor):
         prev = self._prev or {}
         return sorted((k for k in prev if k != "cpu"), key=lambda k: int(k[3:]))
 
+    def describe(self, encode) -> dict:
+        """The logical CPUs' names and whether there's a temperature sensor
+        (the Processor page's per-CPU chart and sensor group)."""
+        return {**super().describe(encode),
+                "cpu": {"thread_names": self.thread_names(),
+                        "has_temperature": self.temperature_path is not None}}
+
     def sample(self, now: float) -> Optional[CpuSnapshot]:
         stat = parse_proc_stat(self.sysroot.read_text("/proc/stat") or "")
         if "cpu" not in stat:

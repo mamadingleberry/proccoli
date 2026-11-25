@@ -1,4 +1,4 @@
-"""ui.elevation: optional authentication, one prompt at a time (Milestone 26)."""
+"""ui.elevation: optional authentication, one prompt at a time."""
 
 import os
 import sys

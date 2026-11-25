@@ -1,4 +1,4 @@
-"""NVIDIA detail source (Milestone 55): parsing nvidia-settings and
+"""NVIDIA detail source: parsing nvidia-settings and
 nvidia-smi, choosing between them, failing with a reason; and the GPU
 detection plan that picks each GPU's panel."""
 
@@ -61,7 +61,7 @@ class SmiParseTest(unittest.TestCase):
         self.assertEqual(summary.usage, 19)
         self.assertEqual((summary.encode, summary.decode), (0, 0))
         self.assertFalse(summary.combined_video)
-        self.assertAlmostEqual(summary.vram_usage, 100 * 571 / 8151)
+        self.assertAlmostEqual(summary.memory_usage, 100 * 571 / 8151)
         self.assertEqual(summary.vram_frequency_hz, 810e6)
 
     def test_argv_asks_for_one_gpu_by_slot(self):
@@ -233,7 +233,7 @@ class BackendTest(unittest.TestCase):
 
 
 class PlanTest(unittest.TestCase):
-    """Which panel each GPU gets (M55)."""
+    """Which panel each GPU gets."""
 
     def test_this_machines_gpus(self):
         registry = standard_registry()

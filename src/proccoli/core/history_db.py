@@ -1,4 +1,4 @@
-"""The metrics history database (DESIGN.md §13.2, Idea 2): every reading
+"""The metrics history database: every reading
 Proccoli shows, in one SQLite file, summarised as it ages so it never grows
 without bound.
 
@@ -10,8 +10,11 @@ Layout (all times are UTC epoch **milliseconds**):
 - ``reading``: what each column of a device table holds: the reading's
   name, unit and fixed-point ``scale`` (value = stored integer / scale).
 - ``session``: each run's start and end.
+- ``device_info`` (schema 2): what each device was: its description
+  and properties (JSON, what its page lists under *Properties*), a row
+  from ``time`` on, written only when they change (``record_info``).
 - Per device ``d_<id>``: ``time`` (primary key) and one integer column per
-  reading, named like the M58 CSV columns (``usage_percent``,
+  reading, named like the old CSV files' columns (``usage_percent``,
   ``read_bytes_per_second``). A new reading is an ``ALTER TABLE … ADD
   COLUMN``, which SQLite does without rewriting the table.
 - Per device ``d_<id>_m`` (minutes) and ``d_<id>_h`` (hours): ``time`` (the
@@ -28,6 +31,7 @@ Both the database and its folder are private (0600 / 0700).
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
@@ -39,14 +43,14 @@ from typing import Iterable, Mapping, Optional, Sequence
 MINUTE_MS = 60_000
 HOUR_MS = 3_600_000
 DAY_MS = 24 * HOUR_MS
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"          # 2: device_info
 CACHE_KIB = 512
 
 # Fixed-point scale per unit: stored integer = round(value * scale).
 SCALES = {"%": 100, "°C": 100, "W": 1000, "MHz": 1000, "Hz": 1, "B/s": 1, "B": 1}
 DEFAULT_SCALE = 1000
 
-# Unit words in column names (the M58 CSV columns, kept for export).
+# Unit words in column names (the old CSV files' columns, kept for export).
 UNIT_WORDS = {"%": "percent", "B/s": "bytes_per_second", "B": "bytes", "°C": "celsius",
               "W": "watts", "Hz": "hertz", "MHz": "megahertz", "": ""}
 LEVELS = ("", "_m", "_h")            # detail, minutes, hours: table suffixes
@@ -86,7 +90,7 @@ def column_name(name: str, unit: str) -> str:
 
 def unit_of_column(column: str) -> tuple[str, str]:
     """The reverse of ``column_name`` as far as it goes: ``(name, unit)``
-    from ``read_bytes_per_second`` (for importing the M58 files). An
+    from ``read_bytes_per_second`` (for importing the old statistics files). An
     unknown unit word stays in the name."""
     for unit, word in sorted(UNIT_WORDS.items(), key=lambda kv: -len(kv[1])):
         if word and column.endswith("_" + word):
@@ -96,7 +100,7 @@ def unit_of_column(column: str) -> tuple[str, str]:
 
 def table_name(device_id: str) -> str:
     """A safe table name for a device ID (``gpu-0000:02:00.0`` ->
-    ``d_gpu_0000_02_00_0``). The M58 file name of a device
+    ``d_gpu_0000_02_00_0``). The old statistics file name of a device
     (``gpu-0000-02-00.0``) gives the same table."""
     return "d_" + (_snake(device_id) or "device")
 
@@ -115,6 +119,10 @@ def private_file(path: Path) -> None:
         os.fchmod(fd, 0o600)
     finally:
         os.close(fd)
+
+
+class NewerSchema(Exception):
+    """The database was written by a newer Proccoli: don't write to it."""
 
 
 class HistoryDb:
@@ -137,8 +145,21 @@ class HistoryDb:
         self._columns: dict[str, set[str]] = {}       # table -> its reading columns
         self._named: dict[str, tuple] = {}            # table -> (id, name, kind) written
         self._described: dict[str, dict] = {}         # table -> {reading: (column, scale)}
+        self._info: dict[str, tuple] = {}             # table -> (description, properties) last
         if not readonly:
+            self._check_schema()
             self._create()
+
+    def _check_schema(self) -> None:
+        """Refuse to write a schema newer than this code knows (a newer
+        Proccoli wrote it, then a downgrade): raises ``NewerSchema``."""
+        try:
+            row = self.conn.execute("SELECT value FROM meta WHERE key = 'schema'").fetchone()
+        except sqlite3.OperationalError:            # a new file: no tables yet
+            return
+        if row and row[0].isdigit() and int(row[0]) > int(SCHEMA_VERSION):
+            self.conn.close()
+            raise NewerSchema(f"schema {row[0]} is newer than {SCHEMA_VERSION}")
 
     def _create(self) -> None:
         with self.transaction():
@@ -153,7 +174,11 @@ class HistoryDb:
                               "PRIMARY KEY (tbl, col)) WITHOUT ROWID")
             self.conn.execute("CREATE TABLE IF NOT EXISTS session "
                               "(start INTEGER PRIMARY KEY, end INTEGER, version TEXT)")
-            self.conn.execute("INSERT OR IGNORE INTO meta VALUES ('schema', ?)",
+            self.conn.execute("CREATE TABLE IF NOT EXISTS device_info (tbl TEXT, "
+                              "time INTEGER, description TEXT, properties TEXT, "
+                              "PRIMARY KEY (tbl, time)) WITHOUT ROWID")
+            # An older database gains the new tables above; nothing to migrate.
+            self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('schema', ?)",
                               (SCHEMA_VERSION,))
 
     def close(self) -> None:
@@ -223,6 +248,41 @@ class HistoryDb:
                               (tbl, col, name, unit, scale))
             described[name] = out[name] = (col, scale)
         return out
+
+    def record_info(self, tbl: str, time_ms: int, description: str,
+                    properties: Mapping[str, str]) -> bool:
+        """Note what the device is from ``time_ms`` on, unless that's what
+        the last row already says; True when a row was written."""
+        props = json.dumps(dict(properties), ensure_ascii=False, sort_keys=True)
+        current = (description or "", props)
+        if tbl not in self._info:
+            row = self.conn.execute("SELECT description, properties FROM device_info "
+                                    "WHERE tbl = ? ORDER BY time DESC LIMIT 1", (tbl,)).fetchone()
+            self._info[tbl] = tuple(row) if row else None
+        if self._info[tbl] == current:
+            return False
+        self.conn.execute("INSERT OR REPLACE INTO device_info VALUES (?, ?, ?, ?)",
+                          (tbl, time_ms, *current))
+        self._info[tbl] = current
+        return True
+
+    def device_info(self, tbl: str, start_ms: int, end_ms: int) -> list[dict]:
+        """What the device was over ``start_ms``..``end_ms``: the row in
+        effect at the start (if any), then every change before the end.
+        Empty for a database older than schema 2."""
+        try:
+            before = self.conn.execute(
+                "SELECT time, description, properties FROM device_info "
+                "WHERE tbl = ? AND time <= ? ORDER BY time DESC LIMIT 1",
+                (tbl, start_ms)).fetchall()
+            during = self.conn.execute(
+                "SELECT time, description, properties FROM device_info "
+                "WHERE tbl = ? AND time > ? AND time <= ? ORDER BY time",
+                (tbl, start_ms, end_ms)).fetchall()
+        except sqlite3.OperationalError:          # no such table
+            return []
+        return [{"time": r[0], "description": r[1], "properties": json.loads(r[2] or "{}")}
+                for r in before + during]
 
     def devices(self) -> list[dict]:
         rows = self.conn.execute("SELECT tbl, id, name, kind FROM device ORDER BY tbl")

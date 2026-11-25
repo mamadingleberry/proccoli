@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import signal
 import sys
 from typing import Optional, Sequence
@@ -14,7 +15,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-from . import APP_ID, APP_NAME, __version__  # noqa: E402
+from . import APP_ID, APP_NAME, WINDOW, __version__  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class Application(Adw.Application):
     def __init__(self, args: argparse.Namespace, context_factory=None,
                  log_file=None, history_path=None, import_dir=None) -> None:
         """``context_factory(settings, demo)`` builds the AppContext; tests
-        can pass their own (default: ``proccoli.context.build_context``).
+        can pass their own (default: ``proccoli.context.build_context()``).
         ``log_file`` is the diagnostics log (default: ``applog.log_path()``),
         ``history_path`` the history database (``history_store.history_path()``)
         and ``import_dir`` the old statistics files to import once
@@ -71,22 +72,27 @@ class Application(Adw.Application):
         from .core.profile import choose_profile, profile_settings
         from .core.settings import migrate
         base = Settings.load()
-        changes = migrate(base)                     # replaced keys, once (Idea 6)
-        # Lightweight mode (Idea 1): chosen once; everything reads the
+        changes = migrate(base)                     # replaced keys, once
+        # Lightweight mode: chosen once; everything reads the
         # settings as the profile sees them.
         self.profile = choose_profile(base, getattr(self.args, "lightweight", False))
+        from .core.profile import apply_renderer
+        renderer = apply_renderer(self.profile, os.environ)   # before any window
         settings = profile_settings(base, self.profile)
         from .core.applog import FileLog, log_path
         self.file_log = FileLog(settings, self.log_file or log_path())
         for change in changes:
             log.info("settings: %s", change)
+        if renderer:
+            log.info("renderer: %s", renderer)
         log.info("%s %s starting (demo=%s)", APP_NAME, __version__, self.args.demo)
         from .core.watchdog import StallWatchdog
-        self.watchdog = StallWatchdog()     # logs stalls with stacks (M44)
+        self.watchdog = StallWatchdog()     # logs stalls with stacks
         self.watchdog.start()
         if self.context_factory is None:
             from .context import build_context
-            self.ctx = build_context(settings, demo=self.args.demo)
+            # The window reads no devices: proccoli does.
+            self.ctx = build_context(settings, demo=self.args.demo, remote=True)
         else:
             self.ctx = self.context_factory(settings, self.args.demo)
         if self.ctx.theme is None:      # the UI half of the composition root
@@ -95,14 +101,23 @@ class Application(Adw.Application):
         from .ui.style import ThemeCss
         self.theme_css = ThemeCss(self.ctx.theme) if self.ctx.profile.theme_css else None
         self.ctx.start()
-        # Every reading, in the history database (Idea 2); never the demo's
+        # Every reading, in the history database; never the demo's
         # made-up ones.
         if not self.args.demo and self.ctx.devices is not None:
+            from .core.history_lock import HistoryLock, lock_path
             from .core.history_store import HistoryStore, history_path, old_stats_dir
-            self.history = HistoryStore(self.ctx.devices, self.ctx.settings,
-                                        self.history_path or history_path(), __version__,
+            path = self.history_path or history_path()
+            remote = self.ctx.devices.remote
+            # proccoli is the only writer; the window reads
+            # the history (graphs, exports). A window reading devices itself
+            # (tests) writes when it holds the lock.
+            self.history = HistoryStore(self.ctx.devices, self.ctx.settings, path, __version__,
                                         idle=GLib.idle_add,
-                                        import_dir=self.import_dir or old_stats_dir())
+                                        import_dir=None if remote else
+                                        self.import_dir or old_stats_dir(),
+                                        lock=None if remote else
+                                        HistoryLock(self.ctx.system, lock_path(path)),
+                                        read_only=remote)
         export = self.lookup_action("export-statistics")
         export.set_enabled(self.history is not None and self.ctx.settings.get("history"))
         self.ctx.settings.connect_changed("history", lambda _k, on: export.set_enabled(
@@ -146,15 +161,26 @@ class Application(Adw.Application):
                                         export=self.export_statistics,
                                         restart=self.restart,
                                         windows=getattr(self.ctx, "windows", None),
-                                        extension_source=extension_source()))
+                                        extension_source=extension_source(),
+                                        background=self._background_service()))
+
+    def _background_service(self):
+        """*Record in the Background*: not in --demo, whose
+        readings are made up."""
+        if self.args.demo or self.history is None:
+            return None
+        from .core.background import BackgroundService
+        return BackgroundService(self.ctx.system)
 
     def export_statistics(self) -> None:
         """Main menu → *Export Statistics…*: pick a folder, write the session."""
         if self.history is None:
             return
         if self.exporter is None:
-            from .ui.export import StatisticsExport
-            self.exporter = StatisticsExport(self.history, __version__)
+            from .ui.export import StatisticsExport, export_details
+            self.exporter = StatisticsExport(self.history, __version__,
+                                             describe=lambda: export_details(self.ctx),
+                                             settings=self.ctx.settings)
         self.exporter.start(self.get_active_window())
 
     def restart(self) -> None:
@@ -209,7 +235,7 @@ def on_sigint(callback) -> None:
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="proccoli", description=f"{APP_NAME}: a system resource monitor")
+        prog=WINDOW, description=f"{APP_NAME}: a system resource monitor")
     parser.add_argument("--version", action="version",
                         version=f"%(prog)s {__version__}")
     parser.add_argument("--demo", action="store_true",

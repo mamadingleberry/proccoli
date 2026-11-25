@@ -79,11 +79,14 @@ def parse_cgroup(text: str) -> str:
 
 def display_name(comm: str, cmdline: str) -> str:
     """comm is cut at 15 characters; use the executable's name when it's the
-    longer version of the same name."""
+    longer version of the same name. For a script run by an interpreter
+    (``/usr/bin/python3 /usr/bin/gnome-shell-calendar-server``) that's the
+    script, the second word."""
     if len(comm) == 15 and cmdline:
-        exe = cmdline.split(" ", 1)[0].rsplit("/", 1)[-1]
-        if exe.startswith(comm):
-            return exe
+        for word in cmdline.split(" ", 2)[:2]:
+            exe = word.rsplit("/", 1)[-1]
+            if exe.startswith(comm):
+                return exe
     return comm
 
 

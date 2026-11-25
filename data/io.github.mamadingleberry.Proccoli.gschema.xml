@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Keys mirror Resources' preferences (DESIGN.md §2.1 and §11).
+<!-- Keys mirror Resources' preferences.
      Keys marked "Proccoli" are additions for the swappable GPU page. -->
 <schemalist>
   <enum id="io.github.mamadingleberry.Proccoli.TemperatureUnit">
@@ -30,6 +30,7 @@
     <value nick="very-fast" value="4"/>
   </enum>
   <enum id="io.github.mamadingleberry.Proccoli.GraphTimeRange">
+    <value nick="custom" value="0"/>
     <value nick="30-seconds" value="30"/>
     <value nick="1-minute" value="60"/>
     <value nick="2-minutes" value="120"/>
@@ -46,11 +47,42 @@
     <value nick="dark" value="2"/>
     <value nick="sand" value="3"/>
     <value nick="sky" value="4"/>
+    <value nick="mint" value="7"/>
+    <value nick="rose" value="8"/>
+    <value nick="lavender" value="9"/>
+    <value nick="paper" value="10"/>
+    <value nick="solarized-light" value="11"/>
+    <value nick="gruvbox-light" value="12"/>
+    <value nick="latte" value="13"/>
+    <value nick="high-contrast-light" value="14"/>
     <value nick="twilight" value="5"/>
     <value nick="midnight" value="6"/>
+    <value nick="nord" value="15"/>
+    <value nick="dracula" value="16"/>
+    <value nick="gruvbox-dark" value="17"/>
+    <value nick="solarized-dark" value="18"/>
+    <value nick="mocha" value="19"/>
+    <value nick="tokyo-night" value="20"/>
+    <value nick="forest" value="21"/>
+    <value nick="ember" value="22"/>
+    <value nick="oled" value="23"/>
+    <value nick="high-contrast-dark" value="24"/>
   </enum>
   <enum id="io.github.mamadingleberry.Proccoli.Palette">
     <value nick="system" value="0"/>
+    <value nick="okabe-ito" value="8"/>
+    <value nick="tol-bright" value="9"/>
+    <value nick="tol-vibrant" value="10"/>
+    <value nick="tol-muted" value="11"/>
+    <value nick="viridis" value="12"/>
+    <value nick="tableau" value="13"/>
+    <value nick="matplotlib" value="14"/>
+    <value nick="brewer-set1" value="15"/>
+    <value nick="brewer-dark2" value="16"/>
+    <value nick="catppuccin" value="17"/>
+    <value nick="gruvbox" value="18"/>
+    <value nick="one" value="19"/>
+    <value nick="tokyo-night" value="20"/>
     <value nick="gnome" value="1"/>
     <value nick="tango" value="2"/>
     <value nick="solarized" value="3"/>
@@ -127,7 +159,22 @@
     <key name="graph-time-range" enum="io.github.mamadingleberry.Proccoli.GraphTimeRange">
       <default>'1-minute'</default>
       <summary>How much time graphs show</summary>
-      <description>Graphs keep this much history whatever the refresh speed; the number of data points follows.</description>
+      <description>Graphs keep this much history whatever the refresh speed; the number of data points follows. 'custom' uses graph-time-range-custom.</description>
+    </key>
+    <key name="graph-time-range-custom" type="u">
+      <range min="10" max="2592000"/>
+      <default>7200</default>
+      <summary>The custom graph time range, in seconds (10 seconds to 30 days)</summary>
+      <description>Used when graph-time-range is 'custom'; at least two update intervals.</description>
+    </key>
+    <key name="show-toolbar" type="b">
+      <default>true</default>
+      <summary>Show the graph toolbar under page headers</summary>
+    </key>
+    <key name="toolbar-items" type="as">
+      <default>['time-range', 'axes', 'grids']</default>
+      <summary>The graph toolbar's buttons, in order</summary>
+      <description>Item IDs (time-range, axes, grids); items not listed are hidden. Logical CPUs is always on the Processor page's toolbar.</description>
     </key>
     <key name="sidebar-details" type="b">
       <default>true</default>
@@ -174,6 +221,11 @@
       <range min="1" max="168"/>
       <default>24</default>
       <summary>Hours every reading is kept before only per-minute averages remain</summary>
+    </key>
+    <key name="export-hardware-addresses" type="b">
+      <default>false</default>
+      <summary>Include network cards' hardware addresses in exported statistics</summary>
+      <description>They identify the computer, so exports leave them out by default.</description>
     </key>
     <key name="log-max-size" type="u">
       <range min="64" max="65536"/>

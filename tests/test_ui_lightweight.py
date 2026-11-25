@@ -1,6 +1,7 @@
-"""Lightweight Mode in the window (Idea 1): pages built on first visit and
-dropped after, the Overview as a list, one graph per page, progress-bar
-meters, Preferences, and the app's --lightweight."""
+"""Lightweight Mode in the window: pages built on first visit and
+dropped after, the Overview as a list with small charts and an icons-only
+sidebar, one graph per page, Preferences, and the app's
+--lightweight."""
 
 import argparse
 import os
@@ -10,7 +11,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.dirname(__file__))
 
-from helpers import make_context, pump  # noqa: E402
+from helpers import make_context  # noqa: E402
 
 import gi  # noqa: E402
 
@@ -22,6 +23,28 @@ from proccoli.core.profile import Profile, profile_settings  # noqa: E402
 from proccoli.core.settings import Settings  # noqa: E402
 
 HAVE_DISPLAY = os.environ.get("PROCCOLI_UI_TESTS") == "1" and Gtk.init_check()
+
+
+def menu_labels(menu) -> list:
+    """Every item label in a Gio.MenuModel, sections and submenus included."""
+    out = []
+    for i in range(menu.get_n_items()):
+        label = menu.get_item_attribute_value(i, "label", None)
+        if label is not None:
+            out.append(label.get_string())
+        for link in ("section", "submenu"):
+            child = menu.get_item_link(i, link)
+            if child is not None:
+                out += menu_labels(child)
+    return out
+
+
+def descendants(widget):
+    child = widget.get_first_child()
+    while child is not None:
+        yield child
+        yield from descendants(child)
+        child = child.get_next_sibling()
 
 
 def light_settings(**overrides):
@@ -63,16 +86,42 @@ class LightweightWindowTest(unittest.TestCase):
         self.assertIsInstance(win.page("demo"), StubPage)          # dropped
         self.assertIn("demo", win.sidebar.colors)                  # entry and color stay
 
-    def test_overview_list_and_progress_bar_meters(self):
-        from proccoli.ui.widgets.meter import MeterType
-        win = self.window(light_settings())
+    def test_overview_small_charts_and_icons_only_sidebar(self):
+        """the trend is on the Overview, the sidebar is icons only."""
+        from proccoli.ui.chart_settings import ChartKind
+        from proccoli.ui.widgets.graph import GraphStyle
+        win = self.window(light_settings(**{"sidebar-style": "full"}))
         cards = win.overview.cards
         self.assertTrue(cards)
-        self.assertTrue(all(c.graph is None for c in cards.values()))
-        self.assertIsNone(win.overview.tops)
+        for card in cards.values():
+            self.assertEqual(card.graph.style, GraphStyle.SMALL)
+            self.assertFalse(card.graph.has_axes())
+            self.assertEqual(win.overview.charts._bound[card.graph].kind, ChartKind.METER)
         card = cards["demo"]
+        self.assertTrue(card.graph.get_visible())
+        self.assertEqual(card.graph.entry_index, win.sidebar.colors["demo"])
         self.assertNotEqual(card.usage_label.get_label(), "")
-        self.assertEqual(win.sidebar.items["demo"].meter.meter_type, MeterType.PROGRESS_BAR)
+        self.assertTrue(win.sidebar.compact)                     # the user's Full is pinned
+        self.assertFalse(any(item.has_meter for item in win.sidebar.items.values()))
+        self.assertIsNone(win.overview.tops)                     # demo: no process monitor
+
+    def test_sidebar_menu_offers_icons_only_and_hidden(self):
+        from proccoli.ui.sidebar_style import MODE_ACTION
+        from gi.repository import GLib
+        win = self.window(light_settings())
+        labels = menu_labels(win.menu_model)
+        self.assertIn("Icons Only", labels)
+        self.assertIn("Hidden", labels)
+        self.assertNotIn("Full", labels)
+        action = win.lookup_action(MODE_ACTION)
+        action.change_state(GLib.Variant.new_string("full"))     # a stale target
+        self.assertTrue(win.sidebar.compact)
+        self.assertEqual(action.get_state().get_string(), "icons")
+        action.change_state(GLib.Variant.new_string("hidden"))
+        self.assertFalse(win.split_view.get_show_sidebar())
+        win.sidebar_visibility.toggle()                          # F9 brings back icons
+        self.assertTrue(win.split_view.get_show_sidebar())
+        self.assertTrue(win.sidebar.compact)
 
     def test_one_graph_per_page_without_axes(self):
         win = self.window(light_settings())
@@ -89,6 +138,8 @@ class LightweightWindowTest(unittest.TestCase):
         self.assertIsNone(win.lazy)
         self.assertIsInstance(win.page("demo"), DemoPage)
         self.assertTrue(all(c.graph is not None for c in win.overview.cards.values()))
+        self.assertIn("Full", menu_labels(win.menu_model))
+        self.assertTrue(any(item.has_meter for item in win.sidebar.items.values()))
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
@@ -106,6 +157,61 @@ class LightweightPreferencesTest(unittest.TestCase):
         self.assertTrue(dialog.restart_row.get_visible())
         dialog.restart_button.emit("clicked")
         self.assertEqual(restarts, [1])
+
+    def test_fixed_settings_have_a_padlock_and_pages_a_notice(self):
+        from gi.repository import Adw, Gtk
+        from proccoli.ui.dialogs.preferences import FIXED_ICON, FIXED_TIP, PreferencesDialog
+        dialog = PreferencesDialog(light_settings(lightweight=True), restart=lambda: None)
+        row = dialog.rows["palette"]
+        self.assertFalse(row.get_sensitive())
+        icons = [w for w in descendants(row) if isinstance(w, Gtk.Image)
+                 and w.get_icon_name() == FIXED_ICON]
+        self.assertEqual(len(icons), 1)
+        self.assertEqual(icons[0].get_tooltip_text(), FIXED_TIP)
+        self.assertIsNone(row.get_tooltip_text())                 # the padlock says it
+        free = dialog.rows["update-interval"]
+        self.assertFalse(any(isinstance(w, Gtk.Image) and w.get_icon_name() == FIXED_ICON
+                             for w in descendants(free)))
+        general = row.get_ancestor(Adw.PreferencesPage)
+        self.assertTrue(dialog._notices[general].get_visible())
+        # A page with nothing fixed has no notice showing.
+        quiet = [page for page, notice in dialog._notices.items() if not notice.get_visible()]
+        self.assertTrue(quiet)
+        for page in quiet:
+            self.assertFalse(any(dialog.rows[k].get_ancestor(Adw.PreferencesPage) is page
+                                 and not dialog.rows[k].get_sensitive()
+                                 for k in dialog.rows))
+
+    def test_no_notice_or_padlocks_in_the_full_window(self):
+        from proccoli.ui.dialogs.preferences import PreferencesDialog
+        dialog = PreferencesDialog(Settings.for_tests(), restart=lambda: None)
+        self.assertEqual(dialog._notices, {})
+
+    def test_the_switch_shows_the_mode_running_now(self):
+        # Started with --lightweight: the setting is off, the mode is on.
+        from proccoli.ui.dialogs.preferences import PreferencesDialog
+        settings = light_settings(lightweight=False)
+        dialog = PreferencesDialog(settings, restart=lambda: None)
+        self.assertTrue(dialog.rows["lightweight"].get_active())
+        self.assertTrue(dialog.restart_row.get_visible())          # off at the next start
+        self.assertIn("turns off", dialog.restart_row.get_subtitle())
+        # Running in it with the setting on: on, nothing to restart.
+        dialog = PreferencesDialog(light_settings(lightweight=True), restart=lambda: None)
+        self.assertTrue(dialog.rows["lightweight"].get_active())
+        self.assertFalse(dialog.restart_row.get_visible())
+
+    def test_a_pending_change_says_what_happens_next(self):
+        from proccoli.ui.dialogs.preferences import PreferencesDialog
+        settings = Settings.for_tests({"lightweight": True})     # chosen, not restarted
+        dialog = PreferencesDialog(settings, restart=lambda: None)
+        self.assertFalse(dialog.rows["lightweight"].get_active())  # the full window runs
+        self.assertTrue(dialog.restart_row.get_visible())
+        self.assertIn("turns on at the next start", dialog.restart_row.get_subtitle())
+        dialog.rows["lightweight"].set_active(True)
+        self.assertTrue(settings.get("lightweight"))
+        dialog.rows["lightweight"].set_active(False)             # back to how it runs
+        self.assertFalse(settings.get("lightweight"))
+        self.assertFalse(dialog.restart_row.get_visible())
 
     def test_full_mode_offers_it(self):
         from proccoli.ui.dialogs.preferences import PreferencesDialog

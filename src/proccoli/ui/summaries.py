@@ -1,5 +1,5 @@
 """What a device's sidebar entry and Overview card show, from its monitor
-alone (Idea 1): so an entry works before its page is built, which
+alone: so an entry works before its page is built, which
 Lightweight Mode relies on (pages built on first visit). Device pages
 answer ``sidebar_summary()`` from here too, so both always agree.
 """
@@ -14,17 +14,9 @@ from .page import SidebarSummary
 
 
 def sort_name_for(monitor) -> str:
-    """Where a device sorts within its sidebar group."""
-    kind = monitor.info.kind
-    if kind == DeviceKind.NETWORK:
-        return f"{monitor.sort_order()}-{monitor.iface}"
-    if kind == DeviceKind.DRIVE:
-        return monitor.block
-    if kind == DeviceKind.BATTERY:
-        return monitor.name
-    if kind == DeviceKind.GPU:
-        return monitor.gpu.pci_slot
-    return ""
+    """Where a device sorts within its sidebar group (``Monitor.sort_name()``:
+    a local monitor knows it, a remote one was told by the collector)."""
+    return monitor.sort_name()
 
 
 def summary_for(monitor, settings) -> Optional[SidebarSummary]:
@@ -50,6 +42,6 @@ def summary_for(monitor, settings) -> Optional[SidebarSummary]:
         summary.facts = device_facts(getattr(snap, "temperature_c", None), temperature)
     elif kind == DeviceKind.GPU and getattr(snap, "summary", None) is not None:
         s = snap.summary
-        summary.facts = device_facts(s.temperature_c, temperature, s.vram_used,
-                                     s.vram_total, base)
+        summary.facts = device_facts(s.temperature_c, temperature, s.memory_used,
+                                     s.memory_total, base)
     return summary

@@ -8,7 +8,7 @@ import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
-import helpers  # noqa: E402,F401  (sets sys.path)
+import helpers  # noqa: E402,F401 (sets sys.path)
 
 from gi.repository import GLib  # noqa: E402
 

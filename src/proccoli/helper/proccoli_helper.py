@@ -3,16 +3,16 @@
 deliberately small: no Proccoli imports, no shell, every argument validated.
 
     proccoli-helper signal TERM|KILL|STOP|CONT TARGET...
-    proccoli-helper renice TARGET NICE                 (-20..19)
+    proccoli-helper renice TARGET NICE (-20..19)
     proccoli-helper affinity TARGET CPU[,CPU...]
-    proccoli-helper dmidecode                          (memory devices, type 17)
+    proccoli-helper dmidecode (memory devices, type 17)
     proccoli-helper processes [--interval MS] [--once] (I/O counters of every process)
-    proccoli-helper gpu-top MS cardN                   (intel_gpu_top -J, relayed)
+    proccoli-helper gpu-top MS cardN (intel_gpu_top -J, relayed)
 
 A TARGET is PID or PID@STARTTIME. With STARTTIME (field 22 of
 /proc/PID/stat), the helper acts only if PID is still that process, so a
 PID the kernel reused for another process while the password prompt was up
-is left alone (DESIGN.md §11, Security). Signals go through a pidfd, so the
+is left alone (Security). Signals go through a pidfd, so the
 check and the signal refer to the same process.
 
 Results are JSON on stdout. Exit status: 0 success, 1 the operation failed
@@ -30,7 +30,7 @@ import time
 
 # What the app may send (it reads this line from the installed file, so an
 # older installed helper isn't sent arguments it would refuse):
-# 1 bare PIDs, 2 PID@STARTTIME targets (Milestone 40), 3 gpu-top (M42).
+# 1 bare PIDs, 2 PID@STARTTIME targets, 3 gpu-top.
 PROTOCOL = 3
 
 SIGNALS = {"TERM": signal.SIGTERM, "KILL": signal.SIGKILL,
@@ -229,7 +229,7 @@ def cmd_processes(args: list[str]) -> int:
 def relay(child, read, write) -> None:
     """Copy the child's output to ours until either side ends; then stop
     the child. intel_gpu_top ignores SIGPIPE, so without this it would run
-    as root forever once Proccoli stops reading (Milestone 42)."""
+    as root forever once Proccoli stops reading."""
     try:
         while True:
             data = read()

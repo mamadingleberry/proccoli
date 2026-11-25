@@ -1,12 +1,13 @@
-"""Keeps the metrics history (DESIGN.md §13.2, Idea 2): follows every
+"""Keeps the metrics history: follows every
 device's ``updated`` signal and writes the readings to the history
 database (``core/history_db.py``), tidies it as it ages, fills graphs from
-it, and imports the statistics files of Milestone 58 once.
+it, and imports older versions' statistics files once.
 
 - **Writing:** rows are buffered and committed every ``COMMIT_EVERY_S``
   seconds (one transaction), and on quit or when *Keep History* is turned
   off. Each commit also moves the session's end forward, so a crash loses
-  at most those seconds.
+  at most those seconds, and notes each device's description and
+  properties when they've changed (``device_info``).
 - **Housekeeping** every ``HOUSEKEEPING_EVERY_S``, so it works without ever
   quitting: roll detail up into minutes and minutes into hours, delete
   detail older than ``history-detail-hours`` and minutes older than
@@ -16,9 +17,19 @@ it, and imports the statistics files of Milestone 58 once.
   ``History`` is filled from the database in front of what it holds
   (``backfill``): one device per idle call. When the graphs' time range
   or update interval changes, the history is emptied and filled again
-  completely at the new step (M68), so no point is drawn at a spacing
+  completely at the new step, so no point is drawn at a spacing
   it wasn't taken at. Slots outside every recorded session are marked
   offline (``offline_slots``): Proccoli wasn't running then.
+
+**One writer**: with a ``lock`` (``core/history_lock.py``), the
+store writes only while it holds it; otherwise it's a *reader*: it opens
+the database read-only, still fills graphs from it, records nothing, and
+tries the lock again at every commit, so it takes over within
+``COMMIT_EVERY_S`` of the writer stopping. The writer notes who it is in
+``meta`` ``writer``. Without a lock (tests, older callers) it always
+writes, as before. A writer that finds the database deleted (*Delete
+History…* from a reader) starts a new one; one that finds a newer schema
+never writes.
 
 Both timers run off the readings themselves (no timers of their own), and
 the wall clock, the idle scheduler, the path and the old files' folder are
@@ -28,6 +39,7 @@ are logged, never raised into the main loop: the history is a nice-to-have.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
@@ -36,10 +48,12 @@ import time
 from pathlib import Path
 from typing import Callable, Mapping, Optional
 
+from .. import WINDOW
+from .connections import Connections
 from .history import DETAIL_PREFIX
-from .history_db import (DAY_MS, HOUR_MS, HistoryDb, column_name, delete_files, files_size,
-                         from_fixed, table_name, to_fixed, unit_of_column)
-from .ticker import update_interval_ms
+from .history_db import (DAY_MS, HOUR_MS, HistoryDb, NewerSchema, column_name, delete_files,
+                         files_size, from_fixed, table_name, to_fixed, unit_of_column)
+from .ticker import PLAN_KEYS, update_interval_ms
 from .units import parse_iso_utc
 
 log = logging.getLogger(__name__)
@@ -64,7 +78,7 @@ def history_path(env: Mapping[str, str] = os.environ, home: Optional[Path] = Non
 
 
 def old_stats_dir(env: Mapping[str, str] = os.environ, home: Optional[Path] = None) -> Path:
-    """Where Milestone 58 kept its statistics files."""
+    """Where older versions kept their statistics files."""
     return state_dir(env, home) / "stats"
 
 
@@ -93,10 +107,16 @@ class HistoryStore:
 
     def __init__(self, devices, settings, path: Path, version: str = "",
                  wall_clock: Callable[[], float] = time.time,
-                 idle: Optional[Callable] = None, import_dir: Optional[Path] = None) -> None:
+                 idle: Optional[Callable] = None, import_dir: Optional[Path] = None,
+                 lock=None, program: str = WINDOW, graphs: bool = True,
+                 read_only: bool = False) -> None:
         """``idle(callback)`` runs ``callback`` later until it returns False
-        (``GLib.idle_add``; None: at once). ``import_dir`` holds M58
-        statistics files to import once."""
+        (``GLib.idle_add``; None: at once). ``import_dir`` holds older versions'
+        statistics files to import once. ``lock`` (a ``HistoryLock``)
+        decides whether this store writes; ``program`` is who it says it
+        is in ``meta`` ``writer``; ``graphs=False`` (the collector) skips
+        filling graphs. ``read_only`` (the window): never
+        write, never take over; fill graphs and serve exports only."""
         self.devices = devices
         self.settings = settings
         self.path = Path(path)
@@ -104,6 +124,10 @@ class HistoryStore:
         self.wall_clock = wall_clock
         self.idle = idle
         self.import_dir = import_dir
+        self.lock = lock
+        self.program = program
+        self.graphs = graphs
+        self._never_write = read_only            # the window, or a newer schema
         self.db: Optional[HistoryDb] = None
         self.session: Optional[int] = None        # this run's start (UTC ms)
         self._buffer: list[tuple] = []           # (monitor, time_ms, values, units)
@@ -115,21 +139,22 @@ class HistoryStore:
         self._refill: set[str] = set()           # devices to empty and fill again
         self._backfill_queue: list = []
         self._failed = False
-        self._monitor_handlers: dict[str, tuple[object, int]] = {}
-        self._handlers = [
-            (devices, devices.connect("device-added", lambda _d, m: self._follow(m))),
-            (devices, devices.connect("device-removed", lambda _d, i: self._forget(i))),
-            (settings, settings.connect_changed("history", lambda *_: self._apply())),
-            (settings, settings.connect_changed("history-max-size",
-                                                lambda *_: self._tidy_soon())),
-            (settings, settings.connect_changed("history-detail-hours",
-                                                lambda *_: self._tidy_soon())),
-        ]
-        for key in ("graph-time-range", "update-interval"):
-            self._handlers.append((settings, settings.connect_changed(
-                key, lambda *_: self.backfill_all())))
+        self._following: dict[str, Connections] = {}       # per device
+        self.connections = Connections()
+        self.connections.connect(devices, "device-added", lambda _d, m: self._follow(m))
+        self.connections.connect(devices, "device-removed", lambda _d, i: self._forget(i))
+        self.connections.watch(settings, "history", lambda *_: self._apply())
+        self.connections.watch(settings, ("history-max-size", "history-detail-hours"),
+                               lambda *_: self._tidy_soon())
+        if graphs:
+            self.connections.watch(settings, PLAN_KEYS, lambda *_: self.backfill_all())
         for monitor in devices.monitors():
             self._follow(monitor)
+
+    @property
+    def writer(self) -> bool:
+        """Whether this store writes (holds the lock, or has none)."""
+        return (self.lock is None or self.lock.held) and not self._never_write
 
     @property
     def enabled(self) -> bool:
@@ -146,31 +171,94 @@ class HistoryStore:
     # -- following the devices ------------------------------------------------------
 
     def _follow(self, monitor) -> None:
-        handler = monitor.connect("updated", lambda m, snap: self.record(m, snap))
-        self._monitor_handlers[monitor.info.id] = (monitor, handler)
+        following = self._following.setdefault(monitor.info.id, Connections())
+        following.connect(monitor, "updated", lambda m, snap: self.record(m, snap))
 
     def _forget(self, device_id: str) -> None:
-        monitor, handler = self._monitor_handlers.pop(device_id, (None, 0))
-        if monitor is not None:
-            monitor.disconnect(handler)
+        following = self._following.pop(device_id, None)
+        if following is not None:
+            following.disconnect_all()
         self._offsets.pop(device_id, None)
 
     # -- the database ------------------------------------------------------------------
 
     def open(self) -> Optional[HistoryDb]:
-        """The database, opened (and the session started) on first use."""
+        """The database, opened on first use: read-write with a session
+        when this store gets the lock, else read-only (a reader)."""
         if self.db is None and not self._failed:
+            if self._never_write or (self.lock is not None and not self.lock.acquire()):
+                return self._open_reader()
             try:
                 self.db = HistoryDb(self.path)
                 start = ms(self.wall_clock())
                 with self.db.transaction():
                     self.session = self.db.start_session(start, self.version)
-                log.info("history: %s", self.path)
+                    self.db.set_meta("writer", json.dumps({
+                        "program": self.program, "pid": os.getpid(),
+                        "version": self.version, "since": start}))
+                log.info("history: writing %s", self.path)
+            except NewerSchema as exc:
+                log.warning("history: %s; reading it only", exc)
+                self._never_write = True
+                if self.lock is not None:
+                    self.lock.release()
+                return self._open_reader()
             except ERRORS as exc:
                 self._fail("can't open the history at %s: %s", self.path, exc)
                 return None
             self._start_import()
         return self.db
+
+    def _open_reader(self) -> Optional[HistoryDb]:
+        """Read-only, for graphs and exports; nothing until the writer has
+        made the file."""
+        if not self.path.exists():
+            return None
+        try:
+            self.db = HistoryDb(self.path, readonly=True)
+        except ERRORS as exc:
+            log.warning("can't read the history at %s: %s", self.path, exc)
+            return None
+        self.session = None
+        log.info("history: reading %s (another process writes it)", self.path)
+        return self.db
+
+    def _take_over(self) -> None:
+        """A reader: try the lock; with it, reopen as the writer."""
+        if self._never_write or self.lock is None or not self.enabled:
+            return
+        if self.lock.acquire():
+            log.info("history: the writer stopped; writing from now on")
+            if self.db is not None:
+                self.db.close()
+                self.db = None
+            self.open()
+
+    def session_start(self) -> Optional[int]:
+        """The start of the run being recorded (UTC ms): this store's own
+        session, or a reader's view of the writer's (its latest)."""
+        if self.session is not None:
+            return self.session
+        if self.open() is None:
+            return None
+        try:
+            sessions = self.db.sessions()
+        except ERRORS:
+            return None
+        return sessions[-1][0] if sessions else None
+
+    def writer_info(self) -> Optional[dict]:
+        """Who writes the history (``meta`` ``writer``), or None."""
+        if self.open() is None:
+            return None
+        try:
+            text = self.db.meta("writer")
+        except ERRORS:
+            return None
+        try:
+            return json.loads(text) if text else None
+        except ValueError:
+            return None
 
     def _fail(self, message: str, *args) -> None:
         log.warning(message, *args)
@@ -184,19 +272,21 @@ class HistoryStore:
             self.db = None
 
     def close(self) -> None:
-        """Write out what's buffered, end the session, close the file."""
-        if self.db is None:
-            return
-        self.commit()
-        if self.db is None:
-            return
-        try:
-            self.db.checkpoint()
-        except ERRORS:
-            pass
-        self.db.close()
-        self.db = None
-        self.session = None
+        """Write out what's buffered, end the session, close the file,
+        and let another process write."""
+        if self.db is not None:
+            self.commit()
+        if self.db is not None:
+            if self.writer:
+                try:
+                    self.db.checkpoint()
+                except ERRORS:
+                    pass
+            self.db.close()
+            self.db = None
+            self.session = None
+        if self.lock is not None:
+            self.lock.release()
 
     def delete(self) -> None:
         """*Delete History*: everything goes, a new session starts with the
@@ -225,11 +315,14 @@ class HistoryStore:
         first = device_id not in self._offsets
         self._offsets[device_id] = now - snapshot.time
         self._clock[device_id] = snapshot.time
-        self._buffer.append((monitor, ms(now), snapshot.stats_values(),
-                             dict(snapshot.stats_units())))
-        if first:
+        if self.db is None:
+            self.open()                          # decides: writer or reader
+        if self.writer:
+            self._buffer.append((monitor, ms(now), snapshot.stats_values(),
+                                 dict(snapshot.stats_units())))
+        if self.graphs and first:
             self.backfill_soon(monitor)
-        else:
+        elif self.graphs:
             target = monitor.detail_history()      # a Details tab that started since
             if target is not None and (device_id, id(target)) not in self._detail_filled \
                     and monitor not in self._backfill_queue:
@@ -240,17 +333,31 @@ class HistoryStore:
             self.housekeeping()
 
     def commit(self) -> None:
-        """Write the buffered rows in one transaction."""
+        """Write the buffered rows in one transaction (a reader: try to
+        take over instead)."""
         self._last_commit = self.wall_clock()
         rows, self._buffer = self._buffer, []
+        if not self.writer:
+            self._take_over()
+            return
+        if self.db is not None and not self.path.exists():
+            # Deleted by someone else (Delete History… from a reader).
+            log.info("history: the file was deleted; starting a new one")
+            self.db.close()
+            self.db, self.session = None, None
         if not rows or self.open() is None:
             return
         try:
             with self.db.transaction():
+                described = set()
                 for monitor, time_ms, values, units in rows:
                     info = monitor.info
                     tbl = self.db.ensure_device(info.id, info.name,
                                                 getattr(info.kind, "value", str(info.kind)))
+                    if tbl not in described:        # what it is, when that changes
+                        described.add(tbl)
+                        self.db.record_info(tbl, time_ms, info.description,
+                                            monitor.described_properties())
                     cols = self.db.ensure_columns(tbl, {n: units.get(n, "") for n in values})
                     self.db.insert(tbl, time_ms, {cols[n][0]: to_fixed(v, cols[n][1])
                                                   for n, v in values.items()})
@@ -262,7 +369,7 @@ class HistoryStore:
         """Summarise, expire, keep under the cap, give space back."""
         self._last_housekeeping = self.wall_clock()
         self.commit()
-        if self.db is None:
+        if self.db is None or not self.writer:
             return
         now = ms(self.wall_clock())
         started = time.monotonic()
@@ -289,11 +396,9 @@ class HistoryStore:
 
     def shutdown(self) -> None:
         self.close()
-        for device_id in list(self._monitor_handlers):
+        for device_id in list(self._following):
             self._forget(device_id)
-        for source, handler in self._handlers:
-            source.disconnect(handler)
-        self._handlers = []
+        self.connections.disconnect_all()
 
     # -- graphs from history -------------------------------------------------------------
 
@@ -336,7 +441,7 @@ class HistoryStore:
         target = monitor.detail_history()
         refill = device_id in self._refill
         if refill:
-            # Its points may be from another step (Bug 1): the database
+            # Its points may be from another step: the database
             # has them all, at whatever step is asked for.
             self._refill.discard(device_id)
             monitor.history.clear()
@@ -369,7 +474,7 @@ class HistoryStore:
             return 0
         if not history.times:
             self.commit()                    # this run's first rows, too
-            if self.db is None:
+            if self.open() is None:          # (a reader opens it read-only)
                 return 0
         step = history.step_s or update_interval_ms(self.settings) / 1000
         oldest = history.times[0] if history.times else now + (step if through_now else 0)
@@ -399,7 +504,7 @@ class HistoryStore:
                                 sessions)
         return history.backfill(slots[first:], values, offline)
 
-    # -- the statistics files of Milestone 58 ------------------------------------------------
+    # -- older versions' statistics files -------------------------------------------------------
 
     def _start_import(self) -> None:
         folder = self.import_dir
@@ -427,7 +532,7 @@ class HistoryStore:
 
 
 def import_csv(db: HistoryDb, path: Path) -> int:
-    """One M58 statistics file (``cpu.csv``, ``gpu-0000-02-00.0.csv.1``)
+    """One old statistics file (``cpu.csv``, ``gpu-0000-02-00.0.csv.1``)
     into its device's detail table; the next housekeeping sums up and
     expires what's old. Returns the rows imported."""
     import csv

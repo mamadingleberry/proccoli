@@ -1,7 +1,7 @@
-"""Sizing rules for graphs that fill the page (DESIGN.md §9.1).
+"""Sizing rules for graphs that fill the page.
 
 Graphs share the page's height, within limits that work on landscape and
-portrait screens alike (Milestone 36):
+portrait screens alike:
 
 - never shorter than ``min_height`` (below it, the page scrolls);
 - never taller than ``max_height``, nor than ``max_ratio`` × their width,
@@ -12,7 +12,7 @@ portrait screens alike (Milestone 36):
   portrait;
 - the page column is at most ``MAX_CONTENT_WIDTH`` wide.
 
-The Overview's cards (Milestone 50) instead try to fill the height
+The Overview's cards instead try to fill the height
 they're given as a grid, each chart shorter than it is wide (Milestone
 51): ``plan_grid`` picks how many columns, and so how tall each chart is.
 
@@ -115,7 +115,7 @@ def aspect_height(width: float, ratio: float, minimum: int, maximum: int) -> int
     return int(min(max(width * ratio, minimum), maximum))
 
 
-# The least a graph keeps when something below it shares its area (M57):
+# The least a graph keeps when something below it shares its area:
 # room for a plot with 0 % and 100 % labels. Low on purpose, so the per-CPU
 # chart and its legend keep the total chart's area even with many CPUs in
 # a small window.
@@ -130,7 +130,7 @@ def graph_in_area(area: int, reserve: int, floor: int = MIN_GRAPH_IN_AREA) -> in
 
 
 # The per-CPU chart's comfortable height: below it, the legend drops its
-# values (shown on hover instead) to leave the chart more of the area (M57).
+# values (shown on hover instead) to leave the chart more of the area.
 COMFORT_GRAPH = 96
 
 
@@ -145,12 +145,12 @@ def needs_update(current: int, target: int) -> bool:
     return abs(current - target) >= HYSTERESIS
 
 
-# -- the Overview's grid of cards (Milestone 50) -----------------------------------
+# -- the Overview's grid of cards -----------------------------------
 
 GRID_TARGET_RATIO = 0.5      # chart height / width the grid aims for
 GRID_MAX_COLUMNS = 4
 GRID_MIN_CHART = 80          # below it, the page scrolls
-GRID_MAX_RATIO = 1.0         # a chart's height stays below this × its width (M51)
+GRID_MAX_RATIO = 1.0         # a chart's height stays below this × its width
 EMPTY_CELL_WEIGHT = 2.0      # how much an empty cell costs, against chart shape
 UNFILLED_WEIGHT = 2.0        # how much leaving the area empty costs
 OVERFLOW_PENALTY = 10.0      # any plan that fits beats any that doesn't
@@ -201,8 +201,8 @@ def plan_grid(count: int, width: float, height: float, spacing: float = 12,
     ``max_columns`` whose cards are at least ``min_width`` wide (one column
     always qualifies) is tried, the rows sharing the height equally.
 
-    Charts *try* to fill the area (M50) but stay shorter than ``max_ratio``
-    × their width (M51), and never shorter than ``min_chart``: a plan that
+    Charts *try* to fill the area but stay shorter than ``max_ratio``
+    × their width, and never shorter than ``min_chart``: a plan that
     needs that doesn't fit, and loses to any that does. The winner fills
     the most of the area, with the chart shape nearest ``target_ratio``
     and the fewest empty cells."""
@@ -226,8 +226,7 @@ def plan_grid(count: int, width: float, height: float, spacing: float = 12,
     return best[1]
 
 
-# -- the chart grid of the GPU Details tabs (Idea 4; was the Intel tab's own,
-# Idea 3): columns chosen from the space given, spare height shared out by
+# -- the chart grid of the GPU Details tabs: columns chosen from the space given, spare height shared out by
 # each chart's weight. ``widgets/chart_grid.py`` is the widget over this.
 
 CHART_COLUMN_SPACING = 18
@@ -269,7 +268,7 @@ def column_min(items: Sequence[GridItem]) -> int:
 
 
 def graph_cap(col_w: float, limits: GraphLimits = LIMITS) -> int:
-    """The tallest a graph in a column ``col_w`` wide gets (DESIGN.md §9.1):
+    """The tallest a graph in a column ``col_w`` wide gets:
     on a portrait screen one column is narrow but very tall."""
     return min(limits.max_height, int(col_w * limits.max_ratio))
 
@@ -305,7 +304,7 @@ def extra_heights(items: Sequence[GridItem], height: int,
 def layout_quality(columns: Sequence[Sequence[GridItem]], col_w: float,
                    height: int) -> float:
     """How good a layout is: the size of its smallest graph, where height
-    beyond width / CHART_ASPECT does not count.  Negative (minus the overflow in
+    beyond width / CHART_ASPECT does not count. Negative (minus the overflow in
     pixels) when it does not fit and the page would scroll."""
     overflow = max(column_min(c) for c in columns) - height
     if overflow > 0:

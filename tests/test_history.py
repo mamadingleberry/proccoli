@@ -113,7 +113,7 @@ class HistoryTest(unittest.TestCase):
 
 
 class RegroupTest(unittest.TestCase):
-    """Points into a new step's slots (Bug 1)."""
+    """Points into a new step's slots."""
 
     def test_averages_into_longer_slots(self):
         times = [float(t) for t in range(8)]
@@ -150,7 +150,7 @@ class OfflineRunsTest(unittest.TestCase):
 
 
 class SetPlanTest(unittest.TestCase):
-    """A new time range or update interval (Bug 1): points held are never
+    """A new time range or update interval: points held are never
     drawn at a spacing they weren't taken at."""
 
     def filled(self, n=60, step=1.0):

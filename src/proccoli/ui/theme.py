@@ -1,4 +1,4 @@
-"""The app's look: light/dark style and color palette (DESIGN.md §9.3).
+"""The app's look: light/dark style and color palette.
 
 ``Theme`` applies the ``color-scheme`` preference to a style manager
 (``system`` maps to ``Adw.ColorScheme.DEFAULT``, which follows the desktop)
@@ -17,6 +17,7 @@ from typing import Optional
 
 from gi.repository import Adw, GObject
 
+from ..core.connections import Connections
 from ..core.styles import Style, style_by_id, style_css
 from ..core.palette import (DEFAULT_PALETTE, RGB, Palette, accent_of, entry_colors,
                             offline_rgba, palette_by_id, rgb_to_hex, secondary,
@@ -48,16 +49,13 @@ class Theme(GObject.Object):
         super().__init__()
         self.settings = settings
         self.style_manager = style_manager
-        self._settings_handlers = [
-            settings.connect_changed("color-scheme", lambda *_: self._on_style()),
-            settings.connect_changed("palette", lambda *_: self.emit("changed")),
-        ]
-        self._style_handlers = [
-            style_manager.connect("notify::dark", lambda *_: self.emit("changed")),
-        ]
+        self.connections = Connections()
+        self.connections.watch(settings, "color-scheme", lambda *_: self._on_style())
+        self.connections.watch(settings, "palette", lambda *_: self.emit("changed"))
+        self.connections.connect(style_manager, "notify::dark", lambda *_: self.emit("changed"))
         if hasattr(style_manager, "get_accent_color_rgba"):      # libadwaita >= 1.6
-            self._style_handlers.append(
-                style_manager.connect("notify::accent-color", lambda *_: self.emit("changed")))
+            self.connections.connect(style_manager, "notify::accent-color",
+                                     lambda *_: self.emit("changed"))
         self._apply_scheme()
 
     # -- light/dark -----------------------------------------------------------------
@@ -69,7 +67,7 @@ class Theme(GObject.Object):
     @property
     def style(self) -> Style:
         """The ``color-scheme`` preference: Follow System, Light, Dark or a
-        tinted style (Sand, Sky, Twilight, Midnight)."""
+        tinted style (Sand, Nord, Midnight and the rest)."""
         return style_by_id(self.settings.get("color-scheme"))
 
     def _apply_scheme(self) -> None:
@@ -139,12 +137,7 @@ class Theme(GObject.Object):
                 f"@define-color accent_color {accent};\n")
 
     def shutdown(self) -> None:
-        for h in self._settings_handlers:
-            self.settings.disconnect(h)
-        for h in self._style_handlers:
-            self.style_manager.disconnect(h)
-        self._settings_handlers = []
-        self._style_handlers = []
+        self.connections.disconnect_all()
 
 
 def default_theme_colors(dark: bool, accent: RGB = DEFAULT_ACCENT) -> list[RGB]:

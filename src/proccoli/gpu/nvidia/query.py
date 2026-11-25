@@ -90,7 +90,7 @@ class NvidiaSample:
 
 HISTORY_UNITS = {"graphics": "%", "memory-controller": "%", "encoder": "%", "decoder": "%",
                  "pcie": "%", "vram": "%", "temperature": "°C", "power": "W",
-                 "clock": "Hz", "memory-clock": "Hz", "fan": "%"}   # base units (Idea 4)
+                 "clock": "Hz", "memory-clock": "Hz", "fan": "%"}   # base units
 
 
 def _number(text: str) -> Optional[float]:

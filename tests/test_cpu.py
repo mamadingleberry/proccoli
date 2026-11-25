@@ -214,7 +214,7 @@ class ManagerTest(unittest.TestCase):
             manager.start()
         self.assertEqual(events, [("+", "a")])
 
-    # -- devices that fail (M55): an error page instead of a missing entry ----
+    # -- devices that fail: an error page instead of a missing entry ----
 
     def test_a_monitor_that_cant_be_built_becomes_a_failed_monitor(self):
         from proccoli.devices.base import FailedMonitor

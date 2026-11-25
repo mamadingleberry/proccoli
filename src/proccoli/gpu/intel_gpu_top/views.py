@@ -2,7 +2,7 @@
 
 - Details: the device caption and the adaptive grid of charts (engines,
   frequency, power, RC6, memory bandwidth, interrupts), compact on small
-  sizes: the shared ``ChartCard``s in a ``ChartGridView`` (Idea 4), with
+  sizes: the shared ``ChartCard``s in a ``ChartGridView``, with
   every chart preference and the user's units through ``ChartSettings``.
 - Processes: per-client engine-class utilisation.
 - Header (both tabs): pause, and the menu with Update Interval, Export as
@@ -39,9 +39,9 @@ GROUPS = {
 }
 GROUP_ORDER = list(GROUPS)
 
-# The Update Interval menu (update-interval nicks, Idea 6: never faster
+# The Update Interval menu (update-interval nicks: never faster
 # than once a second; "" follows the app's Update Interval). How much time
-# the charts show is the app's Graph Time Range (Idea 3).
+# the charts show is the app's Graph Time Range.
 INTERVALS = [("1-second", "1 Second"), ("2-seconds", "2 Seconds"), ("3-seconds", "3 Seconds"),
              ("5-seconds", "5 Seconds"), ("10-seconds", "10 Seconds"),
              ("", "Same as Update Interval")]

@@ -104,16 +104,18 @@ class SineMonitorTest(unittest.TestCase):
 
 
 class DemoGpuTest(unittest.TestCase):
-    def test_demo_gpu_never_reads_the_system(self):
+    def test_demo_gpus_never_read_the_system(self):
         from unittest import mock
 
         from proccoli.core.settings import Settings
         from proccoli.core.sysroot import SysRoot
         from proccoli.devices.demo import DemoGpuDiscoverer
-        settings = Settings.for_tests({"gpu-details-disabled": ["0000:00:02.0"]})
+        settings = Settings.for_tests({"gpu-details-disabled": ["0000:00:02.0",
+                                                                "0000:04:00.0"]})
         from helpers import FakeSystem
         d = DemoGpuDiscoverer(FakeSystem())
-        [info] = d.discover(SysRoot("/"), settings)
+        infos = d.discover(SysRoot("/"), settings)
+        self.assertEqual([i.id for i in infos], ["gpu-demo", "gpu-demo-amd"])
         real_path = SysRoot.path
         resolved = []
 
@@ -121,13 +123,14 @@ class DemoGpuTest(unittest.TestCase):
             resolved.append(str(self.root))
             return real_path(self, p)
         with mock.patch.object(SysRoot, "path", path):
-            c = d.create_monitor(info, SysRoot("/"), settings)
-            c.start()
-            self.assertIsNone(c.detail_backend)              # details turned off
-            self.assertEqual(c.summary_backend.id, "generic")
-            c.refresh(3.0)
-            self.assertIsNotNone(c.latest.usage)
-            self.assertEqual(c.process_usage(), {})
+            for info in infos:
+                c = d.create_monitor(info, SysRoot("/"), settings)
+                c.start()
+                self.assertIsNone(c.detail_backend)              # details turned off
+                self.assertEqual(c.summary_backend.id, "generic")
+                c.refresh(3.0)
+                self.assertIsNotNone(c.latest.usage)
+                self.assertEqual(c.process_usage(), {})
         self.assertNotIn("/", resolved)
 
 

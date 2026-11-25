@@ -1,4 +1,4 @@
-"""How much CPU Proccoli itself uses (PLAN.md step 15.4: under 2 % when idle
+"""How much CPU Proccoli itself uses (the goal: under 2 % when idle
 at a 1 s refresh). Runs the real services on the headless display:
 
     tests/run-headless.sh python3 tests/ui/perf.py [SECONDS]

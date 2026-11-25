@@ -1,4 +1,4 @@
-"""The error page and GPU detection in the window (Milestone 55), and the
+"""The error page and GPU detection in the window, and the
 NVIDIA Details tab. Headless display only (``make ui-test``)."""
 
 import os
@@ -179,7 +179,7 @@ class NvidiaViewTest(unittest.TestCase):
         self.assertIn("19 %", texts)
 
     def test_one_chart_family(self):
-        # Idea 4: cards in a grid, the legend rule, units, live preferences.
+        # cards in a grid, the legend rule, units, live preferences.
         from proccoli.ui.widgets.chart_card import ChartCard
         backend, view = self.make(["smi-rtx5060-laptop.csv"],
                                   {"nvidia-smi": "/usr/bin/nvidia-smi"})
@@ -220,7 +220,7 @@ class NvidiaViewTest(unittest.TestCase):
         self.assertGreater(bottom, view.grid.get_height() * 0.9)          # fills it
 
     def test_nvidia_gpu_card_readings(self):
-        # M57: the Overview card of an NVIDIA GPU: temperature and memory.
+        # the Overview card of an NVIDIA GPU: temperature and memory.
         from proccoli.gpu.backend import GpuDeps
         from proccoli.gpu.controller import GpuController
         from proccoli.gpu.info import GpuInfo, GpuVendor

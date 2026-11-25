@@ -7,7 +7,7 @@ are re-discovered every few seconds, or immediately when one of their
 
 A device whose monitor can't be built or started still appears, as a
 ``FailedMonitor``: its page explains the error and offers *Try Again*
-(``retry``), instead of the device silently missing (Milestone 55).
+(``retry``), instead of the device silently missing.
 """
 
 from __future__ import annotations
@@ -16,11 +16,10 @@ import logging
 import traceback
 from typing import Optional
 
-from gi.repository import GObject
-
 from ..core.sysroot import SysRoot
-from .base import DeviceInfo, DeviceKind, FailedMonitor, Monitor
-from ..core.ticker import graph_plan
+from .base import DeviceInfo, FailedMonitor, Monitor
+from .source import DeviceSource
+from ..core.ticker import PLAN_KEYS, graph_plan
 
 log = logging.getLogger(__name__)
 
@@ -38,40 +37,27 @@ class Discoverer:
         raise NotImplementedError
 
 
-class DeviceManager(GObject.Object):
-    __gsignals__ = {
-        "device-added": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
-        "device-removed": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
-    }
+class DeviceManager(DeviceSource):
+    """Reads the devices itself, through the discoverers registered with it."""
 
     def __init__(self, sysroot: SysRoot, settings, rescan_interval_s: float = 5.0) -> None:
-        super().__init__()
+        super().__init__(settings)
         self.sysroot = sysroot
-        self.settings = settings
         self.rescan_interval_s = rescan_interval_s
         self.discoverers: list[Discoverer] = []
-        self._monitors: dict[str, Monitor] = {}
         self._owner: dict[str, Discoverer] = {}
         self._last_rescan: Optional[float] = None
         self._ticker_handler = 0
-        self.started = False
+        self.status = "Reading devices"
         # Graphs keep their time range: the number of points follows both
-        # the range and the refresh speed (M58).
-        for key in ("graph-time-range", "update-interval"):
+        # the range and the refresh speed.
+        for key in PLAN_KEYS:
             settings.connect_changed(key, lambda *_: self._on_points_changed())
 
     def register(self, discoverer: Discoverer) -> None:
         self.discoverers.append(discoverer)
         for key in discoverer.settings_keys:
             self.settings.connect_changed(key, lambda *_: self.rescan())
-
-    # -- access ----------------------------------------------------------------
-
-    def monitors(self, kind: Optional[DeviceKind] = None) -> list[Monitor]:
-        return [m for m in self._monitors.values() if kind is None or m.info.kind == kind]
-
-    def monitor(self, device_id: str) -> Optional[Monitor]:
-        return self._monitors.get(device_id)
 
     # -- lifecycle -----------------------------------------------------------------
 

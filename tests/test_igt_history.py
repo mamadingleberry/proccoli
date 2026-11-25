@@ -29,7 +29,7 @@ class FlattenSampleTest(unittest.TestCase):
         self.assertEqual(g, {"frequency": ("Hz", {"requested": 300e6})})   # base units
 
     def test_readings_are_kept_in_base_units(self):
-        # Idea 4: so charts format them in the user's units.
+        # so charts format them in the user's units.
         g = flatten_sample({"imc-bandwidth": {"reads": 2, "unit": "MiB/s"},
                             "power": {"GPU": 1.5, "unit": "W"}})
         self.assertEqual(g, {"imc-bandwidth": ("B/s", {"reads": 2 * 2**20}),
@@ -191,7 +191,7 @@ class SnapshotDetailTest(unittest.TestCase):
 
 
 class IgtSetPlanTest(unittest.TestCase):
-    """The Details tab's history regroups like the shared one (Bug 1)."""
+    """The Details tab's history regroups like the shared one."""
 
     def make(self):
         h = History(60)

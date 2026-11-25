@@ -1,4 +1,4 @@
-"""Pages built on first visit and dropped after (Lightweight Mode, Idea 1).
+"""Pages built on first visit and dropped after (Lightweight Mode).
 
 GTK's own memory is mostly the widget trees of pages and what drawing them
 leaves behind, so in Lightweight Mode a page exists only while it's being

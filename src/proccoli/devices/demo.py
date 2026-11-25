@@ -61,11 +61,15 @@ class DemoDiscoverer(Discoverer):
         return SineMonitor(history_points=graph_points(settings))
 
 
+DEMO_AMD_SLOT = "0000:04:00.0"
+
+
 class DemoGpuDiscoverer(Discoverer):
-    """A synthetic Intel GPU for --demo: the detailed intel_gpu_top page fed
-    by generated data, with a synthetic summary backend as the alternative.
-    It uses an empty filesystem root, so nothing it reads can reach the real
-    system (whose GPU may share the demo's PCI slot)."""
+    """Two synthetic GPUs for --demo: an Intel one (the detailed
+    intel_gpu_top page fed by generated data) and an AMD APU (the amdgpu
+    Details tab), each with a synthetic summary backend. They use an
+    empty filesystem root, so nothing they read can reach the real system
+    (whose GPU may share a demo PCI slot)."""
     kind = DeviceKind.GPU
 
     def __init__(self, system) -> None:
@@ -75,18 +79,29 @@ class DemoGpuDiscoverer(Discoverer):
         return [DeviceInfo("gpu-demo", DeviceKind.GPU, "GPU", "Demo Intel Graphics",
                            GPU_ICON,
                            {"Manufacturer": "Intel Corporation", "PCI Slot": "0000:00:02.0",
-                            "Driver Used": "i915"})]
+                            "Driver Used": "i915"}),
+                DeviceInfo("gpu-demo-amd", DeviceKind.GPU, "GPU", "Demo AMD Radeon Graphics",
+                           GPU_ICON,
+                           {"Manufacturer": "Advanced Micro Devices, Inc. [AMD/ATI]",
+                            "PCI Slot": DEMO_AMD_SLOT, "Driver Used": "amdgpu"})]
 
     def create_monitor(self, info, sysroot, settings):
         from ..gpu.backend import GpuDeps
         from ..gpu.controller import GpuController
         from ..gpu.info import GpuInfo, GpuVendor
-        from ..gpu.intel_gpu_top.backend import DemoIntelGpuTopBackend
         from ..gpu.registry import GpuBackendRegistry
 
-        gpu = GpuInfo("card-demo", "0000:00:02.0", GpuVendor.INTEL, 0x8086, 0x46A3, "i915",
-                      "Demo Intel Graphics", True, None, dict(info.properties))
-        registry = GpuBackendRegistry((DemoIntelGpuTopBackend, demo_summary_backend()))
+        if info.id == "gpu-demo-amd":
+            from ..gpu.amdgpu.backend import DemoAmdgpuBackend
+            gpu = GpuInfo("card-demo-amd", DEMO_AMD_SLOT, GpuVendor.AMD, 0x1002, 0x1636,
+                          "amdgpu", info.description, True, None, dict(info.properties))
+            detail = DemoAmdgpuBackend
+        else:
+            from ..gpu.intel_gpu_top.backend import DemoIntelGpuTopBackend
+            gpu = GpuInfo("card-demo", "0000:00:02.0", GpuVendor.INTEL, 0x8086, 0x46A3, "i915",
+                          "Demo Intel Graphics", True, None, dict(info.properties))
+            detail = DemoIntelGpuTopBackend
+        registry = GpuBackendRegistry((detail, demo_summary_backend()))
         return GpuController(info, gpu, registry,
                              GpuDeps(SysRoot(DEMO_ROOT), settings, self.system),
                              graph_points(settings))

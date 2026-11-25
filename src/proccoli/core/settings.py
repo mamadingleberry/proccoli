@@ -179,7 +179,7 @@ class _DictStore:
         self.handlers.pop(handler, None)
 
     def bind(self, key: str, obj: GObject.Object, prop: str) -> None:
-        raise NotImplementedError  # handled generically in Settings.bind
+        raise NotImplementedError  # handled generically in Settings.bind()
 
 
 # -- public API -------------------------------------------------------------------
@@ -338,8 +338,7 @@ def compile_source_schema() -> Optional[Path]:
 
 
 def migrate(settings) -> list[str]:
-    """Carry choices over from keys that were replaced, once (Idea 6:
-    *Refresh Speed* became *Update Interval*). The old key is reset after,
+    """Carry choices over from keys that were replaced, once (*Refresh Speed* became *Update Interval*). The old key is reset after,
     so this does nothing on later starts or a fresh install. Returns what
     it did, for the log."""
     from .ticker import REFRESH_SPEED_TO_INTERVAL

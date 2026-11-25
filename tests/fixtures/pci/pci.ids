@@ -7,6 +7,7 @@
 		8086 2212  Example subsystem (ignored)
 1002  Advanced Micro Devices, Inc. [AMD/ATI]
 	744c  Navi 31 [Radeon RX 7900 XT/7900 XTX/7900 GRE/7900M]
+	1636  Renoir [Radeon RX Vega 6 (Ryzen 4000/5000 Mobile Series)]
 10de  NVIDIA Corporation
 	2684  AD102 [GeForce RTX 4090]
 C 00  Unclassified device

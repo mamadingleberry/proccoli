@@ -1,5 +1,5 @@
-"""Hiding the sidebar at any width; the main menu (the logo since M61)
-stays top left (Milestone 46);
+"""Hiding the sidebar at any width; the main menu (the logo)
+stays top left;
 the sidebar's Full / Icons Only / Hidden modes in the main menu (Milestones
 52 and 54)."""
 
@@ -132,7 +132,7 @@ class ControllerTest(unittest.TestCase):
         self.settings.set(STYLE_SETTING, "icons")
         self.assertEqual(self.styles, [SidebarStyle.FULL])     # only the first, at start
 
-    # -- Full / Icons Only / Hidden (M54) ---------------------------------------------
+    # -- Full / Icons Only / Hidden ---------------------------------------------
 
     def mode(self):
         return self.vis.mode_action.get_state().get_string()
@@ -222,14 +222,14 @@ class WindowTest(unittest.TestCase):
 
     def assert_corner(self, logo, win):
         """The logo in the top-left corner, nothing after it in the same box
-        (the sidebar toggle is a menu item, M52; the burger went in M61)."""
+        (the sidebar toggle is a menu item)."""
         from proccoli import APP_ID
         x, y = self.at(logo, win)
         self.assertLess(x, 40, "logo at the left edge")
         self.assertLess(y, 40, "logo at the top")
         self.assertIsNone(logo.get_next_sibling(), "nothing after the logo (no burger)")
         self.assertEqual(logo.get_child().get_icon_name(), APP_ID)
-        # M61: the logo is the main menu, About its first item.
+        # the logo is the main menu, About its first item.
         self.assertIsInstance(logo, Gtk.MenuButton)
         self.assertIs(logo.get_menu_model(), win.menu_model)
         self.assertTrue(logo.get_primary())                   # F10
@@ -367,7 +367,7 @@ class WindowTest(unittest.TestCase):
         win = self.make()
         container = win.containers["demo"]
         win.remove_page("demo")
-        self.assertEqual(container._split_handlers, [])
+        self.assertEqual(len(container.split_connections), 0)
         win.split_view.set_show_sidebar(False)                # no error from the old one
 
 

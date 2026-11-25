@@ -17,7 +17,7 @@ class MemoryPage(DevicePage):
     def __init__(self, monitor: MemoryMonitor, settings,
                  authenticate: Optional[Callable[["MemoryPage"], None]] = None) -> None:
         super().__init__(monitor, settings, PageKind.MEMORY)
-        # Supplied once the privileged helper exists (Milestone 12): called
+        # Supplied once the privileged helper exists: called
         # with the page, it fetches the modules and calls show_modules().
         self.authenticate = authenticate
         self.banner = self.add_banner("You need to authenticate to see memory properties",

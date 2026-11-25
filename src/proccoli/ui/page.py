@@ -15,13 +15,14 @@ from typing import Optional
 from gi.repository import Adw, GLib, GObject, Gtk
 
 from .. import APP_ID, APP_NAME
+from ..core.connections import Connections
 from ..core.history import Series
 from ..core.units import format_percent
 from .layout import CONTENT_TIGHTENING, MAX_CONTENT_WIDTH
 
 
 class PageKind(str, Enum):
-    """Sidebar groups, in sidebar order (DESIGN.md §9.2)."""
+    """Sidebar groups, in sidebar order."""
     OVERVIEW = "overview"
     APPS = "apps"
     PROCESSES = "processes"
@@ -55,7 +56,7 @@ class SidebarSummary:
     # Graph meter scale: 100 for percentages, None to scale to the data
     # (network speeds, which have no percentage and no progress bar).
     max_value: Optional[float] = 100.0
-    # Current readings for the Overview card (M57): processor temperature;
+    # Current readings for the Overview card: processor temperature;
     # GPU temperature and memory ("Memory 598.7 MB / 8.5 GB").
     facts: list[str] = field(default_factory=list)
 
@@ -87,6 +88,8 @@ class ResourcePage(Adw.Bin):
     __gsignals__ = {
         "summary-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
+    # The graph toolbar's graph items show only on pages with graphs.
+    has_graphs = False
 
     def __init__(self, page_id: str, kind: PageKind, title: str, icon_name: str,
                  description: str = "", sort_name: str = "") -> None:
@@ -123,7 +126,7 @@ class ResourcePage(Adw.Bin):
 
     def elevation_offer(self):
         """What this page could show with administrator rights right now,
-        as a ``ui.elevation.ElevationOffer``, or None (DESIGN.md §9.4)."""
+        as a ``ui.elevation.ElevationOffer``, or None."""
         return None
 
     def set_entry_color(self, index: Optional[int]) -> None:
@@ -154,7 +157,7 @@ class ScrollingPage(ResourcePage):
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
         for side in ("top", "bottom", "start", "end"):
             getattr(self.box, f"set_margin_{side}")(24)
-        # Wide enough that graphs use the window (DESIGN.md §9.1), but text
+        # Wide enough that graphs use the window, but text
         # rows don't stretch across a whole 4K screen.
         self.clamp = Adw.Clamp(maximum_size=MAX_CONTENT_WIDTH,
                                tightening_threshold=CONTENT_TIGHTENING, child=self.box)
@@ -171,11 +174,10 @@ class ScrollingPage(ResourcePage):
 
 
 class FittingPage(ScrollingPage):
-    """A ``ScrollingPage`` that sizes its content to the visible area
-    (DESIGN.md §9.1): whenever the scroller's size changes, ``fit(width,
-    height)`` runs once, on idle (never during allocation). Device pages
-    fit their graphs (Milestone 22), the Overview its grid of cards
-    (Milestone 50).
+    """A ``ScrollingPage`` that sizes its content to the visible area:
+    whenever the scroller's size changes, ``fit(width, height)`` runs
+    once, on idle (never during allocation). Device pages fit their
+    graphs, the Overview its grid of cards.
 
     ``fit`` returns True when it changed the layout in a way it needs to
     see laid out before fitting again (stacking a pair of graphs)."""
@@ -251,8 +253,8 @@ LOGO_SIZE = 24
 
 
 def main_menu_button(menu_model) -> Gtk.MenuButton:
-    """The main menu, always at the window's top left (§9.2): the app's
-    logo is its button (M61; it replaced the logo-and-burger pair). F10
+    """The main menu, always at the window's top left: the app's
+    logo is its button (it replaced the logo-and-burger pair). F10
     opens it too (``primary``)."""
     image = Gtk.Image(icon_name=APP_ID, pixel_size=LOGO_SIZE)
     button = Gtk.MenuButton(child=image, menu_model=menu_model, primary=True,
@@ -266,7 +268,7 @@ class PageContainer(Adw.Bin):
     """Header bar (title, page buttons and, when the sidebar isn't beside
     the content, the logo and the main menu at the start) around a page.
     The sidebar is shown again from the main menu (*Sidebar* → *Full* or
-    *Icons Only*, M54) or F9."""
+    *Icons Only*) or F9."""
 
     def __init__(self, page: ResourcePage,
                  split_view: Optional[Adw.OverlaySplitView] = None,
@@ -284,11 +286,11 @@ class PageContainer(Adw.Bin):
             self.menu_button = main_menu_button(menu_model)
             self.start_controls.append(self.menu_button)
         self.split_view = split_view
-        self._split_handlers: list[int] = []
+        self.split_connections = Connections()
         if split_view is not None:
-            self._split_handlers = [
-                split_view.connect(f"notify::{p}", lambda *_: self._sync_controls())
-                for p in ("collapsed", "show-sidebar")]
+            for p in ("collapsed", "show-sidebar"):
+                self.split_connections.connect(split_view, f"notify::{p}",
+                                               lambda *_: self._sync_controls())
             self._sync_controls()
         else:
             self.start_controls.set_visible(False)
@@ -311,9 +313,7 @@ class PageContainer(Adw.Bin):
 
     def release(self) -> None:
         """Stop following the split view (the page is being removed)."""
-        for h in self._split_handlers:
-            self.split_view.disconnect(h)
-        self._split_handlers = []
+        self.split_connections.disconnect_all()
 
     def set_page(self, page: ResourcePage) -> None:
         if self.page is not None and page.page_id != self.page.page_id:
@@ -328,3 +328,19 @@ class PageContainer(Adw.Bin):
         for w in reversed(self._extras):
             self.header.pack_end(w)
         self.toolbar.set_content(page)
+
+    # -- the graph toolbar: one per window, under the shown page's header --
+
+    def attach_toolbar(self, toolbar: Gtk.Widget) -> None:
+        if toolbar.get_parent() is None:
+            self.toolbar.add_top_bar(toolbar)
+
+    def detach_toolbar(self, toolbar: Gtk.Widget) -> None:
+        if self.has_toolbar(toolbar):
+            self.toolbar.remove(toolbar)
+
+    def has_toolbar(self, toolbar: Gtk.Widget) -> bool:
+        parent = toolbar.get_parent()
+        while parent is not None and parent is not self.toolbar:
+            parent = parent.get_parent()
+        return parent is self.toolbar

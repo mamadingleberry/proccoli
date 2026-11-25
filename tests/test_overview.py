@@ -1,4 +1,4 @@
-"""The Overview page (Milestones 39, 41 and 50)."""
+"""The Overview page (41 and 50)."""
 
 import os
 import sys
@@ -138,7 +138,7 @@ class OverviewPageTest(unittest.TestCase):
         self.settings.set("show-graph-axes", False)
         self.assertFalse(graph.show_axes)
         self.settings.set("update-interval", "2-seconds")
-        self.assertEqual(graph.time_span_s, 60.0)      # M58: the time range holds
+        self.assertEqual(graph.time_span_s, 60.0)      # the time range holds
         self.settings.set("graph-time-range", "2-minutes")
         self.assertEqual(graph.time_span_s, 120.0)
 
@@ -225,7 +225,7 @@ class OverviewWindowTest(unittest.TestCase):
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class GridFillsThePageTest(unittest.TestCase):
-    """Milestones 50 and 51: the cards form an N × M grid that tries to fill
+    """The cards form an N × M grid that tries to fill
     the page, each chart shorter than wide.
 
     The headless display is at most 1024 × 768, so "portrait" here is a
@@ -253,7 +253,9 @@ class GridFillsThePageTest(unittest.TestCase):
         """The real window's Overview, with its tables."""
         from helpers import make_context
         from proccoli.ui.window import MainWindow
-        ctx = make_context(self, settings=Settings.for_tests())
+        # The geometry below is measured without the graph toolbar's row
+        # (WindowToolbarTest checks the page gets that room back).
+        ctx = make_context(self, settings=Settings.for_tests({"show-toolbar": False}))
         ctx.start()
         ctx.devices.refresh(1.0)
         win = MainWindow(self.app, ctx)
@@ -356,7 +358,7 @@ class GridFillsThePageTest(unittest.TestCase):
                                 card.page_id)
 
     def test_charts_are_shorter_than_wide(self):
-        # Milestone 51, at portrait, landscape and in-between sizes.
+        # at portrait, landscape and in-between sizes.
         for count, width, height in ((1, 480, 768), (2, 480, 768), (2, 1024, 768),
                                      (3, 700, 768), (4, 1024, 520), (6, 1024, 768)):
             with self.subTest(count=count, width=width, height=height):
@@ -407,7 +409,7 @@ class GridFillsThePageTest(unittest.TestCase):
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class CardFactsTest(unittest.TestCase):
-    """M57: processor and GPU cards show their current readings."""
+    """processor and GPU cards show their current readings."""
 
     def test_readings_line(self):
         page = FakePage("gpu", "GPU", facts=["Temperature 39 °C",

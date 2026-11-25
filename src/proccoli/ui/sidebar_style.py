@@ -1,7 +1,6 @@
-"""The sidebar's three modes: full, icons only, or hidden (DESIGN.md §9.2,
-Milestone 54).
+"""The sidebar's three modes: full, icons only, or hidden.
 
-Two settings hold the mode: ``sidebar-shown`` (shown or hidden, M46) and
+Two settings hold the mode: ``sidebar-shown`` (shown or hidden) and
 ``sidebar-style`` (full or icons only). Hiding keeps the style, so F9 brings
 back the sidebar as it was. In the icons-only style each entry shows just
 its icon, and hovering shows its name, description and usage.
@@ -52,12 +51,22 @@ def mode_of(shown: bool, style) -> Mode:
     return Mode.ICONS if parse_style(style) == SidebarStyle.ICONS else Mode.FULL
 
 
-def choose(mode, style) -> tuple[bool, SidebarStyle]:
+def menu_modes(full_allowed: bool = True) -> tuple[Mode, ...]:
+    """The modes the main menu offers. Lightweight Mode pins the style to
+    icons only, so *Full* isn't one of them then."""
+    return tuple(Mode) if full_allowed else (Mode.ICONS, Mode.HIDDEN)
+
+
+def choose(mode, style, full_allowed: bool = True) -> tuple[bool, SidebarStyle]:
     """``(shown, style)`` for a mode picked from the menu. *Hidden* keeps
-    the current style, so showing the sidebar again restores it."""
+    the current style, so showing the sidebar again restores it. Without
+    ``full_allowed``, a request for *Full* (a stale menu target) gets
+    icons only."""
     mode = Mode(mode)
     if mode == Mode.HIDDEN:
         return False, parse_style(style)
+    if mode == Mode.FULL and not full_allowed:
+        mode = Mode.ICONS
     return True, SidebarStyle.ICONS if mode == Mode.ICONS else SidebarStyle.FULL
 
 

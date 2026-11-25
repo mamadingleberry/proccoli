@@ -1,12 +1,17 @@
-"""The Overview page (DESIGN.md §9.6, Milestones 39 and 41): one card per
+"""The Overview page: one card per
 sidebar entry with a chart (every device; not Apps or Processes), in the
 sidebar's order and colors. A card shows the entry's icon, name, usage
 line and a chart of its sidebar series; clicking it opens that page.
 Below the cards, the ten busiest apps and processes (``TopTables``).
 
+In Lightweight Mode each card has the sidebar's small chart
+instead (no axes, no hover; the sidebar is icons only then), the cards
+form a plain list in columns, and the tables show five rows each, without
+icons.
+
 The cards form an N × M grid that tries to fill the height the page
-gives it (Milestone 50), each chart shorter than it is wide (Milestone
-51): ``layout.plan_grid`` picks the columns and chart height for the
+gives it, each chart shorter than it is wide (Milestone
+51): ``layout.plan_grid()`` picks the columns and chart height for the
 space left above the tables, on every size change.
 
 The page knows nothing about the sidebar: the window hands it the entries
@@ -23,6 +28,7 @@ from typing import Callable, Optional, Sequence
 from gi.repository import Gtk, Pango
 
 from ... import OVERVIEW_ICON
+from ...core.connections import Connections
 from ...core.profile import Profile
 from ..chart_settings import ChartKind, ChartSettings
 from ..layout import (GRID_MAX_RATIO, GRID_MIN_CHART, LIMITS, GridPlan, card_width,
@@ -30,7 +36,8 @@ from ..layout import (GRID_MAX_RATIO, GRID_MIN_CHART, LIMITS, GridPlan, card_wid
 from ..page import FittingPage, PageKind, ResourcePage, ScrollingPage, SidebarSummary
 from ...core.units import Base, format_bytes, format_percent
 from ...processes.top import TOP_COUNT, TopMetric, top_apps, top_processes
-from ..widgets.graph import Graph, GraphStyle
+from ..widgets.graph import Graph, PaneGraph, SidebarGraph
+from ..widgets.meter import METER_HEIGHT, METER_HEIGHT_WITH_AXES
 from ..widgets.top_table import TopTable
 
 CARD_MIN_WIDTH = LIMITS.min_width      # narrower cards would cramp the chart
@@ -43,12 +50,17 @@ MAX_COLUMNS = 4
 TOP_TABLE_MIN_WIDTH = 340              # two tables side by side above 2 × this
 
 
+CHART_FULL = "full"       # with axes and hover, fitted to the page
+CHART_SMALL = "small"     # the sidebar's small chart (Lightweight Mode)
+
+
 class OverviewCard(Gtk.Box):
-    """One entry: icon, name, usage line, chart (DESIGN.md §9.6)."""
+    """One entry: icon, name, usage line, chart."""
 
     def __init__(self, page: ResourcePage, color: Optional[int],
-                 charts: Optional[ChartSettings], chart: bool = True) -> None:
-        """``chart=False``: name and readings only (Lightweight Mode)."""
+                 charts: Optional[ChartSettings], chart: Optional[str] = CHART_FULL) -> None:
+        """``chart``: ``CHART_FULL``, ``CHART_SMALL`` (Lightweight Mode) or
+        None (name and readings only)."""
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=8,
                          width_request=CARD_MIN_WIDTH)
         self.add_css_class("card")
@@ -71,18 +83,21 @@ class OverviewCard(Gtk.Box):
         self.detail_label = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
         self.detail_label.add_css_class("caption")
         self.detail_label.add_css_class("dim-label")
-        # Current readings: temperature, GPU memory used / total (M57).
+        # Current readings: temperature, GPU memory used / total.
         self.facts_label = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END,
                                      visible=False)
         self.facts_label.add_css_class("caption")
         self.facts_label.add_css_class("numeric")
         self.graph: Optional[Graph] = None
         self.empty_label: Optional[Gtk.Label] = None
+        self.chart = chart
         if chart:
-            self.graph = Graph(GraphStyle.NORMAL)
-            self.graph.set_content_height(CARD_START_CHART)   # the page fits it
-            self.empty_label = Gtk.Label(label="No data", vexpand=True,
-                                         height_request=CARD_START_CHART)
+            small = chart == CHART_SMALL
+            height = METER_HEIGHT if small else CARD_START_CHART   # the page fits full ones
+            self.graph = SidebarGraph() if small else PaneGraph()
+            self.graph.set_content_height(height)
+            self.empty_label = Gtk.Label(label="No data", vexpand=not small,
+                                         height_request=height)
             self.empty_label.add_css_class("dim-label")
         inner.append(header)
         inner.append(self.detail_label)
@@ -91,11 +106,14 @@ class OverviewCard(Gtk.Box):
             inner.append(self.graph)
             inner.append(self.empty_label)
         self.append(inner)
-        self.charts = charts            # axes, time span, hover units (Idea 4)
+        self.charts = charts            # axes, time span, hover units
         self.page: Optional[ResourcePage] = None
         self._handler = 0
         if charts is not None and self.graph is not None:
-            charts.bind(self.graph, ChartKind.CARD)
+            if chart == CHART_SMALL:      # as a sidebar meter: no hover, axes pinned off
+                charts.bind(self.graph, ChartKind.METER, show_axes=self._small_axes)
+            else:
+                charts.bind(self.graph, ChartKind.CARD)
         self.set_page(page, color)
 
     @property
@@ -144,10 +162,15 @@ class OverviewCard(Gtk.Box):
             if self.get_mapped():
                 self.graph.queue_draw()
 
+    def _small_axes(self, show: bool) -> None:
+        """A small chart grows by a label row with axes, like a meter."""
+        self.graph.set_show_axes(show)
+        self.graph.set_content_height(METER_HEIGHT_WITH_AXES if show else METER_HEIGHT)
+
     def set_chart_height(self, height: int) -> None:
-        """The page's grid decides (Milestone 50); "No data" takes the
-        same space, so cards stay alike."""
-        if self.graph is not None and needs_update(self.graph.get_content_height(), height):
+        """The page's grid decides; "No data" takes the
+        same space, so cards stay alike. Small charts keep their height."""
+        if self.chart == CHART_FULL and needs_update(self.graph.get_content_height(), height):
             self.graph.set_content_height(height)
             self.empty_label.set_size_request(-1, height)
 
@@ -188,17 +211,21 @@ class OverviewCard(Gtk.Box):
 
 
 class TopTables(Gtk.Box):
-    """Top apps and top processes (Milestone 41), ranked by
+    """Top apps and top processes, ranked by
     ``overview-top-by``. Samples processes only while mapped
-    (``monitor.acquire``/``release``, as the Apps and Processes pages do)."""
+    (``monitor.acquire()``/``release``, as the Apps and Processes pages do)."""
 
-    def __init__(self, monitor, grouper, settings, navigate: Callable[[str], None]) -> None:
+    def __init__(self, monitor, grouper, settings, navigate: Callable[[str], None],
+                 count: int = TOP_COUNT, icons: bool = True) -> None:
+        """``count`` rows per table; ``icons=False`` (Lightweight Mode)
+        leaves the app icons out."""
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.icons = icons
         self.monitor = monitor
         self.grouper = grouper
         self.settings = settings
         self._acquired = False
-        self._handlers: list[tuple[object, int]] = []
+        self.connections = Connections()
 
         header = Gtk.Box(spacing=12)
         title = Gtk.Label(label="Busiest", xalign=0, hexpand=True)
@@ -218,8 +245,8 @@ class TopTables(Gtk.Box):
         header.append(toggles)
         self.append(header)
 
-        self.apps = TopTable("Apps", TOP_COUNT, lambda: navigate("apps"))
-        self.processes = TopTable("Processes", TOP_COUNT, lambda: navigate("processes"))
+        self.apps = TopTable("Apps", count, lambda: navigate("apps"), icons)
+        self.processes = TopTable("Processes", count, lambda: navigate("processes"), icons)
         # Side by side when there's room; stacked on narrow (portrait) pages.
         # Not homogeneous: the shorter table mustn't leave a gap below itself.
         self.flow = Gtk.FlowBox(homogeneous=False, min_children_per_line=1,
@@ -232,11 +259,9 @@ class TopTables(Gtk.Box):
             table.get_parent().set_focusable(False)       # rows take the focus
         self.append(self.flow)
 
-        self._handlers.append((monitor, monitor.connect("updated", lambda *_: self.refresh())))
-        self._handlers.append((settings, settings.connect_changed(
-            "overview-top-by", lambda *_: self._sync_metric())))
-        self._handlers.append((settings, settings.connect_changed(
-            "base", lambda *_: self.refresh())))
+        self.connections.connect(monitor, "updated", lambda *_: self.refresh())
+        self.connections.watch(settings, "overview-top-by", lambda *_: self._sync_metric())
+        self.connections.watch(settings, "base", lambda *_: self.refresh())
         self._sync_metric()
 
     @property
@@ -261,10 +286,13 @@ class TopTables(Gtk.Box):
 
         def row(item, icon):
             return (item.name, icon, format_percent(item.cpu), format_bytes(item.memory, base))
-        self.apps.set_rows([row(a, a.icon) for a in
-                            top_apps(self.grouper.group(processes).values(), self.metric)])
-        self.processes.set_rows([row(p, self.grouper.icon_for(p)) for p in
-                                 top_processes(processes, self.metric)])
+        count = len(self.apps.rows)
+        icons = self.icons
+        self.apps.set_rows([row(a, a.icon if icons else None) for a in
+                            top_apps(self.grouper.group(processes).values(), self.metric,
+                                     count)])
+        self.processes.set_rows([row(p, self.grouper.icon_for(p) if icons else None) for p in
+                                 top_processes(processes, self.metric, count)])
 
     def start(self) -> None:
         if not self._acquired:
@@ -279,9 +307,7 @@ class TopTables(Gtk.Box):
 
     def shutdown(self) -> None:
         self.stop()
-        for source, handler in self._handlers:
-            source.disconnect(handler)
-        self._handlers = []
+        self.connections.disconnect_all()
 
 
 class OverviewPage(FittingPage):
@@ -291,11 +317,12 @@ class OverviewPage(FittingPage):
     natural height and the cards share what's left; when that would make
     the charts shorter than ``GRID_MIN_CHART``, the cards take the whole
     page and the tables scroll into view below them."""
+    has_graphs = True
 
     def __init__(self, settings, navigate: Callable[[str], None],
                  processes=None, grouper=None, profile: Optional[Profile] = None) -> None:
-        """``profile``: Lightweight Mode makes it a list of names and
-        readings, without charts or the busiest tables (Idea 1)."""
+        """``profile``: Lightweight Mode makes it a list of cards with small
+        charts, and short busiest tables without icons."""
         super().__init__("overview", PageKind.OVERVIEW, "Overview", OVERVIEW_ICON)
         self.settings = settings
         self.profile = profile or Profile.full()
@@ -308,7 +335,8 @@ class OverviewPage(FittingPage):
                                 max_children_per_line=1, column_spacing=CARD_SPACING,
                                 row_spacing=CARD_SPACING, selection_mode=Gtk.SelectionMode.NONE,
                                 activate_on_single_click=True, valign=Gtk.Align.START)
-        if not self.profile.overview_charts:
+        self.chart_kind = self.profile.overview_chart
+        if self.chart_kind != CHART_FULL:
             self.flow.set_max_children_per_line(3)     # a list in columns
         self.flow.connect("child-activated", self._on_activated)
         self.box.append(self.flow)
@@ -319,7 +347,8 @@ class OverviewPage(FittingPage):
         # Without a process monitor (demo mode, tests) there are no tables.
         self.tops: Optional[TopTables] = None
         if processes is not None and grouper is not None and self.profile.overview_tables:
-            self.tops = TopTables(processes, grouper, settings, navigate)
+            self.tops = TopTables(processes, grouper, settings, navigate,
+                                  self.profile.overview_top_count, self.profile.app_icons)
             self.box.append(self.tops)
 
     def do_map(self) -> None:
@@ -345,7 +374,7 @@ class OverviewPage(FittingPage):
             card = self.cards.get(page.page_id)
             if card is None:
                 card = self.cards[page.page_id] = OverviewCard(page, color, self.charts,
-                                                                  self.profile.overview_charts)
+                                                                  self.chart_kind)
                 self.flow.append(card)
             else:
                 card.set_page(page, color)
@@ -367,12 +396,12 @@ class OverviewPage(FittingPage):
             child = child.get_next_sibling()
         return out
 
-    # -- the grid fills the page (Milestone 50) ---------------------------------------
+    # -- the grid fills the page ---------------------------------------
 
     def fit_key(self) -> tuple:
         # The tables grow from "Waiting for data…" to ten rows, and the
         # cards come and go: either changes the space to share.
-        # A card's readings line appears with its first data (M57): the
+        # A card's readings line appears with its first data: the
         # cards' chrome changes, so fit again then too.
         return (*self.viewport_size(), len(self.cards), self._tables_height(),
                 sum(c.facts_label.get_visible() for c in self.cards.values()))
@@ -408,7 +437,7 @@ class OverviewPage(FittingPage):
         count = len(self.cards)
         min_width = max([CARD_MIN_WIDTH] + [c.min_width() for c in self.cards.values()])
         # The chart's real width, so "shorter than wide" holds on screen
-        # (M51). Before the first layout it's estimated, and the page fits
+        #. Before the first layout it's estimated, and the page fits
         # again once laid out.
         slot = card_width(self.flow.get_width(), self.flow.get_max_children_per_line(),
                           CARD_SPACING)
@@ -431,7 +460,7 @@ class OverviewPage(FittingPage):
         return best
 
     def fit(self, _vw: int, vh: int) -> bool:
-        if not self.profile.overview_charts:       # a plain list: nothing to fit
+        if self.chart_kind != CHART_FULL:          # a plain list: nothing to fit
             return False
         width = self.box.get_width()
         if not self.cards or width <= 0 or vh <= 0:

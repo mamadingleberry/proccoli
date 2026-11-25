@@ -1,5 +1,5 @@
 """ui.chart_settings.ChartSettings: the one place graphs get their
-preferences (Idea 4). Fake graphs, so no display is needed."""
+preferences. Fake graphs, so no display is needed."""
 
 import os
 import sys
@@ -60,9 +60,8 @@ class ChartSettingsTest(unittest.TestCase):
         self.charts.bind(meter, ChartKind.METER)
         for g in (page, card, meter):
             self.assertTrue(g.show_axes)
+            self.assertTrue(g.show_grid)                  # every kind
             self.assertEqual(g.time_span_s, 60.0)
-        self.assertTrue(page.show_grid)
-        self.assertFalse(card.show_grid)                  # only page graphs
         self.assertIsNotNone(page.axis_format)            # value axes on page graphs
         self.assertIsNone(card.axis_format)
         self.assertIsNotNone(card.value_format)           # hover in the user's units
@@ -78,6 +77,7 @@ class ChartSettingsTest(unittest.TestCase):
         self.settings.set("graph-time-range", "5-minutes")
         self.assertFalse(page.show_axes)
         self.assertFalse(page.show_grid)
+        self.assertFalse(meter.show_grid)
         self.assertEqual(page.time_span_s, 300.0)
         self.assertEqual(axes[-1], False)                 # the meter's own handler
         self.assertFalse(meter.show_axes)

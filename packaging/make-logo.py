@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Draw Proccoli's app icon (DESIGN.md §9.3, Milestone 38) as SVG.
+"""Draw Proccoli's app icon as SVG.
 
 A gauge whose needle is a broccoli: the stalk is the needle's shaft and
 pivot, the crown its head, so the vegetable's awkward shape (thin stem,
@@ -11,7 +11,7 @@ The florets' buds are placed by a seeded random generator, so the output
 is the same on every run. Run ``make icons`` after changing this file; it
 writes the scalable SVG and renders the PNGs.
 
-    python3 packaging/make-logo.py [OUT.svg]
+    python3 packaging/make-logo.py [OUT.svg()]
 """
 
 from __future__ import annotations

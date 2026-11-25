@@ -1,4 +1,4 @@
-"""The metrics history database (Idea 2): core.history_db,
+"""The metrics history database: core.history_db,
 core.history_store, core.history_export, and History.backfill."""
 
 import csv
@@ -12,9 +12,10 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, os.path.dirname(__file__))
 
 from proccoli.core.history import Averager, History  # noqa: E402
-from proccoli.core.history_db import (DAY_MS, HOUR_MS, MINUTE_MS, HistoryDb,  # noqa: E402
+from proccoli.core.history_db import (DAY_MS, HOUR_MS, MINUTE_MS, HistoryDb, delete_files,  # noqa: E402
                                       column_name, from_fixed, scale_for, table_name,
                                       to_fixed, unit_of_column)
 from proccoli.core.history_export import (export_session, file_stem,  # noqa: E402
@@ -499,6 +500,23 @@ class BackfillTest(StoreCase):
         self.assertTrue(all(v is None or abs(v - 0.5) < 1e-9 for v in added))
         self.assertGreater(sum(v is not None for v in added), 95)
 
+    def test_a_custom_week_fills_from_minute_averages(self):
+        # a 7-day custom range, past the day of detail kept.
+        self.make(Device(), **{"history-detail-hours": 24})
+        self.tick(6 * 24 * 60, step=60.0)                     # six days at 1 minute
+        self.store.housekeeping()                             # older detail → minutes
+        self.store.shutdown()
+        self.clock[0] += 60
+        self.make(Device(), **{"graph-time-range": "custom",
+                               "graph-time-range-custom": 7 * 86400})
+        history = self.monitor("cpu").history
+        self.assertLessEqual(history.max_points, 1200)
+        self.tick()
+        values = [v for v in history.series("usage").values if v is not None]
+        # Six of the seven days have readings: most of the points are filled.
+        self.assertGreater(len(values), 0.8 * 6 / 7 * history.max_points)
+        self.assertTrue(all(abs(v - 25.0) < 1e-9 for v in values))
+
     def test_a_details_tab_fills_too(self):
         from proccoli.gpu.intel_gpu_top.history import History as IgtHistory
         target = IgtHistory(61)
@@ -532,7 +550,7 @@ class BackfillTest(StoreCase):
         self.assertLessEqual(times[-1] - times[0], span_s + step)
 
     def test_range_changes_never_stretch_old_points(self):
-        # Bug 1: 3 hours of readings, then 1 minute → 1 hour → 6 hours →
+        # 3 hours of readings, then 1 minute → 1 hour → 6 hours →
         # 1 day. Each graph's points are its own step apart and cover the
         # 3 hours, not the whole axis.
         self.make(Device(), **{"update-interval": "10-seconds"})
@@ -651,7 +669,7 @@ class ExportTest(StoreCase):
         result = export_session(self.path, out, self.store.session, ms(self.clock[0]), "9.9",
                                 now_s=T0, progress=lambda d, t: progress.append((d, t)))
         self.assertEqual(result.folder, out / "proccoli-statistics-20261123T214125Z")
-        self.assertEqual(result.files, ["memory.csv", "export.json"])
+        self.assertEqual(result.files, ["memory.csv", "devices.csv", "export.json"])
         self.assertEqual(progress, [(1, 1)])
         rows = read_rows(result.folder / "memory.csv")
         self.assertEqual(rows[0], ["time_utc", "usage_percent", "swap_percent", "used_bytes",
@@ -677,7 +695,7 @@ class ExportTest(StoreCase):
         out = self.dir / "out"
         out.mkdir()
         result = export_session(self.path, out, self.store.session, ms(self.clock[0]))
-        self.assertEqual(result.files, ["cpu-minutes.csv", "cpu.csv", "export.json"])
+        self.assertEqual(result.files, ["cpu-minutes.csv", "cpu.csv", "devices.csv", "export.json"])
         minutes = read_rows(result.folder / "cpu-minutes.csv")
         self.assertEqual(minutes[0], ["time_utc", "usage_percent_avg", "usage_percent_min",
                                       "usage_percent_max"])
@@ -723,3 +741,336 @@ class ConstantsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeviceInfoDbTest(TempFolder):
+    """The history keeps what each device is, when it changes."""
+
+    def db(self, path=None, readonly=False):
+        db = HistoryDb(path or self.path, readonly=readonly)
+        self.addCleanup(db.close)
+        return db
+
+    def test_written_only_when_it_changes(self):
+        db = self.db()
+        tbl = db.ensure_device("gpu", "GPU", "gpu")
+        self.assertTrue(db.record_info(tbl, 1000, "Radeon", {"Driver Used": "amdgpu"}))
+        self.assertFalse(db.record_info(tbl, 2000, "Radeon", {"Driver Used": "amdgpu"}))
+        self.assertTrue(db.record_info(tbl, 3000, "Radeon", {"Driver Used": "amdgpu 2"}))
+        rows = db.device_info(tbl, 0, 10_000)
+        self.assertEqual([r["time"] for r in rows], [1000, 3000])
+
+    def test_a_new_connection_remembers_the_last_row(self):
+        db = self.db()
+        tbl = db.ensure_device("cpu", "Processor", "cpu")
+        db.record_info(tbl, 1000, "", {"Sockets": "1"})
+        self.assertFalse(self.db().record_info(tbl, 5000, "", {"Sockets": "1"}))
+
+    def test_a_range_gets_the_row_in_effect_then_the_changes(self):
+        db = self.db()
+        tbl = db.ensure_device("d", "D", "drive")
+        for t, model in ((1000, "a"), (5000, "b"), (9000, "c"), (20_000, "d")):
+            db.record_info(tbl, t, "", {"Model": model})
+        rows = db.device_info(tbl, 6000, 10_000)
+        self.assertEqual([(r["time"], r["properties"]["Model"]) for r in rows],
+                         [(5000, "b"), (9000, "c")])
+        self.assertEqual(db.device_info(tbl, 0, 500), [])
+
+    def test_a_version_1_database_gains_the_table(self):
+        import sqlite3
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(self.path)
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute("INSERT INTO meta VALUES ('schema', '1')")
+        conn.commit()
+        conn.close()
+        self.assertEqual(self.db(readonly=True).device_info("d_x", 0, 1), [])   # no table yet
+        db = self.db()
+        self.assertEqual(db.meta("schema"), "2")
+        tbl = db.ensure_device("x", "X", "drive")
+        self.assertTrue(db.record_info(tbl, 1, "", {}))
+
+
+class DescribedDevice(Discoverer):
+    kind = DeviceKind.NETWORK
+
+    def __init__(self):
+        self.info = DeviceInfo("net", DeviceKind.NETWORK, "Wi-Fi", "wlp2s0",
+                               properties={"Driver Used": "iwlwifi",
+                                           "Hardware Address": "aa:bb:cc:dd:ee:ff"})
+
+    def discover(self, sysroot, settings):
+        return [self.info]
+
+    def create_monitor(self, info, sysroot, settings):
+        class M(Monitor):
+            def sample(self, now):
+                return Snapshot(now, usage=5.0)
+        return M(info, 61)
+
+
+class DeviceInfoExportTest(StoreCase):
+    def export(self, **kwargs):
+        out = self.dir / "out"
+        out.mkdir(exist_ok=True)
+        result = export_session(self.path, out, self.store.session, ms(self.clock[0]), "9.9",
+                                now_s=T0, **kwargs)
+        return result, json.loads((result.folder / "export.json").read_text())
+
+    def test_the_store_records_details_once_per_change(self):
+        self.make(DescribedDevice())
+        self.tick(12)
+        self.store.commit()
+        self.tick(12)
+        self.store.commit()
+        self.assertEqual(len(self.store.db.device_info("d_net", 0, 2**62)), 1)
+        monitor = self.monitor("net")
+        monitor.info = DeviceInfo("net", DeviceKind.NETWORK, "Wi-Fi", "wlp3s0",
+                                  properties={"Driver Used": "iwlwifi"})
+        self.tick(12)
+        self.store.commit()
+        self.assertEqual(len(self.store.db.device_info("d_net", 0, 2**62)), 2)
+
+    def test_export_has_machine_device_details_and_changes(self):
+        self.make(DescribedDevice())
+        self.tick(12)
+        self.store.commit()
+        self.monitor("net").info = DeviceInfo("net", DeviceKind.NETWORK, "Wi-Fi", "wlp3s0",
+                                              properties={"Driver Used": "iwlwifi 2"})
+        self.tick(12)
+        self.store.commit()
+        result, manifest = self.export(machine={"kernel": "6.8.0", "computer": "LENOVO 82LM"})
+        self.assertIn("devices.csv", result.files)
+        self.assertEqual(manifest["machine"], {"proccoli_version": "9.9", "kernel": "6.8.0",
+                                               "computer": "LENOVO 82LM"})
+        device = manifest["devices"][0]
+        self.assertEqual(device["device"], "net")
+        self.assertEqual(device["files"], ["net.csv"])
+        self.assertEqual(device["description"], "wlp3s0")              # at the end
+        self.assertEqual(device["properties"], {"Driver Used": "iwlwifi 2"})
+        self.assertEqual(device["as_of"], "history")
+        self.assertEqual(device["since_utc"], "2026-11-23T21:41:25.154Z")
+        change = device["changes"][0]
+        self.assertEqual(change["description"], "wlp3s0")
+        self.assertEqual(change["properties"], {"Driver Used": "iwlwifi 2"})
+        self.assertNotIn("removed", change)            # the address was never shown
+
+    def test_hardware_addresses_only_when_asked(self):
+        self.make(DescribedDevice())
+        self.tick(12)
+        self.store.commit()
+        result, manifest = self.export()
+        self.assertNotIn("Hardware Address", manifest["devices"][0]["properties"])
+        self.assertNotIn("aa:bb", (result.folder / "devices.csv").read_text())
+        result, manifest = self.export(include_addresses=True)
+        self.assertEqual(manifest["devices"][0]["properties"]["Hardware Address"],
+                         "aa:bb:cc:dd:ee:ff")
+
+    def test_devices_csv_one_row_per_property(self):
+        self.make(DescribedDevice())
+        self.tick(12)
+        self.store.commit()
+        result, _ = self.export(include_addresses=True)
+        rows = read_rows(result.folder / "devices.csv")
+        self.assertEqual(rows[0], ["device_id", "name", "kind", "description", "property",
+                                   "value", "files"])
+        self.assertEqual(rows[1:], [
+            ["net", "Wi-Fi", "network", "wlp2s0", "Driver Used", "iwlwifi", "net.csv"],
+            ["net", "Wi-Fi", "network", "wlp2s0", "Hardware Address", "aa:bb:cc:dd:ee:ff",
+             "net.csv"]])
+
+    def test_an_older_history_gets_the_details_as_they_are_now(self):
+        self.make(DescribedDevice())
+        self.tick(12)
+        self.store.commit()
+        self.store.db.conn.execute("DELETE FROM device_info")    # as an older history
+        _, manifest = self.export(current={"net": {"description": "wlp2s0",
+                                                   "properties": {"Driver Used": "x"}}})
+        device = manifest["devices"][0]
+        self.assertEqual(device["as_of"], "export")
+        self.assertEqual(device["properties"], {"Driver Used": "x"})
+        self.assertNotIn("changes", device)
+
+
+class MachineInfoTest(unittest.TestCase):
+    def test_os_kernel_architecture_and_model(self):
+        from helpers import FakeRoot, FakeSystem
+        from proccoli.core.machine_info import machine_info
+        root = FakeRoot(self, {
+            "/etc/os-release": 'NAME="Ubuntu"\nPRETTY_NAME="Ubuntu 24.04.1 LTS"\n',
+            "/proc/sys/kernel/osrelease": "6.8.0-48-generic\n",
+            "/sys/class/dmi/id/sys_vendor": "LENOVO\n",
+            "/sys/class/dmi/id/product_name": "82LM\n",
+            "/sys/class/dmi/id/product_version": "IdeaPad 5 14ARE05\n"})
+        system = FakeSystem()
+        self.assertEqual(machine_info(root.sysroot, system), {
+            "operating_system": "Ubuntu 24.04.1 LTS", "kernel": "6.8.0-48-generic",
+            "architecture": system.machine(), "computer": "LENOVO 82LM IdeaPad 5 14ARE05"})
+
+    def test_placeholders_and_missing_files_are_left_out(self):
+        from helpers import FakeRoot
+        from proccoli.core.machine_info import machine_info
+        root = FakeRoot(self, {"/usr/lib/os-release": "NAME=Debian\n",
+                               "/sys/class/dmi/id/sys_vendor": "To Be Filled By O.E.M.\n"})
+        self.assertEqual(machine_info(root.sysroot, None), {"operating_system": "Debian"})
+
+
+class ExportPrivacyTest(unittest.TestCase):
+    """Every property Proccoli shows has been looked at for whether it
+    identifies the machine: a new one fails here until it's added to
+    REVIEWED (fine to share) or to history_export.IDENTIFYING."""
+
+    REVIEWED = {"Architecture", "Battery Health", "Capacity", "Charge Cycles",
+                "Design Capacity", "Detailed Statistics", "Device", "Driver Used",
+                "Form Factor", "Interface", "Link", "Logical Cores", "Manufacturer",
+                "Max Frequency", "Model", "Model Name", "PCI Slot", "Physical Cores",
+                "Removable", "Slots Used", "Sockets", "Source", "Speed", "Technology", "Type",
+                "Type Detail", "Virtualization", "Writable"}
+
+    def test_every_property_key_is_reviewed(self):
+        from helpers import FIXTURES, LAPTOP, RENOIR, make_context
+        from proccoli.core.history_export import IDENTIFYING
+        keys = set()
+        for root in (LAPTOP, RENOIR, os.path.join(FIXTURES, "nvidia")):
+            for demo in (False, True):
+                ctx = make_context(self, demo=demo, sysroot=SysRoot(root))
+                ctx.start()
+                for monitor in ctx.devices.monitors():
+                    keys |= set(monitor.described_properties())
+                ctx.stop()
+        self.assertIn("Hardware Address", keys)          # the check sees real devices
+        self.assertEqual(keys - self.REVIEWED - IDENTIFYING, set())
+        self.assertEqual(self.REVIEWED & IDENTIFYING, set())
+
+
+class OneWriterTest(StoreCase):
+    """whoever holds the lock writes; the other reads, fills its
+    graphs, and takes over when the writer stops."""
+
+    def locked_store(self, system, program="proccoli", **settings):
+        from proccoli.core.history_lock import HistoryLock, lock_path
+        lock = HistoryLock(system, lock_path(self.path))
+        store = HistoryStore(self.devices, self.settings, self.path, "9.9",
+                             lambda: self.clock[0], lock=lock, program=program)
+        self.addCleanup(store.shutdown)
+        return store
+
+    def setUp(self):
+        super().setUp()
+        from helpers import FakeSystem
+        self.make(Device())                       # the plain store: no lock, stays out
+        self.store.shutdown()
+        delete_files(self.path)
+        locks = {}
+        self.a, self.b = FakeSystem(), FakeSystem()
+        self.a.locks = self.b.locks = locks         # one machine
+
+    def rows(self):
+        db = HistoryDb(self.path, readonly=True)
+        try:
+            return db.count("d_cpu")
+        finally:
+            db.close()
+
+    def test_only_the_lock_holder_writes(self):
+        writer = self.locked_store(self.a, "proccoli")
+        self.tick()
+        reader = self.locked_store(self.b)
+        self.tick(11)
+        writer.commit()
+        reader.commit()
+        self.assertTrue(writer.writer)
+        self.assertFalse(reader.writer)
+        self.assertEqual(self.rows(), 12)                 # once each, not twice
+        self.assertEqual(reader.writer_info()["program"], "proccoli")
+        self.assertIsNone(reader.session)
+
+    def test_the_reader_fills_graphs_from_the_writers_rows(self):
+        writer = self.locked_store(self.a)
+        self.tick(20)
+        writer.commit()
+        reader = self.locked_store(self.b)
+        history = History(61)
+        history.define("usage", "%")
+        reader._offsets["cpu"] = 0.0
+        reader._clock["cpu"] = self.clock[0]
+        self.assertGreater(reader._fill(history, "d_cpu", 0.0, self.clock[0]), 15)
+
+    def test_the_reader_takes_over_when_the_writer_stops(self):
+        writer = self.locked_store(self.a, "proccoli")
+        self.tick(12)
+        reader = self.locked_store(self.b)
+        self.tick(2)
+        writer.shutdown()                                 # quits: commits, frees the lock
+        before = self.rows()
+        self.tick(12)                                     # the reader's next commit
+        self.assertTrue(reader.writer)
+        self.tick(12)
+        self.assertGreater(self.rows(), before)
+        self.assertEqual(reader.writer_info()["program"], "proccoli")
+        self.assertEqual(len(reader.db.sessions()), 2)
+
+    def test_the_window_never_writes(self):
+        # read_only, with nobody holding the lock: still no writing.
+        writer = self.locked_store(self.a, "proccoli")
+        self.tick(12)
+        writer.shutdown()                                 # the collector stops
+        before = self.rows()
+        window = HistoryStore(self.devices, self.settings, self.path, "9.9",
+                              lambda: self.clock[0], read_only=True)
+        self.addCleanup(window.shutdown)
+        self.tick(30)
+        window.commit()
+        self.assertFalse(window.writer)
+        self.assertEqual(self.rows(), before)
+        self.assertIsNone(window.session)
+        self.assertIsNotNone(window.session_start())       # the collector's last run, for exports
+
+    def test_a_reader_exports_the_run_being_recorded(self):
+        writer = self.locked_store(self.a, "proccoli")
+        self.tick(12)
+        reader = self.locked_store(self.b)
+        self.assertIsNone(reader.session)
+        self.assertEqual(reader.session_start(), writer.session)
+
+    def test_a_writer_starts_again_after_delete_history_from_a_reader(self):
+        writer = self.locked_store(self.a)
+        self.tick(12)
+        reader = self.locked_store(self.b)
+        reader.delete()
+        self.assertFalse(self.path.exists())
+        self.tick(12)                                     # the writer's next commit
+        self.assertTrue(self.path.exists())
+        self.assertGreater(self.rows(), 0)
+        self.assertTrue(writer.writer)
+
+    def test_a_newer_schema_is_never_written(self):
+        db = HistoryDb(self.path)
+        db.set_meta("schema", "99")
+        db.close()
+        with self.assertLogs("proccoli.core.history_store", "WARNING"):
+            store = self.locked_store(self.a)
+            self.tick(12)
+        self.assertFalse(store.writer)
+        self.assertNotIn(str(lock_path_of(self.path)), self.a.locks)   # let go for others
+
+
+def lock_path_of(path):
+    from proccoli.core.history_lock import lock_path
+    return lock_path(path)
+
+
+class RealLockTest(TempFolder):
+    """The real flock: one holder at a time, freed on release."""
+
+    def test_flock(self):
+        from proccoli.core.history_lock import HistoryLock
+        from proccoli.core.system import System
+        path = self.dir / "state" / "history.lock"
+        one, two = HistoryLock(System(), path), HistoryLock(System(), path)
+        self.assertTrue(one.acquire())
+        self.assertFalse(two.acquire())
+        one.release()
+        self.assertTrue(two.acquire())
+        two.release()
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)

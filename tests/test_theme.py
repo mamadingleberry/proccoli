@@ -1,4 +1,4 @@
-"""ui.theme.Theme: light/dark style (Milestone 17)."""
+"""ui.theme.Theme: light/dark style."""
 
 import os
 import sys
@@ -66,16 +66,31 @@ class ColorSchemeTest(unittest.TestCase):
 
 
 class StylesTest(unittest.TestCase):
-    """Milestone 33: ExpressVPN-like styles."""
+    """Plain and tinted styles."""
 
     def test_the_styles(self):
         from proccoli.core.styles import STYLES
-        self.assertEqual([s.name for s in STYLES],
-                         ["Follow System", "Light", "Dark", "Sand", "Sky", "Twilight",
-                          "Midnight"])
-        self.assertEqual({s.id: s.base for s in STYLES if s.tinted},
-                         {"sand": "light", "sky": "light", "twilight": "dark",
-                          "midnight": "dark"})
+        self.assertEqual([s.name for s in STYLES[:7]],
+                         ["Follow System", "Light", "Dark", "Sand", "Sky", "Mint", "Rose"])
+        self.assertEqual(len({s.id for s in STYLES}), len(STYLES))
+        self.assertEqual(len({s.name for s in STYLES}), len(STYLES))
+        self.assertTrue(all(s.tinted for s in STYLES[3:]))
+
+    def test_light_styles_come_before_dark_ones(self):
+        # Easier to pick from: every light tint, then every dark one.
+        from proccoli.core.styles import STYLES
+        bases = [s.base for s in STYLES[3:]]
+        self.assertEqual(bases, sorted(bases, key=lambda b: b != "light"))
+        self.assertGreaterEqual(bases.count("light"), 10)
+        self.assertGreaterEqual(bases.count("dark"), 12)
+
+    def test_high_contrast_styles_are_black_on_white_and_white_on_black(self):
+        from proccoli.core.styles import style_by_id
+        light, dark = style_by_id("high-contrast-light"), style_by_id("high-contrast-dark")
+        self.assertEqual((light.colors["view-bg-color"], light.colors["view-fg-color"]),
+                         ("#ffffff", "#000000"))
+        self.assertEqual((dark.colors["view-bg-color"], dark.colors["view-fg-color"]),
+                         ("#000000", "#ffffff"))
 
     def test_text_is_readable_on_every_surface(self):
         from proccoli.core.styles import STYLES, SURFACES, contrast_ratio

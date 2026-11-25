@@ -1,4 +1,4 @@
-"""Device pages (Milestones 4-9). Headless display only (``make ui-test``)."""
+"""Device pages. Headless display only (``make ui-test``)."""
 
 import os
 import sys
@@ -82,7 +82,7 @@ class LaptopPagesTest(unittest.TestCase):
         page = self.pages["cpu"]
         self.assertEqual(page.title, "Processor")
         self.assertEqual(page.description, "12th Gen Intel(R) Core(TM) i5-12450H")
-        # One chart, a line and a legend item per logical CPU (M55).
+        # One chart, a line and a legend item per logical CPU.
         self.assertEqual(len(page.threads.graph.series), 12)
         self.assertEqual([i.name for i in page.legend.items], [f"CPU {i}" for i in range(12)])
         self.assertFalse(page.threads.graph.fill)
@@ -98,11 +98,17 @@ class LaptopPagesTest(unittest.TestCase):
         self.settings.set("show-logical-cpus", True)
         self.assertEqual(page.usage_stack.get_visible_child_name(), "logical")
         self.assertTrue(page.logical_switch.get_active())
+        # The toolbar has the switch; the page's own row shows only without it.
+        self.assertFalse(page.options.get_visible())
+        self.settings.set("show-toolbar", False)
+        self.assertTrue(page.options.get_visible())
+        self.settings.set("show-toolbar", True)
+        self.assertFalse(page.options.get_visible())
         self.settings.set("temperature-unit", "fahrenheit")
         self.assertTrue(page.temperature.pane.info_label.get_label().endswith("°F"))
 
     def test_processor_and_gpu_cards_get_their_readings(self):
-        # M57: the Overview cards' readings line comes from the summary.
+        # the Overview cards' readings line comes from the summary.
         cpu = self.pages["cpu"].sidebar_summary()
         self.assertEqual(len(cpu.facts), 1)
         self.assertRegex(cpu.facts[0], r"^Temperature \d+ °C$")       # coretemp
@@ -189,7 +195,7 @@ class GpuPagesTest(unittest.TestCase):
         self.assertTrue(pump(lambda: "engines" in graphs.sections, timeout=3))
 
     def test_details_charts_are_the_shared_legend_charts(self):
-        # Idea 3: every group is a LegendChart with the app's palette,
+        # every group is a LegendChart with the app's palette,
         # legend rules, hover, axes and Graph Time Range.
         from proccoli.ui.widgets.legend_chart import LegendChart
         self.settings.set("show-graph-axes", True)
@@ -267,7 +273,7 @@ class GpuPagesTest(unittest.TestCase):
         self.assertEqual(host.get_visible_child_name(), "status")
         self.assertEqual(host.button.get_label(), "Turn On")
         self.assertFalse(page.detail_header.get_visible())
-        self.assertEqual(page._view_handlers, None)              # views disconnected
+        self.assertEqual(len(page.view_connections), 0)          # views disconnected
         host.button.emit("clicked")
         self.assertEqual(self.controller.detail_state, DetailState.STARTING)
         self.assertTrue(pump(lambda: host.view is not None, timeout=3))
@@ -308,7 +314,7 @@ class GpuPagesTest(unittest.TestCase):
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class GraphsFillThePageTest(unittest.TestCase):
-    """Milestone 22: graphs resize with the window, both ways."""
+    """graphs resize with the window, both ways."""
 
     @classmethod
     def setUpClass(cls):
@@ -351,7 +357,7 @@ class GraphsFillThePageTest(unittest.TestCase):
         self.assertTrue(g.has_axes())                            # on by default
         self.assertEqual(g.time_span_s, 60.0)
         self.settings.set("update-interval", "2-seconds")
-        self.assertEqual(g.time_span_s, 60.0)          # M58: the time range holds
+        self.assertEqual(g.time_span_s, 60.0)          # the time range holds
         self.settings.set("graph-time-range", "2-minutes")
         self.assertEqual(g.time_span_s, 120.0)
         self.settings.set("show-graph-axes", False)
@@ -360,7 +366,7 @@ class GraphsFillThePageTest(unittest.TestCase):
         self.assertFalse(cpu_chart.show_axes)
         self.settings.set("show-graph-axes", True)
         self.assertTrue(cpu_chart.has_axes())
-        # Idea 4: speeds get a value axis too, in the user's units.
+        # speeds get a value axis too, in the user's units.
         net = win.page("net-eno1").receiving.graph
         self.assertTrue(net.has_axes())
         self.assertEqual(net.axis_format(2e6), "2 MB/s")
@@ -383,7 +389,7 @@ class GraphsFillThePageTest(unittest.TestCase):
         pump(timeout=1.0)
         graph = page.threads.graph
         self.assertTrue(graph.get_mapped())
-        # Sized like any page graph, sharing its area with the legend (M57).
+        # Sized like any page graph, sharing its area with the legend.
         from proccoli.ui.layout import MIN_GRAPH_IN_AREA
         self.assertGreaterEqual(graph.get_height(), MIN_GRAPH_IN_AREA)
         self.assertGreater(page.legend.get_height(), 0)
@@ -393,7 +399,7 @@ class GraphsFillThePageTest(unittest.TestCase):
                            items[0].compute_bounds(page.box)[1].get_x())
 
     def test_per_cpu_chart_and_legend_take_the_total_charts_area(self):
-        # M57: switching between the total and the per-CPU chart keeps the
+        # switching between the total and the per-CPU chart keeps the
         # area; the legend is part of it, inside the chart's card.
         from proccoli.ui.widgets.graph_box import GraphBox
         win, page = self.window("cpu")
@@ -423,7 +429,7 @@ class GraphsFillThePageTest(unittest.TestCase):
         self.assertAlmostEqual(page.total.get_height(), total_area, delta=3)
 
     def test_legend_drops_values_when_the_chart_would_be_cramped(self):
-        # M57: values move to the hover text so the chart keeps its room.
+        # values move to the hover text so the chart keeps its room.
         win, page = self.window("cpu", **{"show-logical-cpus": True})
         page.update_labels(page.monitor.latest)
         pump(lambda: page.threads.graph.get_mapped() and page.threads.graph.get_width() > 0,
@@ -443,7 +449,7 @@ class GraphsFillThePageTest(unittest.TestCase):
         self.assertFalse(page.threads.fit_legend())
 
     def test_right_click_shows_only_that_core(self):
-        # M58: left-click hides or shows a core; right-click shows only it.
+        # left-click hides or shows a core; right-click shows only it.
         win, page = self.window("cpu", **{"show-logical-cpus": True})
         graph, legend = page.threads.graph, page.legend
         n = len(legend.items)
@@ -455,7 +461,7 @@ class GraphsFillThePageTest(unittest.TestCase):
         self.assertTrue(all(graph.series_shown(i) for i in range(n)))
         legend.items[5].emit("clicked")                   # a left-click toggles
         self.assertFalse(graph.series_shown(5))
-        # M59: one core selected, then deselected: every core again.
+        # one core selected, then deselected: every core again.
         legend.items[3].solo()
         legend.items[3].emit("clicked")
         self.assertTrue(all(graph.series_shown(i) for i in range(n)))
@@ -477,7 +483,7 @@ class GraphsFillThePageTest(unittest.TestCase):
         self.assertTrue(page.threads.graph.series_shown(3))
 
     def test_portrait_window_caps_graphs_by_width(self):
-        # Milestone 36: a portrait monitor makes the window tall and narrow;
+        # a portrait monitor makes the window tall and narrow;
         # graphs stop at half their width instead of growing into towers.
         win, page = self.window("memory")
         self.resize(win, 700, 1800)
@@ -521,7 +527,7 @@ class GraphsFillThePageTest(unittest.TestCase):
         tall = grid.get_height()
         resize_or_skip(self, win, 1024, 500)
         self.assertTrue(pump(lambda: 0 < grid.get_height() < tall, timeout=3))
-        # Portrait (Milestone 36): one tall column, graphs capped by width.
+        # Portrait: one tall column, graphs capped by width.
         from proccoli.ui.layout import graph_cap
         resize_or_skip(self, win, 700, 1800)
         pump(timeout=2.0)
@@ -531,7 +537,7 @@ class GraphsFillThePageTest(unittest.TestCase):
                                      graph_cap(section.get_width()) + 1)
 
     def test_intel_details_are_the_chart_family(self):
-        # Idea 4: user units, the legend rule, live preferences, entry color.
+        # user units, the legend rule, live preferences, entry color.
         self.settings = Settings.for_tests({"gpu-view": "details"})
         ctx = make_context(self, demo=True, settings=self.settings, system=_RealStreams())
         ctx.ticker.set_interval(250)          # faster than any Update Interval: tests only
@@ -602,6 +608,34 @@ class GenericGpuPageTest(unittest.TestCase):
         self.assertIsNone(page.title_widget())                # no tabs either
         self.assertEqual(page.hosts, {})
         self.assertIsNone(page.details_row)
+        self.assertEqual(page.vram.get_title(), "Video Memory")
+        self.assertEqual(page.power.get_title(), "Power Usage")
+
+    def test_apu_labels_its_shared_memory_and_package_power(self):
+        """An APU's honest readings, on this Ryzen 3 4300U's files."""
+        from helpers import RENOIR
+        from proccoli.core import pciids
+        from proccoli.core.sysroot import SysRoot
+        from proccoli.devices.base import DeviceInfo, DeviceKind
+        from proccoli.gpu.backend import GpuDeps
+        from proccoli.gpu.controller import GpuController
+        from proccoli.gpu.generic_drm import GenericDrmBackend
+        from proccoli.gpu.info import discover_gpus
+        from proccoli.gpu.registry import GpuBackendRegistry
+        from proccoli.ui.pages.gpu import GpuPage
+        sysroot = SysRoot(RENOIR)
+        [gpu] = discover_gpus(sysroot, pciids.PciIds({}, {}))
+        settings = Settings.for_tests()
+        c = GpuController(DeviceInfo("gpu-0000:03:00.0", DeviceKind.GPU, "GPU", gpu.name),
+                          gpu, GpuBackendRegistry((GenericDrmBackend,)),
+                          GpuDeps(sysroot, settings, FakeSystem()))
+        c.start()
+        page = GpuPage(c, settings)
+        c.refresh(1.0)
+        self.assertEqual(page.vram.get_title(), "Graphics Memory")
+        self.assertTrue(page.vram.pane.info_label.get_label().endswith("of 8.9 GB"))
+        self.assertEqual(page.power.get_title(), "Processor Package Power")
+        self.assertEqual(page.power.get_value(), "12.0 W")
 
 
 if __name__ == "__main__":

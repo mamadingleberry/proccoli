@@ -1,4 +1,4 @@
-"""core.windows: Switch To for any running app (Idea 5): matching windows to
+"""core.windows: Switch To for any running app: matching windows to
 an app, the order of ways, the extension's states, and that the shipped
 GNOME Shell extension and Proccoli agree on its D-Bus interface."""
 

@@ -2,7 +2,6 @@
 
 A device has an immutable ``DeviceInfo`` (discovered once) and a ``Monitor``
 that turns each tick into a ``Snapshot`` and records it in a ``History``.
-See DESIGN.md §6.
 """
 
 from __future__ import annotations
@@ -10,7 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
 
 from gi.repository import GObject
 
@@ -110,13 +109,45 @@ class Monitor(GObject.Object):
     def set_history_plan(self, points: int, every: int = 1,
                          step_s: Optional[float] = None) -> None:
         """The graphs' time range: ``points`` points of ``every`` samples
-        (``ticker.graph_plan``)."""
+        (``ticker.graph_plan()``)."""
         self.history.set_plan(points, every, step_s)
 
     def detail_history(self):
         """A second history to fill from the database (a GPU's Details
         tab), or None."""
         return None
+
+    def sort_name(self) -> str:
+        """Where the device sorts within its sidebar group (GPUs by PCI
+        slot, drives by name...); the window gets it from the collector."""
+        return ""
+
+    # -- what the recorder sends a window --------------------------------------------
+
+    def describe(self, encode: Callable[[Any], Any]) -> dict:
+        """What a window needs to build this device's page and sidebar
+        entry, as JSON-ready values (``encode`` turns snapshots and other
+        dataclasses into them). Subclasses add their own fields; the
+        window's ``devices.remote`` reads them back."""
+        info = self.info
+        return {"id": info.id, "kind": getattr(info.kind, "value", str(info.kind)),
+                "name": info.name, "description": info.description,
+                "icon": info.icon_name, "properties": dict(info.properties),
+                "described": self.described_properties(), "sort_name": self.sort_name(),
+                # The chart lines, so the window draws them before the
+                # first reading.
+                "history": dict(self.history.keys())}
+
+    def reading(self, encode: Callable[[Any], Any]) -> Optional[dict]:
+        """The latest reading for a window (None before the first)."""
+        if self.latest is None:
+            return None
+        return {"snapshot": encode(self.latest)}
+
+    def described_properties(self) -> dict[str, str]:
+        """What describes the device (its page's *Properties*), as the
+        history and exports keep it."""
+        return {k: str(v) for k, v in self.info.properties.items() if v}
 
     def start(self) -> None:
         """Hook for monitors with background work (streams, helpers)."""
@@ -126,11 +157,11 @@ class Monitor(GObject.Object):
 
 
 class FailedMonitor(Monitor):
-    """Stands in for a device whose monitor couldn't be built or started
-    (Milestone 55). The device keeps its sidebar entry, and its page is an
+    """Stands in for a device whose monitor couldn't be built or started.
+    The device keeps its sidebar entry, and its page is an
     error page showing ``message`` (what went wrong, in words) and
     ``details`` (the technical part, e.g. a traceback), with *Try Again*
-    (``DeviceManager.retry``). It records nothing."""
+    (``DeviceManager.retry()``). It records nothing."""
 
     def __init__(self, info: DeviceInfo, message: str, details: str = "") -> None:
         super().__init__(info, 2)
@@ -139,3 +170,8 @@ class FailedMonitor(Monitor):
 
     def sample(self, now: float) -> Optional[Snapshot]:
         return None
+
+    def describe(self, encode: Callable[[Any], Any]) -> dict:
+        """Its error page's message and details too."""
+        return {**super().describe(encode),
+                "failed": {"message": self.message, "details": self.details}}

@@ -1,17 +1,17 @@
-"""The diagnostics log (DESIGN.md §11): a size-capped file for debugging.
+"""The diagnostics log: a size-capped file for debugging.
 
 - ``FileLog`` keeps a rotating log file of Proccoli's own messages, set up
   from the preferences: ``log-level`` (off, error, warning, info, debug;
   debug, i.e. everything, by default) and ``log-max-size`` (KiB). One
   previous file is kept, so the log never takes more than twice that on
   disk. Times are UTC, in ISO 8601 (``2026-11-23T21:41:25.154Z``), so logs
-  from different machines and time zones line up (M55).
+  from different machines and time zones line up.
 - ``PerformanceLog`` writes how Proccoli itself is doing every
   ``log-performance-interval`` minutes: its CPU use, memory, threads, and
   how long its slowest refresh took.
 
 The file lives where the XDG spec puts state and logs:
-``$XDG_STATE_HOME/proccoli/proccoli.log`` (``~/.local/state/...``).
+``$XDG_STATE_HOME/proccoli/proccoli-gui.log`` (``~/.local/state/...``).
 """
 
 from __future__ import annotations
@@ -23,6 +23,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Optional
+
+from .. import WINDOW
+from .connections import Connections
 
 LOGGER = "proccoli"          # the package's logger; GTK's own warnings stay out
 BACKUPS = 1                 # previous files kept
@@ -47,9 +50,9 @@ class UtcFormatter(logging.Formatter):
 
 
 def log_path(env: Mapping[str, str] = os.environ, home: Optional[Path] = None) -> Path:
-    """``$XDG_STATE_HOME/proccoli/proccoli.log``, defaulting to ~/.local/state."""
+    """``$XDG_STATE_HOME/proccoli/proccoli-gui.log``, defaulting to ~/.local/state."""
     state = env.get("XDG_STATE_HOME") or str((home or Path.home()) / ".local" / "state")
-    return Path(state) / "proccoli" / "proccoli.log"
+    return Path(state) / "proccoli" / f"{WINDOW}.log"
 
 
 def disk_budget(max_kib: int) -> int:
@@ -77,8 +80,8 @@ class FileLog:
         self.path = Path(path)
         self.logger = logger or logging.getLogger(LOGGER)
         self.handler: Optional[logging.Handler] = None
-        self._handlers = [settings.connect_changed(k, lambda *_: self.apply())
-                          for k in ("log-level", "log-max-size")]
+        self.connections = Connections()
+        self.connections.watch(settings, ("log-level", "log-max-size"), lambda *_: self.apply())
         self.apply()
 
     @property
@@ -114,9 +117,7 @@ class FileLog:
             self.handler = None
 
     def shutdown(self) -> None:
-        for h in self._handlers:
-            self.settings.disconnect(h)
-        self._handlers = []
+        self.connections.disconnect_all()
         self._close()
 
 
@@ -165,8 +166,9 @@ class PerformanceLog:
         self._last: Optional[tuple[float, PerfSample]] = None
         self._next_report: Optional[float] = None
         self.ticker = ticker
-        self._handlers = [ticker.connect("tick", self._on_tick_start),
-                          ticker.connect_after("tick", self._on_tick_end)]
+        self.connections = Connections()
+        self.connections.connect(ticker, "tick", self._on_tick_start)
+        self.connections.add(ticker, ticker.connect_after("tick", self._on_tick_end))
 
     @property
     def interval_s(self) -> float:
@@ -213,6 +215,4 @@ class PerformanceLog:
         return line
 
     def shutdown(self) -> None:
-        for h in self._handlers:
-            self.ticker.disconnect(h)
-        self._handlers = []
+        self.connections.disconnect_all()

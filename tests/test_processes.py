@@ -53,6 +53,25 @@ class ModelTest(unittest.TestCase):
         self.assertEqual(display_name("bash", "/bin/bash"), "bash")
         self.assertEqual(display_name("kworker/0:1-eve", ""), "kworker/0:1-eve")
 
+    def test_display_name_of_a_script_is_the_script(self):
+        # A script run by python3 shows as its own name, past the kernel's
+        # 15-character cut ("gnome-shell-cal").
+        self.assertEqual(display_name("gnome-shell-cal",
+                                      "/usr/bin/python3 /usr/bin/gnome-shell-calendar-server"),
+                         "gnome-shell-calendar-server")
+        # Only the program or its script, never a later argument.
+        self.assertEqual(display_name("gnome-shell-cal",
+                                      "/usr/bin/python3 -u /tmp/gnome-shell-x"),
+                         "gnome-shell-cal")
+        self.assertEqual(display_name("python3", "/usr/bin/python3 /usr/bin/thing"), "python3")
+
+    def test_the_background_collector_groups_with_proccoli(self):
+        # Its unit runs in the desktop's app slice for Proccoli.
+        from proccoli import APP_ID
+        cgroup = ("0::/user.slice/user-1000.slice/user@1000.service/app.slice/"
+                  f"app-{APP_ID}.slice/proccoli.service")
+        self.assertEqual(app_id_for_cgroup(cgroup), APP_ID)
+
     def test_read_proc_and_cache(self):
         root = FakeRoot(self)
         add_proc(root, 7, "python3", rss_kb=2048, swap_kb=16, read=4096, cgroup=TERMINAL,

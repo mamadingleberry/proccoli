@@ -1,4 +1,4 @@
-"""ui.layout: graphs that fill the page (Milestone 22)."""
+"""ui.layout: graphs that fill the page."""
 
 import os
 import sys
@@ -82,7 +82,7 @@ class RowsAndAspectTest(unittest.TestCase):
 
 
 class PlanGridTest(unittest.TestCase):
-    """The Overview's N × M grid (Milestone 50)."""
+    """The Overview's N × M grid."""
     CHROME_W, CHROME_H, SPACING = 24, 70, 12
 
     def plan(self, count, width, height, **kw):
@@ -105,7 +105,7 @@ class PlanGridTest(unittest.TestCase):
         self.assertFills(plan, 530)
 
     def test_one_card_on_a_portrait_area_stops_short_of_a_tower(self):
-        # Milestone 51: it would fill 1310 px, but the chart is 1008 wide.
+        # it would fill 1310 px, but the chart is 1008 wide.
         plan = self.plan(1, 1032, 1380)
         self.assertEqual((plan.columns, plan.rows), (1, 1))
         self.assertEqual(plan.chart_height, 1008 - 1)
@@ -178,7 +178,7 @@ class PlanGridTest(unittest.TestCase):
 
 
 class GraphInAreaTest(unittest.TestCase):
-    """A graph sharing its area with a legend (M57)."""
+    """A graph sharing its area with a legend."""
 
     def test_area_less_reserve(self):
         from proccoli.ui.layout import graph_in_area
@@ -193,7 +193,7 @@ class GraphInAreaTest(unittest.TestCase):
 
 
 class CompactLegendTest(unittest.TestCase):
-    """The per-CPU legend drops its values when the chart would be cramped (M57)."""
+    """The per-CPU legend drops its values when the chart would be cramped."""
 
     def test_rule(self):
         from proccoli.ui.layout import COMFORT_GRAPH, use_compact_legend

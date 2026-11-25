@@ -15,7 +15,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Graphene, Gtk, Pango  # 
 
 from ...processes.actions import Action
 from ...core.profile import profile_of
-from ..widgets.app_icon import set_app_icon  # noqa: F401  (re-exported)
+from ..widgets.app_icon import set_app_icon  # noqa: F401 (re-exported)
 from ..page import PageKind, ResourcePage
 
 
@@ -38,7 +38,7 @@ class Row(GObject.Object):
 
 def shown_column(spec: "Column", settings) -> "Column":
     """``spec`` as the running profile shows it: no icon in Lightweight
-    Mode (no icon lookups or textures, Idea 1)."""
+    Mode (no icon lookups or textures)."""
     if spec.icon is not None and not profile_of(settings).app_icons:
         return dataclasses.replace(spec, icon=None)
     return spec
@@ -120,7 +120,7 @@ class TablePage(ResourcePage):
         self._install_actions()
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        # The context menu's parent (DESIGN.md §8): a box, which positions
+        # The context menu's parent: a box, which positions
         # popovers through its layout manager, and never recycled the way
         # table cells are.
         self.menu_parent = box
@@ -349,7 +349,7 @@ class TablePage(ResourcePage):
             self.options_action.set_enabled(one)
         self.update_extra_actions(selected)
 
-    # -- context menu (DESIGN.md §8) ---------------------------------------------------
+    # -- context menu ---------------------------------------------------
 
     def extra_actions(self) -> list:
         """``[(name, callback)]`` added to the ``table`` actions (subclasses)."""

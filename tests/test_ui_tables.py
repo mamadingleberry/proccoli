@@ -1,4 +1,4 @@
-"""Apps and Processes pages (Milestones 10-11). Headless display only."""
+"""Apps and Processes pages. Headless display only."""
 
 import os
 import signal
@@ -99,7 +99,7 @@ class AppIconTest(unittest.TestCase):
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class ContextMenuTest(unittest.TestCase):
-    """Milestone 32: right-click menus; Switch To on Apps."""
+    """right-click menus; Switch To on Apps."""
 
     def apps_page(self, switchable=None):
         _, settings, self.monitor = setup_procs(self)
@@ -133,7 +133,7 @@ class ContextMenuTest(unittest.TestCase):
         self.assertEqual(self.system.activated, ["org.gnome.Terminal"])
 
     def test_unreachable_apps_offer_window_switching(self):
-        # Idea 5: Switch To is there for every app; one Proccoli can't reach
+        # Switch To is there for every app; one Proccoli can't reach
         # says how to set up window switching instead.
         page = self.apps_page({})                                    # e.g. Firefox
         self.select(page, "org.gnome.Terminal")

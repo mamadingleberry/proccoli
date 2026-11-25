@@ -1,4 +1,4 @@
-"""Preferences: every setting from DESIGN.md §11, applied immediately."""
+"""Preferences: every setting from applied immediately."""
 
 from __future__ import annotations
 
@@ -7,23 +7,24 @@ from typing import Sequence
 from gi.repository import Adw, Gtk
 
 from ... import GPU_ICON
+from ...core.connections import Connections
 from ...core.palette import PALETTES, hex_to_rgb
 from ...core.profile import is_pinned, profile_of
 from ...core.styles import STYLES
-from .. import sidebar_order
+from .. import reorder
 from ..sidebar_fields import FIELD_LABELS, Field
+from ...core.ticker import CUSTOM, CUSTOM_KEY, clamp_range_s, update_interval_ms
+from ..time_range import CUSTOM_LABEL, limit_note
+from ..toolbar_items import GRAPH_TIME_RANGES
+from ..widgets.range_editor import RangeEditor
 
-UPDATE_INTERVALS = [("1-second", "1 Second"), ("2-seconds", "2 Seconds"),
+UPDATE_INTERVALS = (("1-second", "1 Second"), ("2-seconds", "2 Seconds"),
                     ("3-seconds", "3 Seconds"), ("5-seconds", "5 Seconds"),
-                    ("10-seconds", "10 Seconds")]
+                    ("10-seconds", "10 Seconds"))
 BASES = [("decimal", "Decimal (kB, MB, GB)"), ("binary", "Binary (KiB, MiB, GiB)")]
 TEMPERATURE_UNITS = [("celsius", "Celsius"), ("fahrenheit", "Fahrenheit"), ("kelvin", "Kelvin")]
 LOG_LEVELS = [("off", "Off"), ("error", "Errors"), ("warning", "Warnings"),
               ("info", "Information and Performance"), ("debug", "Everything (Debug)")]
-GRAPH_TIME_RANGES = [("30-seconds", "30 Seconds"), ("1-minute", "1 Minute"),
-                     ("2-minutes", "2 Minutes"), ("5-minutes", "5 Minutes"),
-                     ("10-minutes", "10 Minutes"), ("30-minutes", "30 Minutes"),
-                     ("1-hour", "1 Hour"), ("6-hours", "6 Hours"), ("1-day", "1 Day")]
 METER_TYPES = [("progress-bar", "Progress Bar"), ("graph", "Graph")]
 SIDEBAR_STYLES = [("full", "Full"), ("icons", "Icons Only")]
 
@@ -39,10 +40,35 @@ PROCESS_COLUMNS = [("id", "Process ID"), ("user", "User")] + APP_COLUMNS + [
     ("commandline", "Commandline")]
 
 
+FIXED_ICON = "changes-prevent-symbolic"     # a padlock: GNOME's "locked for now"
+FIXED_TIP = "Fixed while Lightweight Mode is on. Your own choice comes back when it's off."
+
+
+def fixed_icon() -> Gtk.Image:
+    """The padlock before a setting Lightweight Mode fixes, explaining why."""
+    icon = Gtk.Image(icon_name=FIXED_ICON, tooltip_text=FIXED_TIP)
+    icon.update_property([Gtk.AccessibleProperty.LABEL], ["Fixed by Lightweight Mode"])
+    return icon
+
+
+def fixed_notice() -> Adw.PreferencesGroup:
+    """The top of a page with settings Lightweight Mode fixes (hidden
+    until one turns up on the page)."""
+    group = Adw.PreferencesGroup(visible=False)
+    row = Adw.ActionRow(title="Some settings are fixed in Lightweight Mode",
+                        subtitle="They're greyed out with a padlock, and your own choices "
+                                 "come back when it's off (General → Memory Use)")
+    row.add_prefix(Gtk.Image(icon_name=FIXED_ICON))
+    group.add(row)
+    group.row = row
+    return group
+
+
 class PreferencesDialog(Adw.PreferencesDialog):
     def __init__(self, settings, gpu_controllers: Sequence = (), theme=None,
                  log_file=None, launcher=None, sidebar=None, history=None,
-                 export=None, restart=None, windows=None, extension_source=None) -> None:
+                 export=None, restart=None, windows=None, extension_source=None,
+                 background=None) -> None:
         """``theme`` (ui.theme.Theme) only picks light or dark swatches;
         ``log_file`` (a Path) enables *Open Log Folder*, which
         ``launcher(folder)`` opens (default: Gtk.FileLauncher).
@@ -50,13 +76,17 @@ class PreferencesDialog(Adw.PreferencesDialog):
         and *Delete History…*, ``export()`` the *Export…* button,
         ``restart()`` *Restart Now* after Lightweight Mode changes,
         ``windows`` (core.windows.WindowSwitcher) the *Window Switching*
-        row, which installs the extension from ``extension_source``."""
+        row, which installs the extension from ``extension_source``.
+        ``background`` (core.background.BackgroundService) the *Record in
+        the Background* and *Start at Boot* switches."""
         super().__init__(title="Preferences", search_enabled=True)
         self.settings = settings
         self.theme = theme
         self.log_file = log_file
         self.history = history
         self.export = export
+        self.background = background
+        self._notices: dict = {}        # page -> its Lightweight Mode notice
         self.delete_alert = None
         self.restart = restart
         self.windows = windows
@@ -66,7 +96,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.sidebar = sidebar
         self.entry_rows: dict[str, Adw.ActionRow] = {}
         self.entry_pages: dict[str, "EntryPage"] = {}
-        self._handlers: list[int] = []
+        self.connections = Connections()
         self.rows: dict[str, Gtk.Widget] = {}      # settings key -> row (for tests)
 
         general = self._page("General", "preferences-system-symbolic")
@@ -88,8 +118,10 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._switch(ui, "show-graph-grids", "Show Graph Grids")
         self._switch(ui, "show-graph-axes", "Show Graph Axes",
                      "Percentage and time labels with ticks on percentage graphs")
-        self._combo(ui, "graph-time-range", "Graph Time Range", GRAPH_TIME_RANGES,
+        self._combo(ui, "graph-time-range", "Graph Time Range",
+                    [*GRAPH_TIME_RANGES, (CUSTOM, CUSTOM_LABEL)],
                     "How much history graphs show, whatever the refresh speed")
+        self._custom_range_row(ui)
         self._switch(ui, "normalize-cpu-usage", "Normalize Processor Usage",
                      "Apps and Processes show each one's share of the whole processor, "
                      "so they add up to the total. Off: one fully busy core is 100 %")
@@ -154,20 +186,59 @@ class PreferencesDialog(Adw.PreferencesDialog):
                      "Asks for your password when the app starts, if the detailed "
                      "data source needs it")
         self._combo(detail, "intel-gpu-top-interval", "intel_gpu_top Update Interval",
-                    [("", "Same as Update Interval")] + UPDATE_INTERVALS)
+                    [("", "Same as Update Interval"), *UPDATE_INTERVALS])
 
-        # Lightweight Mode fixes some preferences while it's on (Idea 1).
+        # Lightweight Mode fixes some preferences while it's on: each one
+        # greyed out with a padlock before its title (the padlock's tooltip
+        # says why), and a notice at the top of every page that has one.
         for key, row in self.rows.items():
             if is_pinned(settings, key):
                 row.set_sensitive(False)
-                row.set_tooltip_text("Fixed while Lightweight Mode is on")
+                row.add_prefix(fixed_icon())
+                notice = self._notices.get(row.get_ancestor(Adw.PreferencesPage))
+                if notice is not None:
+                    notice.set_visible(True)
         self.connect("closed", self._on_closed)
+
+    def _custom_range_row(self, group) -> None:
+        """*Custom…*'s number and unit, shown only while it's chosen."""
+        row = Adw.ActionRow(title="Custom Time Range",
+                            subtitle="From 10 seconds to 30 days")
+        self.range_editor = RangeEditor(self.settings.get(CUSTOM_KEY), self._set_custom_range)
+        row.add_suffix(self.range_editor)
+        group.add(row)
+        self.rows[CUSTOM_KEY] = row
+        self.custom_range_row = row
+
+        def follow(*_a):
+            row.set_visible(self.settings.get("graph-time-range") == CUSTOM)
+            seconds = self.settings.get(CUSTOM_KEY)
+            if self.range_editor.seconds() != seconds and not row.has_css_class("error"):
+                self.range_editor.set_seconds(seconds)
+        follow()
+        self._watch("graph-time-range", follow)
+        self._watch(CUSTOM_KEY, follow)
+
+    def _set_custom_range(self, seconds: int) -> None:
+        """Store what was typed, clamped; the subtitle says when it was."""
+        note = limit_note(seconds, update_interval_ms(self.settings))
+        self.custom_range_row.set_subtitle(note or "From 10 seconds to 30 days")
+        if note:
+            self.custom_range_row.add_css_class("error")
+        else:
+            self.custom_range_row.remove_css_class("error")
+        self._set(CUSTOM_KEY, clamp_range_s(seconds, update_interval_ms(self.settings)))
 
     # -- building blocks ----------------------------------------------------------
 
     def _page(self, title: str, icon: str) -> Adw.PreferencesPage:
         page = Adw.PreferencesPage(title=title, icon_name=icon)
         self.add(page)
+        if profile_of(self.settings).is_lightweight:
+            # First on the page; shown once a fixed setting turns up on it.
+            notice = fixed_notice()
+            page.add(notice)
+            self._notices[page] = notice
         return page
 
     def _group(self, page, title: str, description: str = "") -> Adw.PreferencesGroup:
@@ -176,7 +247,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         return group
 
     def _watch(self, key: str, callback) -> None:
-        self._handlers.append(self.settings.connect_changed(key, callback))
+        self.connections.watch(self.settings, key, callback)
 
     def _switch(self, group, key: str, title: str, subtitle: str = "") -> Adw.SwitchRow:
         row = Adw.SwitchRow(title=title, subtitle=subtitle,
@@ -318,7 +389,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         group.add(row)
         return row
 
-    # -- the Sidebar page (DESIGN.md §9.5) ------------------------------------------------
+    # -- the Sidebar page ------------------------------------------------
 
     def _sidebar_page(self) -> None:
         page = self.sidebar_prefs_page = self._page("Sidebar", "sidebar-show-symbolic")
@@ -354,14 +425,21 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.push_subpage(sub)
         return sub
 
-    # -- Lightweight Mode (Idea 1) --------------------------------------------------
+    # -- Lightweight Mode --------------------------------------------------
 
     def _lightweight_group(self, page) -> None:
+        """The switch shows the mode Proccoli runs in now (also when it was
+        started with ``--lightweight``); flipping it chooses the mode for the
+        next start, which *Restart to Apply* says and offers."""
         group = self._group(page, "Memory Use")
-        self._switch(group, "lightweight", "Lightweight Mode",
-                     "As little memory as possible: pages are built when you open them, "
-                     "the Overview is a list, and charts, icons and GPU details are kept "
-                     "to a minimum. Applies at the next start")
+        running = profile_of(self.settings).is_lightweight
+        row = Adw.SwitchRow(title="Lightweight Mode", active=running,
+                            subtitle="As little memory as possible: pages are built when you "
+                                     "open them, the Overview is a list, and charts, icons and "
+                                     "GPU details are kept to a minimum")
+        row.connect("notify::active", lambda r, _p: self._choose_lightweight(r.get_active()))
+        group.add(row)
+        self.rows["lightweight"] = row
         row = Adw.ActionRow(title="Restart to Apply",
                             subtitle="Proccoli starts again with the new mode")
         button = Gtk.Button(label="Restart Now", valign=Gtk.Align.CENTER)
@@ -373,12 +451,21 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._watch("lightweight", lambda *_: self._show_restart())
         self._show_restart()
 
-    def _show_restart(self) -> None:
-        running = profile_of(self.settings).is_lightweight
-        self.restart_row.set_visible(self.restart is not None
-                                     and bool(self.settings.get("lightweight")) != running)
+    def _choose_lightweight(self, on: bool) -> None:
+        """The mode for the next start (the setting)."""
+        self._set("lightweight", on)
+        self._show_restart()
 
-    # -- Window Switching (Idea 5) ---------------------------------------------------
+    def _show_restart(self) -> None:
+        """While the next start's mode differs from this one's."""
+        running = profile_of(self.settings).is_lightweight
+        pending = bool(self.settings.get("lightweight")) != running
+        self.restart_row.set_visible(self.restart is not None and pending)
+        if pending:
+            self.restart_row.set_subtitle(
+                "Lightweight Mode turns " + ("off" if running else "on") + " at the next start")
+
+    # -- Window Switching ---------------------------------------------------
 
     def _window_switching_group(self, page) -> None:
         group = self._group(page, "Window Switching",
@@ -425,7 +512,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self.add_toast(Adw.Toast(title="Couldn't set up window switching", timeout=4))
         self.show_window_switching()
 
-    # -- History (Idea 2) ---------------------------------------------------------
+    # -- History ---------------------------------------------------------
 
     def _history_group(self, page) -> None:
         group = self._group(page, "History",
@@ -448,12 +535,63 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self.show_size()
         if self.export is not None:
             row = Adw.ActionRow(title="Export Statistics",
-                                subtitle="This session's readings as CSV files")
+                                subtitle="This session's readings as CSV files, with what "
+                                         "each device is")
             button = Gtk.Button(label="Export…", valign=Gtk.Align.CENTER)
             button.connect("clicked", lambda *_: self.export())
             row.add_suffix(button)
             group.add(row)
             self.export_button = button
+            self._switch(group, "export-hardware-addresses", "Include Hardware Addresses",
+                         "Network cards' addresses identify this computer")
+        if self.background is not None:
+            self._background_rows(group)
+
+    # -- recording in the background -------------------------------------------
+
+    def _background_rows(self, group) -> None:
+        self.background_row = Adw.SwitchRow(
+            title="Record in the Background",
+            subtitle="Keeps the history while Proccoli is closed, from when you log in")
+        self.linger_row = Adw.SwitchRow(
+            title="Start at Boot",
+            subtitle="Also records before you log in and after you log out")
+        self.recording_row = Adw.ActionRow(title="Recording")
+        for row in (self.background_row, self.linger_row, self.recording_row):
+            group.add(row)
+        self._background_busy = True                 # until the first answer
+        self.background_row.connect("notify::active", lambda r, _p: self._set_background(
+            r.get_active()))
+        self.linger_row.connect("notify::active", lambda r, _p: self._set_linger(
+            r.get_active()))
+        self._watch("history", lambda *_: self._show_background(self.background.state))
+        self.background.refresh(self._show_background)
+
+    def _show_background(self, state) -> None:
+        from ...core.background import status_text
+        self._background_busy = True
+        self.background_row.set_active(state.enabled)
+        self.background_row.set_sensitive(state.available)
+        if not state.available:
+            self.background_row.set_subtitle(state.reason)
+        self.linger_row.set_active(state.linger)
+        self.linger_row.set_sensitive(state.available and state.enabled)
+        self._background_busy = False
+        history = self.history
+        writer = history.writer_info() if history is not None else None
+        here = bool(history is not None and history.writer and history.session is not None)
+        self.recording_row.set_subtitle(status_text(writer, here,
+                                                    bool(self.settings.get("history")), state))
+
+    def _set_background(self, on: bool) -> None:
+        if not self._background_busy and on != self.background.state.enabled:
+            self._background_busy = True
+            self.background.set_enabled(on, self._show_background)
+
+    def _set_linger(self, on: bool) -> None:
+        if not self._background_busy and on != self.background.state.linger:
+            self._background_busy = True
+            self.background.set_linger(on, self._show_background)
 
     def show_size(self) -> None:
         from ...core.units import Base, format_bytes
@@ -500,9 +638,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self.settings.set(key, value)
 
     def _on_closed(self, *_a) -> None:
-        for handler in self._handlers:
-            self.settings.disconnect(handler)
-        self._handlers = []
+        self.connections.disconnect_all()
         for sub in self.entry_pages.values():
             sub.shutdown()
 
@@ -550,9 +686,9 @@ class EntryPage(Adw.NavigationPage):
         prefs.add(layout)
         self.set_child(Adw.ToolbarView(content=prefs))
         self.get_child().add_top_bar(Adw.HeaderBar())
-        self._handlers = [settings.connect_changed(k, lambda *_: self.sync())
-                          for k in ("sidebar-hidden-fields", "sidebar-minimized",
-                                    "sidebar-order")]
+        self.connections = Connections()
+        self.connections.watch(settings, ("sidebar-hidden-fields", "sidebar-minimized",
+                                          "sidebar-order"), lambda *_: self.sync())
         self.sync()
 
     def _on_switch(self, field: Field, row) -> None:
@@ -569,13 +705,11 @@ class EntryPage(Adw.NavigationPage):
         if self.minimized.get_active() != minimized:
             self.minimized.set_active(minimized)
         order, pinned = self.sidebar.order(), self.sidebar.pinned_ids()
-        self.up.set_sensitive(sidebar_order.can_move(order, self.page_id, -1, pinned))
-        self.down.set_sensitive(sidebar_order.can_move(order, self.page_id, 1, pinned))
+        self.up.set_sensitive(reorder.can_move(order, self.page_id, -1, pinned))
+        self.down.set_sensitive(reorder.can_move(order, self.page_id, 1, pinned))
         rest = [i for i in order if i not in pinned]
         if self.page_id in rest:
             self.position.set_subtitle(f"{rest.index(self.page_id) + 1} of {len(rest)}")
 
     def shutdown(self) -> None:
-        for h in self._handlers:
-            self.settings.disconnect(h)
-        self._handlers = []
+        self.connections.disconnect_all()

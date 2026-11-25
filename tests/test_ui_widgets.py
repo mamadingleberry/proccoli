@@ -143,7 +143,7 @@ class GraphDrawTest(unittest.TestCase):
         self.assertLess(small[0], big.plot_rect(200, 48)[0])   # smaller font, narrower gutter
 
     def test_hover_crosshair_and_values(self):
-        # Idea 3: page graphs show every line's value at the pointer.
+        # page graphs show every line's value at the pointer.
         h = History(11)
         h.define("u", "%")
         for t in range(11):
@@ -159,7 +159,7 @@ class GraphDrawTest(unittest.TestCase):
         g._on_motion(None, 79, 0)
         point, rows, heading = g.hover_lines(100)
         self.assertEqual((point.index, heading), (8, "2 s ago"))
-        self.assertEqual(rows, [(0, "Usage   80 %")])           # core.units.format_percent
+        self.assertEqual(rows, [(0, "Usage   80 %")])           # core.units.format_percent()
         after = render(g, 100, 60)
         self.assertNotEqual([after(80, y) for y in range(60)],    # the crosshair
                             [before(80, y) for y in range(60)])
@@ -183,7 +183,7 @@ class GraphDrawTest(unittest.TestCase):
         return g
 
     def test_time_not_running_is_dithered(self):
-        # M68: a checker over the offline stretch, none over recorded time.
+        # a checker over the offline stretch, none over recorded time.
         g = self.offline_graph()
         px = render(g, 190, 60)            # 10 px per point; offline x ≈ 45…145
         inside = [px(x, 10)[3] for x in range(80, 90)]
@@ -240,6 +240,75 @@ class GraphDrawTest(unittest.TestCase):
         g = Graph()
         g.set_series([flat_history(1.0).series("v")], color_offset=1)
         self.assertNotEqual(g.color_for(0), accent_rgb())
+
+
+@unittest.skipUnless(HAVE_DISPLAY, "no display")
+class GraphKindsTest(unittest.TestCase):
+    """pane charts and sidebar charts."""
+
+    def sidebar(self, unit="%", max_value=100.0):
+        from proccoli.core.history import History
+        from proccoli.ui.widgets.graph import SidebarGraph
+        h = History(5)
+        g = SidebarGraph(max_value)
+        g.set_series([h.define("v", unit)])
+        g.set_time_span(60.0)
+        return g
+
+    def test_kinds(self):
+        from proccoli.ui.widgets.graph import Graph, GraphStyle, PaneGraph, SidebarGraph
+        self.assertEqual(PaneGraph().style, GraphStyle.NORMAL)
+        self.assertEqual(SidebarGraph().style, GraphStyle.SMALL)
+        self.assertTrue(issubclass(PaneGraph, Graph) and issubclass(SidebarGraph, Graph))
+        self.assertIsInstance(Meter().graph, SidebarGraph)
+        self.assertIsInstance(GraphBox("x", [("v", "%")]).graph, PaneGraph)
+
+    def test_no_grid_on_the_sidebar(self):
+        from proccoli.ui.widgets.graph import PaneGraph
+        g = self.sidebar()
+        g.set_show_grid(True)
+        self.assertFalse(g.show_grid)
+        pane = PaneGraph()
+        pane.set_show_grid(True)
+        self.assertTrue(pane.show_grid)
+
+    def test_time_axis_on_every_sidebar_chart_network_too(self):
+        g = self.sidebar("B/s", None)                # a network meter: no percentage
+        g.set_show_axes(True)
+        self.assertTrue(g.has_axes())
+        self.assertEqual(g.y_tick_labels(30, 10), [])         # no value axis given
+        x, y, w, h = g.plot_rect(200, 52)
+        self.assertEqual((x, y), (0.0, 0.0))                   # no room for y labels
+        self.assertLess(h, 52)                                 # room for time labels
+        from proccoli.ui.widgets.graph import Graph, GraphStyle
+        old = Graph(GraphStyle.SMALL, None)                    # (what it was: no axes)
+        old.set_series(g.series)
+        old.set_show_axes(True)
+        self.assertFalse(old.has_axes())
+
+    def test_value_axis_only_minimum_and_maximum(self):
+        g = self.sidebar()
+        g.set_show_axes(True)
+        self.assertEqual(g.y_tick_labels(200, 10), [(0.0, "0 %"), (1.0, "100 %")])
+        g = self.sidebar("B/s", 1000.0)
+        g.set_axis_format(lambda v: f"{v:g} B/s")
+        self.assertEqual(g.y_tick_labels(200, 10), [(0.0, "0 B/s"), (1.0, "1000 B/s")])
+        from proccoli.ui.widgets.graph import PaneGraph
+        pane = PaneGraph()
+        pane.set_series(g.series[:0] or self.sidebar().series)
+        self.assertEqual(len(pane.y_tick_labels(200, 10)), 5)  # 0, 25, 50, 75, 100 %
+
+    def test_a_missing_series_is_skipped(self):
+        g = self.sidebar()
+        with self.assertLogs("proccoli.ui.widgets.graph", "WARNING"):
+            g.set_series([None] + g.series)
+        self.assertEqual(len(g.series), 1)
+        g.offline_flags()                                # what crashed: no longer
+
+    def test_off_means_off(self):
+        g = self.sidebar()
+        self.assertFalse(g.has_axes())
+        self.assertEqual(g.plot_rect(200, 36), (0.0, 0.0, 200.0, 36.0))
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
@@ -324,7 +393,7 @@ class DemoPageTest(unittest.TestCase):
         self.assertTrue(page.usage.graph.show_grid)
         settings.set("base", "binary")
         self.assertIn("iB/s", page.io.start.info_label.get_label())
-        # The hover box follows the same unit preferences (M61).
+        # The hover box follows the same unit preferences.
         read = page.io.start.graph
         self.assertTrue(read.hover)
         self.assertEqual(read.format_for(0, 2048.0), "2.0 KiB/s")
@@ -335,7 +404,7 @@ class DemoPageTest(unittest.TestCase):
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class LegendChartTest(unittest.TestCase):
-    """The reusable many-line chart (M59), on its own, outside any page."""
+    """The reusable many-line chart, on its own, outside any page."""
 
     def make(self, n=4):
         from proccoli.ui.widgets.legend_chart import LegendChart

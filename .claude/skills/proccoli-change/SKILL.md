@@ -37,6 +37,11 @@ Write code that a test can drive without the real machine or a display.
 - **Respect the layering:** UI → Domain → Core, never the other way.
   Domain modules don't import Gtk at module level; they tell the UI about
   changes through GObject signals.
+- **No planning references in code:** comments, docstrings, tests,
+  scripts and data files never mention milestone, idea, bug or step
+  numbers or `DESIGN.md` / `PLAN.md` sections; explain in plain words.
+  Milestone notes such as "(M52)" go in docs/DESIGN.md and docs/PLAN.md
+  only (`tests/test_static.py` checks the code).
 - **New GPU backends** live in their own `gpu/<vendor>/` package and need
   only a registration line outside it (PLAN M16 checklist).
 - `tests/test_static.py` enforces much of this (OS calls, Gtk imports,
@@ -87,7 +92,8 @@ Check all three every time, and change whichever no longer matches.
 - **docs/DESIGN.md** (how it's built): update the class diagrams, package
   layout (§4.1), `AppContext`/seams (§4.2), settings keys (§11), and any
   section whose behaviour changed. Keep Mermaid diagrams in line with the
-  code; note the milestone that introduced a behaviour (e.g. "(M52)").
+  code; note the milestone that introduced a behaviour (e.g. "(M52)")
+  there, never in the code.
 - **README.md** is a **user guide only**: what users see and do, keyboard
   shortcuts, preferences, files Proccoli keeps, troubleshooting. Update it
   when anything user-visible changes. Never put milestones, class names or

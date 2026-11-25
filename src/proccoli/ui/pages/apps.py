@@ -66,7 +66,7 @@ class AppsPage(TablePage):
                          monitor, actions)
         self.refresh()
 
-    # -- Switch To (DESIGN.md §8) -----------------------------------------------------
+    # -- Switch To -----------------------------------------------------
 
     def extra_actions(self) -> list:
         return [("switch-to", self.switch_to)]

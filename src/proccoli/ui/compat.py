@@ -47,8 +47,8 @@ def ensure_font_dpi(gtk_settings) -> bool:
 
 
 def spinner(adw=Adw, **props) -> Gtk.Widget:
-    """A spinning indicator: ``Adw.Spinner`` (libadwaita >= 1.6), else a
-    ``Gtk.Spinner`` that is already spinning."""
+    """A spinning indicator: ``Adw.Spinner()`` (libadwaita >= 1.6), else a
+    ``Gtk.Spinner()`` that is already spinning."""
     if hasattr(adw, "Spinner"):
         return adw.Spinner(**props)
     return Gtk.Spinner(spinning=True, **props)

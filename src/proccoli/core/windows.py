@@ -1,4 +1,4 @@
-"""*Switch To* for any running app (Idea 5, DESIGN.md §13.5).
+"""*Switch To* for any running app.
 
 GNOME on Wayland lets an app focus only its own windows, so Proccoli
 can't raise another app's window by itself. ``WindowSwitcher`` tries, in
@@ -9,7 +9,7 @@ order:
    activates one. An app's windows are the ones whose process is one of
    the app's (``windows_for``); the most recently used is raised. Works
    for every app with a window, on Wayland and X11.
-2. **Asking the app** (Milestone 32): D-Bus activation, or relaunching a
+2. **Asking the app**: D-Bus activation, or relaunching a
    single-window app, now with an activation token from the window's
    launch context so GNOME lets it come to the front; also for running
    GApplications that own their app ID on the bus.
@@ -82,7 +82,7 @@ def extension_source():
 
 class Way(str, Enum):
     EXTENSION = "extension"
-    ASK_APP = "ask-app"          # D-Bus activation or relaunch (M32)
+    ASK_APP = "ask-app"          # D-Bus activation or relaunch
     X11 = "x11"
 
 

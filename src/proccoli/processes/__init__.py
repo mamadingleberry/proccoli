@@ -1,1 +1,1 @@
-"""Processes and apps (DESIGN.md §8). No Gtk imports here."""
+"""Processes and apps. No Gtk imports here."""

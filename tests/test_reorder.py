@@ -1,4 +1,4 @@
-"""ui.sidebar_order: the user's sidebar order (Milestone 28)."""
+"""ui.reorder: the user's sidebar and toolbar order."""
 
 import os
 import sys
@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from proccoli.ui.sidebar_order import arrange, can_move, move, move_before  # noqa: E402
+from proccoli.ui.reorder import arrange, can_move, move, move_before  # noqa: E402
 
 PINNED = ["apps", "processes"]
 DEFAULT = ["apps", "processes", "cpu", "memory", "gpu", "sda", "eth"]

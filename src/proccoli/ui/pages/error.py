@@ -1,4 +1,4 @@
-"""The error page (Milestone 55): shown instead of a device's page when the
+"""The error page: shown instead of a device's page when the
 device couldn't be set up (``devices.base.FailedMonitor``, e.g. no source
 can read a GPU) or its page couldn't be built.
 

@@ -32,6 +32,8 @@ UNIT_KEYS = ("base", "network-bits", "temperature-unit")
 
 
 class DevicePage(FittingPage):
+    has_graphs = True               # the graph toolbar's items apply
+
     def __init__(self, monitor: Monitor, settings, kind: PageKind,
                  sort_name: str = "", title: Optional[str] = None) -> None:
         info = monitor.info
@@ -43,11 +45,11 @@ class DevicePage(FittingPage):
         self.graphs: list[Graph] = []
         self.text_only: list[Graph] = []     # not drawn in Lightweight Mode
         self.pairs: list[DoubleGraphBox] = []
-        self._reserves: dict = {}       # graph -> measure(width): its area's extra (M57)
+        self._reserves: dict = {}       # graph -> measure(width): its area's extra
         self.legend_charts: list[LegendChart] = []
         self.limits: GraphLimits = LIMITS
         self.entry_index: Optional[int] = None    # set by the sidebar
-        # Axes, grids, time span, units and colors of every graph (Idea 4);
+        # Axes, grids, time span, units and colors of every graph;
         # one gutter lines up the page's value axes.
         self.charts = ChartSettings(settings)
         self.gutter = AxisGutter(schedule=GLib.idle_add)
@@ -70,7 +72,7 @@ class DevicePage(FittingPage):
 
     def set_entry_color(self, index: Optional[int]) -> None:
         """The sidebar gave this page's entry color ``index``: the page's
-        graphs start at the same color (DESIGN.md §9.3)."""
+        graphs start at the same color."""
         self.entry_index = index
         self.charts.set_entry_base(index)
 
@@ -78,7 +80,7 @@ class DevicePage(FittingPage):
         """A page graph: the chart preferences, a value axis in the user's
         units, the hover box, the page's colors. In Lightweight Mode only
         the page's first graph is drawn; the others keep their title and
-        figures as text (Idea 1)."""
+        figures as text."""
         if self.graphs and not profile_of(self.settings).extra_graphs:
             graph.set_visible(False)
             self.text_only.append(graph)
@@ -92,7 +94,7 @@ class DevicePage(FittingPage):
                          max_value: Optional[float] = 100.0, min_max: float = 0.0,
                          **options) -> LegendChart:
         """A ``LegendChart`` (many lines, legend inside its card) fitted like
-        any page graph, its legend counted in its area (M59)."""
+        any page graph, its legend counted in its area."""
         chart = LegendChart(title, max_value=max_value, min_max=min_max, **options)
         self.add_graph(chart.graph)
         self.reserve(chart.graph, chart.legend_height)
@@ -183,7 +185,7 @@ class DevicePage(FittingPage):
         ScrollingPage.do_map(self)
         self.redraw()           # catch up on what was recorded while hidden
 
-    # -- graphs fill the page (DESIGN.md §9.1) -------------------------------------
+    # -- graphs fill the page -------------------------------------
 
     def fitting_graphs(self) -> list[Graph]:
         """The page graphs that share the height: normal-size, on screen."""
@@ -201,7 +203,7 @@ class DevicePage(FittingPage):
             return False
         rows = group_rows([b.get_y() for _, b in bounds])
         widths = [min(bounds[i][1].get_width() for i in r) for r in rows]
-        # A graph's area includes what's reserved for it (a legend, M57).
+        # A graph's area includes what's reserved for it (a legend).
         reserves = [self.graph_reserve(g, int(b.get_width())) for g, (_, b)
                     in zip(graphs, bounds)]
         current = [max(graphs[i].get_content_height() + reserves[i] for i in r)
@@ -240,7 +242,7 @@ class DevicePage(FittingPage):
 
     def reserve(self, graph: Graph, measure) -> None:
         """Count ``measure(width)`` pixels (e.g. a legend under ``graph``)
-        as part of ``graph``'s area when fitting (M57)."""
+        as part of ``graph``'s area when fitting."""
         self._reserves[graph] = measure
 
     def graph_reserve(self, graph: Graph, width: int) -> int:

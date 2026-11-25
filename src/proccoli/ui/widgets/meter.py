@@ -11,7 +11,7 @@ from gi.repository import Gtk
 
 from ...core.history import Series
 from ..theme import ENTRY_CSS_COUNT
-from .graph import Graph, GraphStyle
+from .graph import SidebarGraph
 
 
 METER_HEIGHT = 36             # the chart alone
@@ -29,7 +29,7 @@ class Meter(Gtk.Stack):
         super().__init__(transition_type=Gtk.StackTransitionType.CROSSFADE)
         self.progress = Gtk.ProgressBar(valign=Gtk.Align.CENTER)
         self.progress.add_css_class("slim")
-        self.graph = Graph(GraphStyle.SMALL, max_value)
+        self.graph = SidebarGraph(max_value)
         self.add_named(self.progress, MeterType.PROGRESS_BAR.value)
         self.add_named(self.graph, MeterType.GRAPH.value)
         self.set_meter_type(meter_type)

@@ -1,5 +1,5 @@
 """Which lines of a many-line graph show (any ``LegendChart``: the per-CPU
-chart, NVIDIA's details; Milestones 55, 58 and 59). Pure functions on a
+chart, NVIDIA's details, 58 and 59). Pure functions on a
 list of booleans.
 
 - left-click an item: ``toggle`` its line (hide or show it);
@@ -7,7 +7,7 @@ list of booleans.
   only line shown brings every line back;
 - a chart never shows nothing: hiding the last line shown (say, the one
   core selected with a right-click) brings every line back
-  (``never_empty``, M59). Every change goes through it.
+  (``never_empty``). Every change goes through it.
 """
 
 from __future__ import annotations

@@ -30,6 +30,19 @@
     <control>keyboard</control>
   </supports>
   <releases>
+    <release version="0.5.0" date="2026-11-25">
+      <description>
+        <p>More styles and palettes, and new program names.</p>
+        <ul>
+          <li>The recorder is now called proccoli and the window proccoli-gui</li>
+          <li>Eighteen more styles, among them High Contrast Light and Dark, Nord, Dracula, Gruvbox, Solarized, Catppuccin and Tokyo Night</li>
+          <li>Thirteen more chart palettes, five of them made to stay distinguishable with color blindness</li>
+          <li>In Lightweight Mode, Preferences marks the settings it fixes with a padlock</li>
+          <li>The Overview's tables no longer change width as the busiest apps change</li>
+          <li>After Restart Now, the window keeps its name in process lists instead of showing as python3</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-11-24">
       <description>
         <p>Charts that are honest about time.</p>

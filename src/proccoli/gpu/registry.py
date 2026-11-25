@@ -32,7 +32,7 @@ class GpuBackendRegistry:
     def probe_all(self, gpu: GpuInfo, deps: GpuDeps) -> list[tuple[type[GpuBackend], Probe]]:
         """Every backend's probe for ``gpu``, in registration order, the
         unsupported ones too (their reasons explain the choice:
-        ``detect.plan_gpu``)."""
+        ``detect.plan_gpu()``)."""
         return [(cls, cls.probe(gpu, deps)) for cls in self._classes]
 
     def candidates(self, gpu: GpuInfo, deps: GpuDeps) -> list[tuple[type[GpuBackend], Probe]]:
@@ -45,10 +45,11 @@ class GpuBackendRegistry:
 
 
 def standard_registry() -> GpuBackendRegistry:
-    """Every real backend, most detailed first. (An AMD backend registers
-    here when it exists: DESIGN.md §7, PLAN.md Milestone 16.)"""
+    """Every real backend, most detailed first."""
+    from .amdgpu.backend import AmdgpuBackend
     from .generic_drm import GenericDrmBackend
     from .intel_gpu_top.backend import IntelGpuTopBackend
     from .nvidia.backend import NvidiaBackend
 
-    return GpuBackendRegistry((IntelGpuTopBackend, NvidiaBackend, GenericDrmBackend))
+    return GpuBackendRegistry((IntelGpuTopBackend, NvidiaBackend, AmdgpuBackend,
+                               GenericDrmBackend))

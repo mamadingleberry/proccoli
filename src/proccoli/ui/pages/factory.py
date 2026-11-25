@@ -26,7 +26,7 @@ class PageFactory:
         return list(self._builders)
 
     def create(self, monitor: Monitor) -> ResourcePage:
-        """The device's page, or an ``ErrorPage`` (M55) when the device
+        """The device's page, or an ``ErrorPage`` when the device
         failed to set up or its page raised while being built."""
         from ...devices.base import FailedMonitor
         from .error import ErrorPage, error_text
@@ -62,7 +62,7 @@ def standard_page_factory(ctx) -> PageFactory:
     factory.register(DeviceKind.NETWORK, lambda m: NetworkPage(m, settings))
     factory.register(DeviceKind.BATTERY, lambda m: BatteryPage(m, settings))
     factory.register(DeviceKind.DEMO, lambda m: DemoPage(m, settings))
-    # The GPU carve-out: Overview + the detail source's tabs (DESIGN.md §7.3).
+    # The GPU carve-out: Overview + the detail source's tabs.
     app_icon = ctx.app_icons.icon_for_pid if ctx.app_icons is not None else None
     factory.register(DeviceKind.GPU, lambda m: GpuPage(m, settings, app_icon))
     return factory

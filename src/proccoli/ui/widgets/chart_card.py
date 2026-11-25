@@ -1,4 +1,4 @@
-"""A chart in a card (Idea 4): the GPU *Details* tabs' one building block.
+"""A chart in a card: the GPU *Details* tabs' one building block.
 
 ``ChartCard`` is a ``card`` box around a ``LegendChart`` (title, graph,
 legend, info line, the same ``GraphPane`` as device pages), so spacing,
@@ -13,9 +13,9 @@ only on hover.
 Use::
 
     card = ChartCard("Clocks", max_value=None, min_max=1000.0, weight=140)
-    charts.bind(card.graph)                     # ui.chart_settings
+    charts.bind(card.graph) # ui.chart_settings
     card.set_lines(series, ["Graphics", "Memory"])
-    card.set_values(["1.5 GHz", "7 GHz"])       # each refresh
+    card.set_values(["1.5 GHz", "7 GHz"]) # each refresh
 """
 
 from __future__ import annotations

@@ -72,6 +72,16 @@ def _uevent(sysroot: SysRoot, path: str) -> dict[str, str]:
     return out
 
 
+def amd_is_apu(sysroot: SysRoot, dev: str, vram_total: Optional[int]) -> bool:
+    """An AMD APU: its power firmware's ``gpu_metrics`` uses the APU layout
+    (format revision 2). Without that file, a small VRAM carve-out (a BIOS can reserve 2 GiB or more, so the table decides first)."""
+    from .amdgpu.metrics import header
+    h = header(sysroot.read_bytes(f"{dev}/gpu_metrics", 4))
+    if h is not None:
+        return h[1] == 2
+    return vram_total is not None and vram_total < 2 * 2 ** 30
+
+
 def discover_gpus(sysroot: SysRoot, pci: pciids.PciIds) -> list[GpuInfo]:
     gpus = []
     for card in sysroot.listdir("/sys/class/drm"):
@@ -92,7 +102,7 @@ def discover_gpus(sysroot: SysRoot, pci: pciids.PciIds) -> list[GpuInfo]:
         if vendor == GpuVendor.INTEL:
             integrated = slot.endswith("00:02.0")        # Intel iGPUs live at 00:02.0
         elif vendor == GpuVendor.AMD:
-            integrated = vram_total is not None and vram_total < 2 * 2 ** 30  # APU carve-out
+            integrated = amd_is_apu(sysroot, dev, vram_total)
         else:
             integrated = False
         props = {}

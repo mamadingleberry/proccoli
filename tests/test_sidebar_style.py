@@ -1,5 +1,4 @@
-"""The sidebar's Full / Icons Only / Hidden modes (``ui/sidebar_style.py``,
-Milestone 54): pure rules, no display."""
+"""The sidebar's Full / Icons Only / Hidden modes (``ui/sidebar_style.py``): pure rules, no display."""
 
 import os
 import sys
@@ -10,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from proccoli.core.settings import Settings  # noqa: E402
 from proccoli.ui.sidebar_style import (MIN_RAIL_WIDTH, MODE_LABELS, STYLE_SETTING,  # noqa: E402
                                        Mode, SidebarStyle, choose, compact_tooltip,
-                                       mode_of, parse_style, rail_width)
+                                       menu_modes, mode_of, parse_style, rail_width)
 
 
 class ModeTest(unittest.TestCase):
@@ -27,6 +26,14 @@ class ModeTest(unittest.TestCase):
         # Hidden keeps whatever style was in use.
         self.assertEqual(choose("hidden", "icons"), (False, SidebarStyle.ICONS))
         self.assertEqual(choose("hidden", "full"), (False, SidebarStyle.FULL))
+
+    def test_lightweight_offers_no_full(self):
+        """the style is pinned to icons only."""
+        self.assertEqual(menu_modes(), (Mode.FULL, Mode.ICONS, Mode.HIDDEN))
+        self.assertEqual(menu_modes(False), (Mode.ICONS, Mode.HIDDEN))
+        self.assertEqual(choose("full", "icons", full_allowed=False), (True, SidebarStyle.ICONS))
+        self.assertEqual(choose("hidden", "icons", full_allowed=False),
+                         (False, SidebarStyle.ICONS))
 
     def test_round_trip(self):
         for mode in Mode:

@@ -44,7 +44,7 @@ class DataFilesTest(unittest.TestCase):
                        if "=" in line)
         self.assertEqual(entries["Icon"].strip(), APP_ID)
         self.assertEqual(entries["StartupWMClass"].strip(), APP_ID)
-        self.assertEqual(entries["Exec"].strip(), "proccoli")
+        self.assertEqual(entries["Exec"].strip(), "proccoli-gui")
 
     def test_metainfo_identity(self):
         root = ET.parse(data(f"{APP_ID}.metainfo.xml")).getroot()
@@ -83,13 +83,17 @@ class PolicyTest(unittest.TestCase):
 
 
 class InstallTest(unittest.TestCase):
-    def install(self, prefix="/usr", uninstall=False):
+    def install(self, prefix="/usr", uninstall=False, parts=(), ok=True):
         env = dict(os.environ, DESTDIR=self.dest, PREFIX=prefix)
-        args = [os.path.join(ROOT, "packaging", "install.sh")]
+        args = [os.path.join(ROOT, "packaging", "install.sh")] + [f"--{p}" for p in parts]
         if uninstall:
             args.append("--uninstall")
         r = subprocess.run(args, env=env, capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stderr)
+        if ok:
+            self.assertEqual(r.returncode, 0, r.stderr)
+        else:
+            self.assertNotEqual(r.returncode, 0)
+        return r
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -106,7 +110,7 @@ class InstallTest(unittest.TestCase):
         self.install()
         files = self.files()
         for expected in (
-                "usr/bin/proccoli", "usr/libexec/proccoli/proccoli-helper",
+                "usr/bin/proccoli-gui", "usr/libexec/proccoli/proccoli-helper",
                 f"usr/share/applications/{APP_ID}.desktop",
                 f"usr/share/metainfo/{APP_ID}.metainfo.xml",
                 f"usr/share/glib-2.0/schemas/{APP_ID}.gschema.xml",
@@ -124,8 +128,47 @@ class InstallTest(unittest.TestCase):
         self.assertFalse([f for f in files if "__pycache__" in f])
         self.assertTrue(os.access(os.path.join(self.dest, "usr/libexec/proccoli/proccoli-helper"),
                                   os.X_OK))
-        launcher = read_file(os.path.join(self.dest, "usr/bin/proccoli"))
+        launcher = read_file(os.path.join(self.dest, "usr/bin/proccoli-gui"))
         self.assertIn('sys.path.insert(0, "/usr/share/proccoli")', launcher)
+
+    def test_the_background_collector_and_its_unit(self):
+        for prefix in ("/usr", "/usr/local"):
+            with self.subTest(prefix):
+                self.install(prefix)
+                base = os.path.join(self.dest, prefix.lstrip("/"))
+                unit = read_file(os.path.join(base, "lib/systemd/user/proccoli.service"))
+                self.assertIn(f"ExecStart={prefix}/bin/proccoli", unit)
+                self.assertNotIn("@BINDIR@", unit)
+                self.assertIn("WantedBy=default.target", unit)
+                # Grouped with the window by the desktop's app slice.
+                self.assertIn(f"Slice=app-{APP_ID}.slice", unit)
+                self.assertNotIn("@APP_ID@", unit)
+                # Always on, started on demand.
+                dbus = read_file(os.path.join(base, f"share/dbus-1/services/{APP_ID}.Metrics.service"))
+                self.assertIn(f"Name={APP_ID}.Metrics", dbus)
+                self.assertIn(f"Exec={prefix}/bin/proccoli", dbus)
+                self.assertIn("SystemdService=proccoli.service", dbus)
+                preset = read_file(os.path.join(base, "lib/systemd/user-preset/90-proccoli.preset"))
+                self.assertIn("enable proccoli.service", preset)
+                launcher = os.path.join(base, "bin/proccoli")
+                self.assertTrue(os.access(launcher, os.X_OK))
+                self.assertIn("from proccoli.metrics import main", read_file(launcher))
+                compile(read_file(launcher), "proccoli", "exec")
+
+    @unittest.skipUnless(shutil.which("systemd-analyze"), "no systemd-analyze")
+    def test_the_unit_verifies(self):
+        self.install()
+        unit = os.path.join(self.dest, "usr/lib/systemd/user/proccoli.service")
+        r = subprocess.run(["systemd-analyze", "--user", "verify", unit],
+                           capture_output=True, text=True)
+        # The ExecStart path is /usr/bin (not this staging dir): only that may be reported.
+        # Without a user session (some test runners) it can't find the
+        # runtime directory: that's the environment, not the unit.
+        problems = [l for l in (r.stdout + r.stderr).splitlines()
+                    if l.strip() and "proccoli" not in l.split(":")[-1]
+                    and "Command /usr/bin/proccoli" not in l
+                    and "RuntimeDirectory" not in l and "runtime directory" not in l]
+        self.assertEqual(problems, [], r.stderr)
 
     def test_policy_points_at_the_installed_helper(self):
         for prefix in ("/usr", "/usr/local"):
@@ -137,15 +180,96 @@ class InstallTest(unittest.TestCase):
             self.assertIn(path, policy)
             self.assertIn(path, INSTALLED_HELPERS)      # and the app looks there
 
+    def test_installing_over_the_old_names_removes_them(self):
+        # Before 0.5.0 the recorder was proccoli-metrics with a unit of that name.
+        old = [os.path.join(self.dest, "usr/bin/proccoli-metrics"),
+               os.path.join(self.dest, "usr/lib/systemd/user/proccoli-metrics.service")]
+        for path in old:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as fh:
+                fh.write("old\n")
+        self.install()
+        for path in old:
+            self.assertFalse(os.path.exists(path), path)
+        self.assertTrue(os.path.exists(os.path.join(self.dest, "usr/bin/proccoli")))
+        self.assertTrue(os.path.exists(os.path.join(self.dest, "usr/bin/proccoli-gui")))
+
     def test_installed_launcher_runs(self):
         self.install()
         env = dict(os.environ)
-        r = subprocess.run([sys.executable, os.path.join(self.dest, "usr/bin/proccoli"),
+        r = subprocess.run([sys.executable, os.path.join(self.dest, "usr/bin/proccoli-gui"),
                             "--version"], capture_output=True, text=True, env=env)
         # The launcher points at /usr/share (not the staging dir), so only
         # check that it is valid Python that reaches the import.
         self.assertIn(r.returncode, (0, 1))
-        compile(read_file(os.path.join(self.dest, "usr/bin/proccoli")), "proccoli", "exec")
+        compile(read_file(os.path.join(self.dest, "usr/bin/proccoli-gui")), "proccoli-gui", "exec")
+
+    def test_the_two_parts_split_the_install(self):
+        """--metrics and --gui together are the whole install,
+        with no file in both."""
+        self.install()
+        everything = self.files()
+        self.install(uninstall=True)
+        self.install(parts=("metrics",))
+        metrics = self.files()
+        self.install(parts=("gui",))
+        gui = self.files() - metrics
+        self.assertEqual(metrics | gui, everything)
+        self.assertIn("usr/bin/proccoli", metrics)
+        self.assertIn(f"usr/share/glib-2.0/schemas/{APP_ID}.gschema.xml", metrics)
+        self.assertIn("usr/lib/systemd/user/proccoli.service", metrics)
+        self.assertFalse([f for f in metrics if "/proccoli/ui/" in f or f.endswith("app.py")
+                          or "polkit" in f or "applications" in f or "icons" in f])
+        self.assertIn("usr/bin/proccoli-gui", gui)
+        self.assertIn("usr/libexec/proccoli/proccoli-helper", gui)
+        self.assertIn("usr/share/proccoli/proccoli/ui/window.py", gui)
+
+    def test_the_window_needs_the_metrics_part(self):
+        r = self.install(parts=("gui",), ok=False)
+        self.assertIn("needs the metrics part", r.stderr)
+        self.install()
+        r = self.install(parts=("metrics",), uninstall=True, ok=False)
+        self.assertIn("uninstall it first", r.stderr)
+        self.install(parts=("gui",), uninstall=True)
+        self.assertFalse(os.path.exists(os.path.join(self.dest, "usr/share/proccoli/proccoli/ui")))
+        self.assertTrue(os.path.exists(os.path.join(self.dest,
+                                                    "usr/share/proccoli/proccoli/metrics.py")))
+        self.install(parts=("metrics",), uninstall=True)
+        self.assertEqual(self.files(), set())
+
+    def test_the_metrics_part_runs_without_gtk(self):
+        """Installed alone, it builds the collector and reads a fixture
+        machine with Gtk, Gdk and Adw unimportable."""
+        self.install(parts=("metrics",))
+        code = f"""
+import importlib.abc, sys
+class Block(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path, target=None):
+        if name in ("gi.repository.Gtk", "gi.repository.Gdk", "gi.repository.Adw") \\
+                or name.startswith("proccoli.ui"):
+            raise ImportError("blocked: " + name)
+sys.meta_path.insert(0, Block())
+sys.path.insert(0, {os.path.join(self.dest, "usr/share/proccoli")!r})
+from proccoli import metrics
+from proccoli.context import build_metrics_context
+from proccoli.core import pciids
+from proccoli.core.settings import Settings
+from proccoli.core.sysroot import SysRoot
+ctx = build_metrics_context(metrics.metrics_settings(Settings.for_tests(
+          schema_path={os.path.join(ROOT, "data", APP_ID + ".gschema.xml")!r})),
+      sysroot=SysRoot({os.path.join(ROOT, "tests", "fixtures", "alderlake-laptop")!r}),
+      pci=pciids.load({os.path.join(ROOT, "tests", "fixtures", "pci", "pci.ids")!r}),
+      connection_name=None)
+ctx.devices.start(); ctx.devices.refresh(1.0)
+print(len(ctx.devices.monitors()), metrics.__file__)
+"""
+        env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PROCCOLI_UI_TESTS")}
+        r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                           env=dict(env, DISPLAY="", WAYLAND_DISPLAY=""), cwd="/")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        count, path = r.stdout.split()
+        self.assertGreater(int(count), 3)
+        self.assertTrue(path.startswith(self.dest))           # the installed copy
 
     def test_uninstall_removes_everything(self):
         self.install()
@@ -155,20 +279,107 @@ class InstallTest(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("dpkg-deb"), "no dpkg-deb")
 class DebTest(unittest.TestCase):
-    def test_build(self):
+    """Two packages: proccoli (the recorder, no GTK) and proccoli-gui (the
+    window, which brings the recorder with it)."""
+
+    @classmethod
+    def setUpClass(cls):
         r = subprocess.run([os.path.join(ROOT, "packaging", "build-deb.sh")],
                            capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        deb = os.path.join(ROOT, "dist", f"proccoli_{__version__}_all.deb")
-        info = subprocess.run(["dpkg-deb", "-f", deb], capture_output=True, text=True).stdout
-        self.assertIn("Package: proccoli", info)
-        self.assertIn("gir1.2-adw-1 (>= 1.5)", info)
-        self.assertIn("pkexec", info)
-        contents = subprocess.run(["dpkg-deb", "-c", deb], capture_output=True,
-                                  text=True).stdout
-        self.assertIn("./usr/libexec/proccoli/proccoli-helper", contents)
-        self.assertIn("-rwxr-xr-x root/root", [l[:21] for l in contents.splitlines()
-                                               if "proccoli-helper" in l][0])
+        assert r.returncode == 0, r.stderr
+        cls.debs = {name: os.path.join(ROOT, "dist", f"{name}_{__version__}_all.deb")
+                    for name in ("proccoli", "proccoli-gui")}
+
+    def field(self, name, key):
+        return subprocess.run(["dpkg-deb", "-f", self.debs[name], key], capture_output=True,
+                              text=True).stdout.strip()
+
+    def contents(self, name):
+        out = subprocess.run(["dpkg-deb", "-c", self.debs[name]], capture_output=True,
+                             text=True).stdout
+        return {line.split()[5]: line[:10] for line in out.splitlines()
+                if not line.split()[5].endswith("/")}
+
+    def test_metrics_needs_no_gtk(self):
+        depends = self.field("proccoli", "Depends")
+        self.assertIn("python3-gi", depends)
+        for gtk in ("gtk", "adw", "cairo", "pkexec"):
+            self.assertNotIn(gtk, depends)
+        files = self.contents("proccoli")
+        self.assertIn("./usr/bin/proccoli", files)
+        self.assertIn("./usr/lib/systemd/user/proccoli.service", files)
+        self.assertIn("./usr/share/proccoli/proccoli/metrics.py", files)
+        self.assertFalse([f for f in files if "/proccoli/ui/" in f or f.endswith("/app.py")])
+
+    def test_gui_needs_the_same_metrics(self):
+        depends = self.field("proccoli-gui", "Depends")
+        self.assertIn(f"proccoli (= {__version__})", depends)
+        self.assertIn("gir1.2-adw-1 (>= 1.5)", depends)
+        self.assertIn("pkexec", depends)
+        files = self.contents("proccoli-gui")
+        self.assertIn("./usr/libexec/proccoli/proccoli-helper", files)
+        self.assertEqual(files["./usr/libexec/proccoli/proccoli-helper"], "-rwxr-xr-x")
+        self.assertIn("./usr/share/proccoli/proccoli/ui/window.py", files)
+
+    def test_no_file_in_two_packages(self):
+        metrics, gui = set(self.contents("proccoli")), set(self.contents("proccoli-gui"))
+        shared = {f for f in metrics & gui if "/doc/" not in f}
+        self.assertEqual(shared, set())
+
+    def test_two_packages_and_the_window_brings_the_recorder(self):
+        built = sorted(f for f in os.listdir(os.path.join(ROOT, "dist"))
+                       if f.endswith(f"_{__version__}_all.deb"))
+        self.assertEqual(built, [f"proccoli-gui_{__version__}_all.deb",
+                                 f"proccoli_{__version__}_all.deb"])
+        self.assertTrue(self.field("proccoli-gui", "Depends").startswith(
+            f"proccoli (= {__version__}), "))
+
+    def test_the_recorder_replaces_the_old_proccoli_metrics_package(self):
+        # Its files move over, and apt removes the old package.
+        self.assertEqual(self.field("proccoli", "Conflicts"), "proccoli-metrics")
+        self.assertEqual(self.field("proccoli", "Replaces"),
+                         "proccoli-metrics, proccoli-gui (<< 0.5.0)")
+        self.assertEqual(self.field("proccoli", "Breaks"), "proccoli-gui (<< 0.5.0)")
+        self.assertEqual(self.field("proccoli-gui", "Replaces"), "")
+
+    def test_the_programs_are_proccoli_and_proccoli_gui(self):
+        self.assertIn("./usr/bin/proccoli", self.contents("proccoli"))
+        self.assertIn("./usr/bin/proccoli-gui", self.contents("proccoli-gui"))
+        self.assertNotIn("./usr/bin/proccoli", self.contents("proccoli-gui"))
+
+    def test_the_old_unit_is_turned_off_on_upgrade(self):
+        import io
+        import tarfile
+        ctrl = subprocess.run(["dpkg-deb", "--ctrl-tarfile", self.debs["proccoli"]],
+                              capture_output=True).stdout
+        with tarfile.open(fileobj=io.BytesIO(ctrl)) as tar:
+            postinst = tar.extractfile("./postinst").read().decode()
+        self.assertIn("systemctl --global disable proccoli-metrics.service", postinst)
+
+    def test_metrics_is_on_for_everyone_after_installing(self):
+        import io
+        import tarfile
+        ctrl = subprocess.run(["dpkg-deb", "--ctrl-tarfile", self.debs["proccoli"]],
+                              capture_output=True).stdout
+        with tarfile.open(fileobj=io.BytesIO(ctrl)) as tar:
+            postinst = tar.extractfile("./postinst").read().decode()
+            prerm = tar.extractfile("./prerm").read().decode()
+        self.assertIn("systemctl --global enable proccoli.service", postinst)
+        self.assertIn("systemctl --global disable proccoli.service", prerm)
+        files = self.contents("proccoli")
+        self.assertIn(f"./usr/share/dbus-1/services/{APP_ID}.Metrics.service", files)
+        self.assertIn("./usr/lib/systemd/user-preset/90-proccoli.preset", files)
+
+    def test_metrics_stops_collectors_before_removal(self):
+        script = subprocess.run(["dpkg-deb", "--ctrl-tarfile", self.debs["proccoli"]],
+                                capture_output=True).stdout
+        import io
+        import tarfile
+        with tarfile.open(fileobj=io.BytesIO(script)) as tar:
+            prerm = tar.extractfile("./prerm").read().decode()
+        self.assertIn("systemctl --user -M", prerm)
+        self.assertIn("stop proccoli.service", prerm)
+        self.assertIn('"$1" = remove', prerm)
 
 
 class IconsTest(unittest.TestCase):
@@ -181,7 +392,7 @@ class IconsTest(unittest.TestCase):
         return module
 
     def test_icon_is_the_generated_logo(self):
-        # Milestone 38: the SVG comes from packaging/make-logo.py, unedited,
+        # the SVG comes from packaging/make-logo.py, unedited,
         # and the same on every run (seeded buds).
         logo = self.logo()
         with open(data(f"icons/hicolor/scalable/apps/{APP_ID}.svg"), encoding="utf-8") as fh:

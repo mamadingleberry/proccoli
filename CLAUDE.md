@@ -21,6 +21,12 @@ each change:
 3. **Update `docs/PLAN.md`, `docs/DESIGN.md` and `README.md`** as needed. Create/Modify mermaid diagrams and UML as needed.
 4. **Do light refactoring** where the change touches code that needs it.
 5. **Repeat the documented Ideas and Bugs** that the user wants to revisit at the end of each response and ask if they'd like to tackle any of them.
+6. **No planning references in code:** never put milestone, idea, bug or
+   step numbers, `DESIGN.md` / `PLAN.md` section references, or other
+   planning metadata in code, comments, docstrings, tests, scripts or
+   data files ("(M72)", "Idea 19", "Bug 8", "DESIGN.md §9.2"). Say what
+   the code does and why in plain words; the history belongs in
+   `docs/PLAN.md` and `docs/DESIGN.md`. `tests/test_static.py` checks it.
 
 ## Commands
 

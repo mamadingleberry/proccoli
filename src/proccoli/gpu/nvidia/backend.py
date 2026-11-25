@@ -1,7 +1,7 @@
-"""The NVIDIA detail source (DESIGN.md §7.4, Milestone 55).
+"""The NVIDIA detail source.
 
 Polls NVIDIA's tools once per refresh, without blocking the main loop
-(``System.run_async``; a poll still running is never doubled up):
+(``System.run_async()``; a poll still running is never doubled up):
 
 1. **nvidia-settings**, if installed: find this GPU's ``[gpu:N]`` target by
    PCI slot, then read it each refresh.
@@ -23,8 +23,9 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from ...core.connections import Connections
 from ...core.history import History
-from ...core.ticker import graph_plan
+from ...core.ticker import PLAN_KEYS, graph_plan
 from ..backend import (Capability, DetailBackend, GpuDeps, GpuSummary, Probe, SupportLevel,
                        TabSpec)
 from ..info import GpuInfo, GpuVendor
@@ -54,9 +55,9 @@ class NvidiaBackend(DetailBackend):
         self.history = History(graph_plan(deps.settings)[0])
         self.history.set_plan(*graph_plan(deps.settings))
         # The graphs' time range, as on every page (history follow-ups).
-        self._plan_handlers = [deps.settings.connect_changed(
-            key, lambda *_: self.history.set_plan(*graph_plan(self.settings)))
-            for key in ("graph-time-range", "update-interval")]
+        self._plan_connections = Connections()
+        self._plan_connections.watch(
+            deps.settings, PLAN_KEYS, lambda *_: self.history.set_plan(*graph_plan(self.settings)))
         for name, unit in HISTORY_UNITS.items():
             self.history.define(name, unit)
         self.sample: Optional[NvidiaSample] = None
@@ -105,9 +106,7 @@ class NvidiaBackend(DetailBackend):
         self._running = False
         self._generation += 1
         self._busy = False
-        for h in self._plan_handlers:
-            self.settings.disconnect(h)
-        self._plan_handlers = []
+        self._plan_connections.disconnect_all()
 
     def history_readings(self) -> tuple[dict, dict]:
         """The Details tab's readings, recorded in the history database."""

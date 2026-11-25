@@ -69,7 +69,7 @@ class UnitsTest(unittest.TestCase):
 
 
 class FactsTest(unittest.TestCase):
-    """The Overview cards' readings line (M57)."""
+    """The Overview cards' readings line."""
 
     def test_used_total_each_with_its_unit(self):
         from proccoli.core.units import Base, format_used_total
@@ -104,7 +104,7 @@ class FormatReadingTest(unittest.TestCase):
 
 
 class AxisLabelTest(unittest.TestCase):
-    """format_axis_label: format_reading's short form (Idea 4)."""
+    """format_axis_label: format_reading's short form."""
 
     def test_units(self):
         from proccoli.core.units import format_axis_label

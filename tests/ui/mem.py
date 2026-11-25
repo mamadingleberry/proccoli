@@ -1,5 +1,5 @@
 """How much private memory Proccoli uses, in the full and the lightweight
-profile (Lightweight Mode, Idea 1, steps L.1 and L.11). Each profile runs
+profile (Lightweight Mode, steps L.1 and L.11). Each profile runs
 in a fresh process with the real services on the headless display:
 
     tests/run-headless.sh python3 tests/ui/mem.py [--after SECONDS]

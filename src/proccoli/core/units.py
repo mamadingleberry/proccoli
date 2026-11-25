@@ -59,7 +59,7 @@ def format_bytes(n: Optional[float], base: Base = Base.DECIMAL) -> str:
 
 def iso_utc(epoch_s: float) -> str:
     """ISO 8601 in UTC, to the millisecond: ``2026-11-23T21:41:25.154Z``
-    (the diagnostics log and the statistics files, M55 and M58)."""
+    (the diagnostics log and the old statistics files)."""
     import time
     whole = int(epoch_s)
     ms = int(round((epoch_s - whole) * 1000))
@@ -87,7 +87,7 @@ def device_facts(temperature_c: Optional[float] = None,
                  unit: TemperatureUnit = TemperatureUnit.CELSIUS,
                  memory_used: Optional[float] = None, memory_total: Optional[float] = None,
                  base: Base = Base.DECIMAL) -> list[str]:
-    """The current readings an Overview card shows under its name (M57):
+    """The current readings an Overview card shows under its name:
     "Temperature 48 °C", "Memory 598.7 MB / 8.5 GB". A reading the device
     doesn't have is left out."""
     facts = []
@@ -186,7 +186,7 @@ def format_duration(seconds: Optional[float]) -> str:
 
 def nice_ceiling(v: float) -> float:
     """Round up to 1, 2, 2.5 or 5 times a power of ten (an axis maximum;
-    moved here from the graph widget so domain code can use it, Idea 3)."""
+    moved here from the graph widget so domain code can use it)."""
     if v <= 0:
         return 1.0
     exp = math.floor(math.log10(v))
@@ -202,7 +202,7 @@ def format_reading(value: Optional[float], unit: str, base: Base = Base.DECIMAL,
                    temperature: TemperatureUnit = TemperatureUnit.CELSIUS) -> str:
     """A graph series' value by its unit ("%", "B/s", "W", "°C", "Hz";
     anything else as a short number and the unit), with the user's unit
-    preferences: the hover box's default text (M61)."""
+    preferences: the hover box's default text."""
     if value is None:
         return NO_DATA
     if unit == "%":
@@ -246,7 +246,7 @@ def format_axis_label(value: float, unit: str, base: Base = Base.DECIMAL,
                       bits: bool = False,
                       temperature: TemperatureUnit = TemperatureUnit.CELSIUS) -> str:
     """``format_reading``'s short form, for value-axis labels: "2 GB/s",
-    "1.5 GHz", "60 °C", "15 W" (Idea 4)."""
+    "1.5 GHz", "60 °C", "15 W"."""
     if unit == "%":
         return f"{value:.0f} %"
     if unit == "B/s":
@@ -272,7 +272,7 @@ def format_axis_label(value: float, unit: str, base: Base = Base.DECIMAL,
 def nice_max_in_units(peak: float, unit: str, base: Base = Base.DECIMAL,
                       bits: bool = False) -> float:
     """An automatic axis maximum rounded in the unit it's shown in, so a
-    binary axis reads "5 GiB/s", not "4.88 GiB/s" (Idea 4; was the Intel
+    binary axis reads "5 GiB/s", not "4.88 GiB/s" (was the Intel
     tab's bandwidth rule)."""
     if peak <= 0:
         return nice_ceiling(peak)

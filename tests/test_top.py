@@ -1,4 +1,4 @@
-"""The Overview's top apps and processes (Milestone 41)."""
+"""The Overview's top apps and processes."""
 
 import os
 import sys
@@ -68,7 +68,7 @@ class RankingTest(unittest.TestCase):
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class TopTablesTest(unittest.TestCase):
-    def make(self):
+    def make(self, profile=None):
         from gi.repository import Gio
         from proccoli.core.system import AppInfo
         from proccoli.processes.apps import AppGrouper
@@ -79,9 +79,33 @@ class TopTablesTest(unittest.TestCase):
         grouper = AppGrouper(lambda i: AppInfo("Terminal", icon)
                              if i == "org.gnome.Terminal" else None)
         self.went = []
-        page = OverviewPage(self.settings, self.went.append, self.monitor, grouper)
+        page = OverviewPage(self.settings, self.went.append, self.monitor, grouper,
+                            profile=profile)
         self.addCleanup(page.shutdown)
         return page
+
+    def test_lightweight_tables_are_short_and_without_icons(self):
+        """the busiest tables stay, five rows each, no icon images."""
+        from proccoli.core.profile import Profile
+        page = self.make(Profile.lightweight())
+        tops = page.tops
+        self.assertIsNotNone(tops)
+        self.assertEqual((len(tops.apps.rows), len(tops.processes.rows)), (5, 5))
+        self.assertTrue(all(row.icon is None for row in tops.apps.rows + tops.processes.rows))
+        tops.refresh()
+        self.assertEqual(tops.processes.shown()[:2], ["firefox", "bash"])
+        self.assertEqual(tops.apps.shown(), ["Terminal"])
+        tops.processes.list.emit("row-activated", tops.processes.rows[0])
+        self.assertEqual(self.went, ["processes"])
+        users = self.monitor.users
+        tops.start()
+        tops.stop()                                        # scans only while shown
+        self.assertEqual(self.monitor.users, users)
+
+    def test_full_tables_have_ten_rows_with_icons(self):
+        page = self.make()
+        self.assertEqual(len(page.tops.apps.rows), TOP_COUNT)
+        self.assertTrue(all(row.icon is not None for row in page.tops.apps.rows))
 
     def test_tables_rank_the_monitors_processes(self):
         page = self.make()
@@ -137,6 +161,30 @@ class TopTablesTest(unittest.TestCase):
         page = OverviewPage(Settings.for_tests(), lambda _i: None)
         self.addCleanup(page.shutdown)
         self.assertIsNone(page.tops)
+
+
+
+@unittest.skipUnless(HAVE_DISPLAY, "no display")
+class StableTableSizeTest(unittest.TestCase):
+    """The Overview's tables keep their size whatever they show, so the
+    page doesn't shift as the busiest apps change."""
+
+    def natural(self, table):
+        return (table.measure(Gtk.Orientation.HORIZONTAL, -1)[1],
+                table.measure(Gtk.Orientation.VERTICAL, -1)[1])
+
+    def test_long_names_and_values_dont_change_its_size(self):
+        from proccoli.ui.widgets.top_table import TopTable
+        table = TopTable("Processes", 5, icons=False)
+        table.set_rows([(f"p{i}", None, "0.1 %", "1.0 MB") for i in range(5)])
+        before = self.natural(table)
+        table.set_rows([("a-really-long-process-name-from-somewhere --with --args", None,
+                         "100.0 %", "1023.9 MB")] + [(f"p{i}", None, "9.9 %", "12.3 GB")
+                                                    for i in range(4)])
+        self.assertEqual(self.natural(table), before)
+        row = table.rows[0]
+        self.assertEqual(row.name_label.get_tooltip_text(),
+                         "a-really-long-process-name-from-somewhere --with --args")
 
 
 if __name__ == "__main__":

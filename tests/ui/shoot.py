@@ -28,13 +28,14 @@ gi.require_version("Graphene", "1.0")
 from gi.repository import Adw, Gdk, Gio, GLib, Graphene, Gtk  # noqa: E402
 
 from proccoli.context import build_context  # noqa: E402
+from proccoli.core.profile import Profile, profile_settings  # noqa: E402
 from proccoli.core.settings import Settings  # noqa: E402
 from proccoli.ui.style import ThemeCss, add_source_icons, install_css  # noqa: E402
 from proccoli.ui.theme import Theme  # noqa: E402
 from proccoli.ui.window import MainWindow  # noqa: E402
 
 # name: (width, height, page (ID prefix), settings overrides,
-#        True to open the overlaid sidebar, or a dialog to show)
+# True to open the overlaid sidebar, or a dialog to show)
 SCENES = {
     "wide-demo": (1024, 768, "demo", {}, False),
     "wide-overview": (1024, 768, "overview", {}, False),
@@ -42,13 +43,27 @@ SCENES = {
     "wide-sidebar-icons": (1024, 768, "demo", {"sidebar-style": "icons"}, False),
     "narrow-sidebar-icons": (700, 600, "demo", {"sidebar-style": "icons"}, True),
     "portrait-overview": (480, 768, "overview", {}, False),
+    # Lightweight Mode's Overview (small charts) and icons-only sidebar.
+    "lightweight-overview": (1024, 768, "overview", {"_lightweight": True}, False),
     "wide-progress-meters": (1024, 768, "demo",
                              {"sidebar-meter-type": "progress-bar", "show-graph-grids": True},
                              False),
     "wide-placeholder": (1024, 768, "cpu", {}, False),
+    # the graph toolbar with every item, wide and narrow (it scrolls).
+    "toolbar-all-items": (1024, 768, "demo", {"show-graph-grids": True}, False),
+    "narrow-toolbar": (500, 600, "demo", {}, False),
+    # a custom 3-day range (axes in days; the toolbar names it).
+    "custom-range-3-days": (1024, 768, "demo", {"graph-time-range": "custom",
+                                                "graph-time-range-custom": 3 * 86400,
+                                                "show-graph-grids": True}, False),
+    # Graph Grid reaches every chart: the Overview cards and sidebar meters too.
+    "overview-grids": (1024, 768, "overview", {"show-graph-grids": True}, False),
     "demo-gpu-overview": (1024, 768, "gpu", {"gpu-view": "overview"}, False),
     "demo-gpu-details": (1024, 768, "gpu", {"gpu-view": "details"}, False),
     "demo-gpu-processes": (1024, 768, "gpu", {"gpu-view": "processes"}, False),
+    # the demo AMD APU (the second GPU), its Details and Overview tabs.
+    "demo-amd-details": (1024, 768, "gpu", {"gpu-view": "details", "_pick": "last"}, False),
+    "demo-amd-overview": (1024, 768, "gpu", {"gpu-view": "overview", "_pick": "last"}, False),
     "demo-gpu-details-off": (1024, 768, "gpu", {"gpu-view": "details",
                                                 "gpu-details-disabled": ["0000:00:02.0"]},
                              False),
@@ -56,16 +71,24 @@ SCENES = {
     "narrow-demo": (700, 600, "demo", {}, False),
     "narrow-sidebar-open": (700, 600, "demo", {}, True),
     "minimum": (360, 300, "demo", {}, False),
-    # Portrait (Milestone 36): graphs capped by width, pairs stacked.
+    # Portrait: graphs capped by width, pairs stacked.
     "portrait-demo": (480, 768, "demo", {}, False),
     "portrait-gpu-details": (480, 768, "gpu", {"gpu-view": "details"}, False),
     "dialog-preferences": (1024, 768, "demo", {}, "preferences"),
     "dialog-about": (1024, 768, "demo", {}, "about"),
+    # Lightweight Mode's Preferences: the notice, padlocks on fixed settings.
+    "lightweight-preferences": (1024, 768, "overview", {"_lightweight": True}, "preferences"),
     "palette-tango-light": (1024, 768, "gpu", {"palette": "tango", "color-scheme": "light",
                                               "gpu-view": "details"}, False),
+    "style-nord-okabe-ito": (1024, 768, "demo", {"color-scheme": "nord",
+                                                 "palette": "okabe-ito"}, False),
+    "style-high-contrast-light": (1024, 768, "demo", {"color-scheme": "high-contrast-light",
+                                                      "palette": "tol-bright"}, False),
+    "style-gruvbox-dark": (1024, 768, "demo", {"color-scheme": "gruvbox-dark",
+                                               "palette": "gruvbox"}, False),
     "palette-solarized-dark": (1024, 768, "demo", {"palette": "solarized",
                                                    "color-scheme": "dark"}, False),
-    # M68: a stretch the history filled in for a time Proccoli wasn't running.
+    # a stretch the history filled in for a time Proccoli wasn't running.
     "offline-light": (1024, 768, "demo", {"_offline": True, "color-scheme": "light"}, False),
     "offline-dark": (1024, 768, "demo", {"_offline": True, "color-scheme": "dark"}, False),
     "offline-nord-dark": (1024, 768, "demo", {"_offline": True, "palette": "nord",
@@ -78,14 +101,17 @@ REAL_SCENES = {
                                        "auth-at-launch": False}, False)
     for page in ("overview", "apps", "processes", "cpu", "memory", "drive", "net", "gpu")
 }
-# The Processor's total chart: the same area as real-cpu's per-CPU chart (M57).
+# The Processor's total chart: the same area as real-cpu's per-CPU chart.
 REAL_SCENES["real-cpu-total"] = (1024, 768, "cpu", {"auth-at-launch": False}, False)
-# The last GPU (on a hybrid laptop, the discrete one: NVIDIA's tabs, M55).
+# The last GPU (on a hybrid laptop, the discrete one: NVIDIA's tabs).
 REAL_SCENES["real-gpu-last-details"] = (1024, 768, "gpu", {"auth-at-launch": False,
                                                            "_pick": "last",
                                                            "gpu-view": "details"}, False)
 REAL_SCENES["real-gpu-last-overview"] = (1024, 768, "gpu", {"auth-at-launch": False,
                                                             "_pick": "last"}, False)
+REAL_SCENES["real-lightweight-overview"] = (1024, 768, "overview",
+                                            {"auth-at-launch": False, "_lightweight": True},
+                                            False)
 REAL_SCENES["real-overview-tables"] = (1024, 768, "overview",
                                        {"auth-at-launch": False, "_scroll": "end"}, False)
 REAL_SCENES["real-overview-portrait"] = (480, 768, "overview",
@@ -129,7 +155,7 @@ def snapshot(win: Gtk.Window, path: str, widget=None) -> bool:
 
 def add_earlier_run(ctx) -> None:
     """What the history database would put in front of the demo's graphs:
-    an earlier run, then a stretch Proccoli wasn't running (M68)."""
+    an earlier run, then a stretch Proccoli wasn't running."""
     import math
     for monitor in ctx.devices.monitors():
         h = monitor.history
@@ -150,9 +176,12 @@ def shoot(app: Adw.Application, name: str, scene, outdir: str, real: bool = Fals
     scroll_end = overrides.pop("_scroll", None) == "end"   # shoot the bottom of the page
     pick_last = overrides.pop("_pick", None) == "last"     # e.g. a second GPU
     offline = overrides.pop("_offline", False)             # an earlier run, then a gap
+    lightweight = overrides.pop("_lightweight", False)     # Lightweight Mode's profile
     if offline:
         overrides.setdefault("graph-time-range", "2-minutes")
     settings = Settings.for_tests({"graph-time-range": "30-seconds", **overrides})
+    if lightweight:
+        settings = profile_settings(settings, Profile.lightweight())
     # Demo scenes never touch the system; --real ones use the real services,
     # minus the privileged helper (nothing here should prompt).
     ctx = build_context(settings, demo=not real, helper_command=None)

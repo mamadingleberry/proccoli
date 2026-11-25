@@ -7,8 +7,8 @@ import re
 from typing import Optional
 
 from .backend import Capability, GpuBackend, GpuDeps, GpuSummary, Probe, SupportLevel
-from .fdinfo import DECODE_ENGINES, ENCODE_ENGINES, VIDEO_ENGINES, FdinfoReader
-from .info import GpuInfo
+from .fdinfo import DECODE_ENGINES, ENCODE_ENGINES, VIDEO_ENGINES, shared_reader
+from .info import GpuInfo, GpuVendor
 
 
 def active_dpm_hz(text: Optional[str]) -> Optional[float]:
@@ -29,8 +29,12 @@ class GenericDrmBackend(GpuBackend):
     def __init__(self, gpu: GpuInfo, deps: GpuDeps) -> None:
         super().__init__(gpu, deps)
         sysroot = deps.sysroot
-        self.fdinfo = FdinfoReader(sysroot, gpu.pci_slot)
-        self._summary = GpuSummary(combined_video=gpu.driver in ("i915", "xe"))
+        # An AMD APU: GTT is graphics memory too, and hwmon's
+        # power is the whole package's.
+        self.apu = gpu.vendor == GpuVendor.AMD and gpu.integrated
+        self.fdinfo = shared_reader(deps, gpu.pci_slot, shared_memory=self.apu)
+        self._summary = GpuSummary(combined_video=gpu.driver in ("i915", "xe"),
+                                   shared_memory=self.apu)
         self._energy: Optional[tuple[float, int]] = None
         self.hwmon = next((f"{gpu.device_path}/hwmon/{h}"
                            for h in sysroot.listdir(f"{gpu.device_path}/hwmon")), None)
@@ -80,9 +84,12 @@ class GenericDrmBackend(GpuBackend):
         s.encode = max((v for e, v in engines.items() if e in ENCODE_ENGINES), default=None)
         s.vram_used = r.read_int(f"{dev}/mem_info_vram_used")
         s.vram_total = r.read_int(f"{dev}/mem_info_vram_total")
+        s.gtt_used = r.read_int(f"{dev}/mem_info_gtt_used")
+        s.gtt_total = r.read_int(f"{dev}/mem_info_gtt_total")
         s.frequency_hz = self._frequency()
         s.vram_frequency_hz = active_dpm_hz(r.read_text(f"{dev}/pp_dpm_mclk"))
         s.power_w = self._power(now)
+        s.power_is_package = self.apu and s.power_w is not None
         if self.hwmon:
             cap = r.read_int(f"{self.hwmon}/power1_cap")
             s.power_cap_w = cap / 1e6 if cap else None

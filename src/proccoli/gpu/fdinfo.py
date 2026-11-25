@@ -20,6 +20,8 @@ ENCODE_ENGINES = {"video", "enc", "enc_1", "vcn", "video-encode", "nvenc"}
 VIDEO_ENGINES = DECODE_ENGINES | ENCODE_ENGINES | {"video-enhance", "vecs"}
 # Memory regions that are dedicated video memory (not shared system RAM).
 VRAM_REGIONS = ("vram", "local")
+# amdgpu's system memory mapped for the GPU: an APU's graphics memory too.
+GTT_REGIONS = ("gtt",)
 
 _UNITS = {"B": 1, "KiB": 2 ** 10, "MiB": 2 ** 20, "GiB": 2 ** 30}
 
@@ -33,8 +35,15 @@ class DrmClient:
     vram: int = 0
 
 
-def parse_fdinfo(text: str, pid: int) -> Optional[tuple[str, DrmClient]]:
-    """(client id, client) for a DRM fdinfo file, or None for other fds."""
+def _bytes(value: str) -> int:
+    n, _, unit = value.partition(" ")
+    return int(n) * _UNITS.get(unit.strip() or "B", 1)
+
+
+def parse_fdinfo(text: str, pid: int,
+                 regions: tuple[str, ...] = VRAM_REGIONS) -> Optional[tuple[str, DrmClient]]:
+    """(client id, client) for a DRM fdinfo file, or None for other fds.
+    ``vram`` adds up the memory ``regions`` (an APU's include GTT)."""
     fields = {}
     for line in text.splitlines():
         k, _, v = line.partition(":")
@@ -42,6 +51,8 @@ def parse_fdinfo(text: str, pid: int) -> Optional[tuple[str, DrmClient]]:
     if "drm-driver" not in fields or "drm-client-id" not in fields:
         return None
     client = DrmClient(pid, fields.get("drm-pdev", ""))
+    total: dict[str, int] = {}
+    legacy: dict[str, int] = {}
     for k, v in fields.items():
         if k.startswith("drm-engine-capacity-"):
             client.capacity[k[len("drm-engine-capacity-"):]] = int(v or 1)
@@ -49,23 +60,40 @@ def parse_fdinfo(text: str, pid: int) -> Optional[tuple[str, DrmClient]]:
             client.engines_ns[k[len("drm-engine-"):]] = int(v.split()[0])
         elif k.startswith(("drm-total-", "drm-memory-")):
             region = k.split("-", 2)[2]
-            if region.startswith(VRAM_REGIONS):
-                n, _, unit = v.partition(" ")
-                client.vram += int(n) * _UNITS.get(unit or "B", 1)
+            if region.startswith(regions):
+                (total if k.startswith("drm-total-") else legacy)[region] = _bytes(v)
+    # amdgpu reports each region twice: "drm-total-vram" and the older
+    # "drm-memory-vram" (resident). Count each region once,
+    # preferring the total, as i915 and xe report.
+    client.vram = sum({**legacy, **total}.values())
     return fields["drm-client-id"], client
+
+
+def shared_reader(deps, pci_slot: str, shared_memory: bool = False) -> "FdinfoReader":
+    """The GPU's one reader: the summary backend and a detail
+    backend (amdgpu) both use it, and it reads once per update."""
+    key = (pci_slot, shared_memory)
+    reader = deps.fdinfo.get(key)
+    if reader is None:
+        reader = deps.fdinfo[key] = FdinfoReader(deps.sysroot, pci_slot, shared_memory)
+    return reader
 
 
 class FdinfoReader:
     """Tracks the DRM clients of one GPU and turns their counters into
-    per-process and per-engine usage."""
+    per-process and per-engine usage. Reading again at the same ``now``
+    does nothing, so several backends can share one."""
 
     # Reads between full scans of every process's fds (the expensive part:
     # a readlink per open file). New GPU clients appear within this many ticks.
     FD_RESCAN_EVERY = 10
 
-    def __init__(self, sysroot: SysRoot, pci_slot: str) -> None:
+    def __init__(self, sysroot: SysRoot, pci_slot: str, shared_memory: bool = False) -> None:
+        """``shared_memory``: an APU, whose clients' GTT counts as their
+        graphics memory too."""
         self.sysroot = sysroot
         self.pci_slot = pci_slot
+        self.regions = VRAM_REGIONS + GTT_REGIONS if shared_memory else VRAM_REGIONS
         self._drm_fds: dict[int, list[str]] = {}    # pid -> fds pointing at /dev/dri
         self._reads = 0
         self._prev: Optional[tuple[float, dict[str, DrmClient]]] = None
@@ -89,7 +117,7 @@ class FdinfoReader:
         for pid in sorted(self._drm_fds):
             for fd in self._drm_fds[pid]:
                 text = self.sysroot.read_text(f"/proc/{pid}/fdinfo/{fd}")
-                parsed = parse_fdinfo(text, pid) if text else None
+                parsed = parse_fdinfo(text, pid, self.regions) if text else None
                 if parsed is None:
                     continue
                 cid, client = parsed
@@ -100,6 +128,8 @@ class FdinfoReader:
         return clients
 
     def read(self, now: float) -> None:
+        if self._prev is not None and self._prev[0] == now:
+            return                          # already read this update
         if self._reads % self.FD_RESCAN_EVERY == 0:
             self._scan_fds()
         self._reads += 1

@@ -8,7 +8,7 @@ the same moment everywhere. When full, the oldest entries drop off.
 Ported from intel_gpu_top_gui's history module, generalised from
 intel_gpu_top samples to plain ``{name: value}`` dictionaries.
 
-Two things keep a graph honest about time (M68):
+Two things keep a graph honest about time:
 
 - **Regrouping.** A graph draws its points evenly, ``step_s`` apart.
   When the time range or update interval changes the step, the points
@@ -60,7 +60,7 @@ class Series:
 
 class Averager:
     """Averages every ``every`` samples into one point (long *Graph Time
-    Range*s: ``ticker.history_plan``). ``push(values)`` returns the
+    Range*s: ``ticker.history_plan()``). ``push(values)`` returns the
     averages (``{key: mean of the non-None values, or None}``) when a
     point is complete, else None."""
 
@@ -264,7 +264,7 @@ class History:
                  offline: Optional[Sequence[bool]] = None) -> int:
         """Put older samples in front (oldest first; ``values[name][i]`` at
         ``times[i]``): the history of an earlier run, read back from the
-        database (Idea 2). Only times before the oldest held, only known
+        database. Only times before the oldest held, only known
         series (the others get ``None``), and only what fits. ``offline[i]``
         marks a time Proccoli wasn't running. Returns how many were added."""
         oldest = self.times[0] if self.times else float("inf")

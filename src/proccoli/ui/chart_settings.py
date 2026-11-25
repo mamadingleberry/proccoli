@@ -1,16 +1,18 @@
-"""The one place graphs get their preferences (Idea 4, DESIGN.md §9.1).
+"""The one place graphs get their preferences.
 
 ``ChartSettings(settings)`` applies *Show Graph Axes*, *Show Graph Grids*,
 *Graph Time Range* (with the refresh speed) and the unit preferences
 (*Data Unit Prefix*, *Show Network Speeds in Bits*, *Temperature Unit*) to
 the graphs bound to it, now and on every change:
 
-- ``bind(graph, kind)``: ``PAGE`` graphs (device pages, the GPU *Details*
-  tabs) get axes, grids, the time span, a value axis in the user's units
-  for any unit (``core.units.format_axis_label``, rounded in that unit),
-  the hover box in the user's units, and the owner's entry color;
-  ``CARD`` graphs (Overview cards) get axes, the time span and the hover
-  box; ``METER`` graphs (sidebar meters) axes and the time span only.
+- ``bind(graph, kind)``: every graph gets axes, grids and the time span
+  (a ``SidebarGraph`` keeps its grid off and its value axis to the
+  minimum and maximum). ``PAGE`` graphs (device pages, the
+  GPU *Details* tabs) also get a value axis in the user's units for any
+  unit (``core.units.format_axis_label()``, rounded in that unit), the
+  hover box in the user's units, and the owner's entry color; ``CARD``
+  graphs (Overview cards) the hover box; ``METER`` graphs (sidebar
+  meters) nothing more.
 - ``format_value(value, unit)`` / ``format_reading(graph, index, value)``:
   any reading in the user's units, for legends and info lines.
 - ``set_entry_base(index)``: the owner's sidebar color, for its ``PAGE``
@@ -27,12 +29,13 @@ import weakref
 from enum import Enum
 from typing import Callable, Optional
 
-from ..core.ticker import time_range_s
+from ..core.connections import Connections
+from ..core.ticker import PLAN_KEYS, time_range_s
 from ..core.units import (Base, TemperatureUnit, format_axis_label, format_reading,
                           nice_max_in_units)
 from .axes import AxisGutter
 
-GRAPH_KEYS = ("show-graph-axes", "show-graph-grids", "graph-time-range", "update-interval")
+GRAPH_KEYS = ("show-graph-axes", "show-graph-grids") + PLAN_KEYS
 UNIT_KEYS = ("base", "network-bits", "temperature-unit")
 
 
@@ -55,8 +58,8 @@ class ChartSettings:
         self.settings = settings
         self.entry_base: Optional[int] = None
         self._bound: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
-        self._handlers = [settings.connect_changed(key, lambda *_: self.apply_all())
-                          for key in GRAPH_KEYS + UNIT_KEYS]
+        self.connections = Connections()
+        self.connections.watch(settings, GRAPH_KEYS + UNIT_KEYS, lambda *_: self.apply_all())
 
     # -- preferences ---------------------------------------------------------------
 
@@ -70,8 +73,8 @@ class ChartSettings:
 
     @property
     def span_s(self) -> float:
-        """Seconds a full graph shows: the *Graph Time Range* (M58)."""
-        return float(time_range_s(self.settings.get("graph-time-range")))
+        """Seconds a full graph shows: the *Graph Time Range*."""
+        return float(time_range_s(self.settings))
 
     @property
     def base(self) -> Base:
@@ -93,7 +96,7 @@ class ChartSettings:
         """Apply the preferences to ``graph`` now and on every change.
         ``rates_in_bits``: *Show Network Speeds in Bits* applies (network
         pages). ``gutter`` lines up value axes with other graphs.
-        ``show_axes(on)`` replaces ``graph.set_show_axes`` (a meter grows
+        ``show_axes(on)`` replaces ``graph.set_show_axes()`` (a meter grows
         a label row)."""
         kind = ChartKind(kind)
         self._bound[graph] = _Binding(kind, rates_in_bits, show_axes)
@@ -118,8 +121,7 @@ class ChartSettings:
             return
         (binding.show_axes or graph.set_show_axes)(self.show_axes)
         graph.set_time_span(self.span_s)
-        if binding.kind == ChartKind.PAGE:
-            graph.set_show_grid(self.show_grid)
+        graph.set_show_grid(self.show_grid)
         graph.queue_draw()           # units may have changed
 
     def apply_all(self) -> None:
@@ -133,9 +135,7 @@ class ChartSettings:
                 graph.set_entry_base(index)
 
     def release(self) -> None:
-        for handler in self._handlers:
-            self.settings.disconnect(handler)
-        self._handlers = []
+        self.connections.disconnect_all()
         self._bound.clear()
 
     # -- formats ------------------------------------------------------------------------

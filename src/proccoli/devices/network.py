@@ -132,6 +132,9 @@ class NetworkMonitor(Monitor):
         self.history.define("rx", "B/s")
         self.history.define("tx", "B/s")
 
+    def sort_name(self) -> str:
+        return f"{self.sort_order()}-{self.iface}"
+
     def sort_order(self) -> int:
         return net_type(self.sysroot, self.iface).order
 

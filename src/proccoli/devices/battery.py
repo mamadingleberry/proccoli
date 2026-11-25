@@ -99,6 +99,9 @@ class BatteryMonitor(Monitor):
         self.history.define("usage", "%")
         self.history.define("power", "W")
 
+
+    def sort_name(self) -> str:
+        return self.name
     def sample(self, now: float) -> BatterySnapshot:
         charge = _read(self.sysroot, self.name, "capacity")
         if charge is None:

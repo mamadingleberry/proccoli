@@ -109,6 +109,9 @@ class DriveMonitor(Monitor):
         for name, unit in (("usage", "%"), ("read", "B/s"), ("write", "B/s")):
             self.history.define(name, unit)
 
+
+    def sort_name(self) -> str:
+        return self.block
     def sample(self, now: float) -> Optional[DriveSnapshot]:
         stat = parse_disk_stat(self.sysroot.read_text(f"/sys/block/{self.block}/stat") or "")
         if stat is None:

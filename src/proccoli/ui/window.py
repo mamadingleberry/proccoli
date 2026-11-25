@@ -1,27 +1,31 @@
 """Main application window: sidebar of resources + stack of pages, in an
-``AdwOverlaySplitView`` that collapses on narrow windows (DESIGN.md §9).
+``AdwOverlaySplitView`` that collapses on narrow windows.
 """
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Sequence
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from .. import APP_NAME, MEMORY_ICON, PROCESSOR_ICON
+from ..core.connections import Connections
 from .page import (PageContainer, PageKind, PlaceholderPage, ResourcePage,
                    main_menu_button)
 from .compat import ensure_font_dpi
 from .navigation import (GOTO_ACTION, GOTO_LABEL, NavigationHistory, fill_goto_menu,
                          mouse_direction)
-from ..core.profile import Profile
+from ..core.profile import Profile, is_pinned
 from .lazy import LazyPages, StubPage
 from .sidebar import StackSidebar
-from .sidebar_style import MODE_ACTION, MODE_LABELS, SECTION_LABEL, Mode, SidebarStyle, rail_width
+from .sidebar_style import (MODE_ACTION, MODE_LABELS, SECTION_LABEL, STYLE_SETTING, Mode,
+                            SidebarStyle, menu_modes, rail_width)
 from .sidebar_visibility import ACTION as SIDEBAR_ACTION, SidebarVisibility
 from .window_state import restore_window_state, save_window_state
 
 COLLAPSE_CONDITION = "max-width: 780sp"   # same breakpoint as Resources
+TOOLBAR_ACTION = "show-toolbar"           # main menu → Show Toolbar
+COLLECTOR_GRACE_S = 5                     # before saying readings aren't arriving
 
 # Stand-ins for pages nothing provides (demo mode, a system without the
 # part, tests without a device manager): (id, kind, title, icon).
@@ -38,11 +42,12 @@ def placeholder_reason(demo: bool) -> str:
     return "Not available in demo mode." if demo else "Not available on this system."
 
 
-def primary_menu(goto: Optional[Gio.Menu] = None) -> Gio.Menu:
-    """The main menu, opened from the logo. First *About Proccoli* (M61),
-    then ``goto``: the *Go To* submenu (§9.2), filled by the window as
-    panes come and go. Then the *Sidebar* section: *Full*, *Icons Only*
-    and *Hidden* (M54)."""
+def primary_menu(goto: Optional[Gio.Menu] = None,
+                 modes: Sequence[Mode] = tuple(Mode), toolbar: bool = True) -> Gio.Menu:
+    """The main menu, opened from the logo. First *About Proccoli*,
+    then ``goto``: the *Go To* submenu, filled by the window as
+    panes come and go. Then the *Sidebar* section: ``modes``, by default
+    *Full*, *Icons Only* and *Hidden* (no *Full* in Lightweight Mode), and with ``toolbar`` *Show Toolbar*."""
     menu = Gio.Menu()
     about = Gio.Menu()
     # The actions live on the application (proccoli.app.Application).
@@ -53,13 +58,17 @@ def primary_menu(goto: Optional[Gio.Menu] = None) -> Gio.Menu:
         nav.append_submenu(GOTO_LABEL, goto)
         menu.append_section(None, nav)
     # Radio items: one stateful action, a target per mode (sidebar_visibility).
-    modes = Gio.Menu()
-    for mode in Mode:
+    section = Gio.Menu()
+    for mode in modes:
         item = Gio.MenuItem.new(MODE_LABELS[mode], None)
         item.set_action_and_target_value(f"win.{MODE_ACTION}",
                                          GLib.Variant.new_string(mode.value))
-        modes.append_item(item)
-    menu.append_section(SECTION_LABEL, modes)
+        section.append_item(item)
+    menu.append_section(SECTION_LABEL, section)
+    if toolbar:
+        section = Gio.Menu()
+        section.append("Show Toolbar", f"win.{TOOLBAR_ACTION}")
+        menu.append_section(None, section)
     section = Gio.Menu()
     section.append("Show All Details…", "win.authenticate")
     section.append("Export Statistics…", "app.export-statistics")
@@ -99,8 +108,8 @@ class MainWindow(Adw.ApplicationWindow):
             from .pages.factory import standard_page_factory
             ctx.pages = standard_page_factory(ctx)
         self.pages = ctx.pages
-        self._handlers: list[tuple[object, int]] = []
-        # Lightweight Mode (Idea 1): pages built on first visit, dropped later.
+        self.connections = Connections()
+        # Lightweight Mode: pages built on first visit, dropped later.
         self.profile = getattr(ctx, "profile", None) or Profile.full()
         self.lazy: Optional[LazyPages] = None
         if self.profile.lazy_pages:
@@ -111,17 +120,18 @@ class MainWindow(Adw.ApplicationWindow):
             ctx.theme = Theme(settings, Adw.StyleManager.get_default())
         # Widgets find the theme through their window (``root.theme``).
         self.theme = ctx.theme
-        self._handlers.append((self.theme, self.theme.connect(
-            "changed", lambda *_: redraw_tree(self))))
+        self.connections.connect(self.theme, "changed", lambda *_: redraw_tree(self))
         self.containers: dict[str, PageContainer] = {}
         self.set_size_request(*self.MIN_SIZE)
         restore_window_state(self, settings)
 
         # Sidebar. The main menu (the logo) always sits at the window's top
         # left: here while the sidebar is beside the content, otherwise in
-        # every page header (DESIGN.md §9.2).
+        # every page header.
         self.goto_menu = Gio.Menu()
-        self.menu_model = primary_menu(self.goto_menu)
+        self.menu_model = primary_menu(
+            self.goto_menu, menu_modes(not is_pinned(settings, STYLE_SETTING)),
+            toolbar=self.profile.graph_toolbar)
         self.sidebar = StackSidebar(settings)
         sidebar_view = Adw.ToolbarView(content=self.sidebar)
 
@@ -129,8 +139,13 @@ class MainWindow(Adw.ApplicationWindow):
         self.stack = Gtk.Stack(vhomogeneous=False, hhomogeneous=False)
         self.sidebar.bind_stack(self.stack)
 
-        self.split_view = Adw.OverlaySplitView(sidebar=sidebar_view,
-                                               content=self.stack)
+        # Above every page: when the collector's readings stop.
+        self.collector_banner = Adw.Banner(button_label="Try Again", revealed=False)
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        content.append(self.collector_banner)
+        content.append(self.stack)
+        self.stack.set_vexpand(True)
+        self.split_view = Adw.OverlaySplitView(sidebar=sidebar_view, content=content)
         self.sidebar_header = Adw.HeaderBar(show_title=False)
         self.menu_button = main_menu_button(self.menu_model)   # the corner: the logo
         self.sidebar_header.pack_start(self.menu_button)
@@ -153,7 +168,23 @@ class MainWindow(Adw.ApplicationWindow):
 
         self.sidebar.connect("page-selected", self._on_page_selected)
 
-        # Go To (M48): every pane from the main menu, current one marked.
+        # The graph toolbar: one, moved under the shown page's header.
+        self.graph_toolbar = None
+        self._toolbar_host: Optional[PageContainer] = None
+        if self.profile.graph_toolbar:
+            from .widgets.graph_toolbar import GraphToolbar
+            from .toolbar_items import SHOW_SETTING
+            self.graph_toolbar = GraphToolbar(settings)
+            # Main menu → Show Toolbar (short screens may want the room).
+            self.toolbar_action = Gio.SimpleAction.new_stateful(
+                TOOLBAR_ACTION, None, GLib.Variant("b", bool(settings.get(SHOW_SETTING))))
+            self.toolbar_action.connect("activate", lambda a, _t: settings.set(
+                SHOW_SETTING, not a.get_state().get_boolean()))
+            self.connections.watch(settings, SHOW_SETTING, lambda _k, v: self.toolbar_action
+                                   .set_state(GLib.Variant("b", bool(v))))
+            self.add_action(self.toolbar_action)
+
+        # Go To: every pane from the main menu, current one marked.
         self.goto_action = Gio.SimpleAction.new_stateful(
             GOTO_ACTION, GLib.VariantType.new("s"), GLib.Variant("s", ""))
         self.goto_action.connect("activate",
@@ -161,7 +192,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.add_action(self.goto_action)
         self.sidebar.connect("entries-changed", lambda *_: self._sync_goto_menu())
 
-        # Back and forward (M49): mouse side buttons, Alt+Left / Alt+Right.
+        # Back and forward: mouse side buttons, Alt+Left / Alt+Right.
         self.history = NavigationHistory()
         self._navigating = False             # a page change made by back/forward
         self.nav_actions = {}
@@ -181,7 +212,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.mouse_nav.connect("pressed", lambda g, *_: self.on_mouse_button(g))
         self.add_controller(self.mouse_nav)
 
-        # Overview (DESIGN.md §9.6): cards for the sidebar's charted entries.
+        # Overview: cards for the sidebar's charted entries.
         from .pages.overview import OverviewPage
         self.overview = OverviewPage(settings, self.select_page, processes, ctx.grouper,
                                      profile=self.profile)
@@ -192,14 +223,14 @@ class MainWindow(Adw.ApplicationWindow):
 
         if processes is not None:
             self._add_process_pages()
+        if devices is not None and devices.remote:
+            self._follow_collector(devices)
         if devices is not None:
             for monitor in devices.monitors():
                 self._on_device_added(devices, monitor)
-            self._handlers += [
-                (devices, devices.connect("device-added", self._on_device_added)),
-                (devices, devices.connect("device-removed",
-                                          lambda _d, device_id: self.remove_page(device_id))),
-            ]
+            self.connections.connect(devices, "device-added", self._on_device_added)
+            self.connections.connect(devices, "device-removed",
+                                     lambda _d, device_id: self.remove_page(device_id))
         for page_id, kind, title, icon in PLACEHOLDERS:
             if page_id not in self.containers:
                 self.add_page(PlaceholderPage(page_id, kind, title, icon,
@@ -207,7 +238,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         self.show_overview()
 
-        # Optional authentication (DESIGN.md §9.4): offered once, after the
+        # Optional authentication: offered once, after the
         # window is up; the menu entry brings it back.
         self.auth_action = Gio.SimpleAction.new("authenticate", None)
         self.auth_action.connect("activate", lambda *_: self.offer_authentication())
@@ -242,6 +273,9 @@ class MainWindow(Adw.ApplicationWindow):
             self.lazy.remove(page_id)
         self.history.remove(page_id)
         self._update_nav_actions()
+        if self._toolbar_host is container:
+            container.detach_toolbar(self.graph_toolbar)
+            self._toolbar_host = None
         container.release()
         container.page.shutdown()
         self.stack.remove(container)
@@ -257,6 +291,8 @@ class MainWindow(Adw.ApplicationWindow):
             old.shutdown()
         self.sidebar.replace_page(page)
         self._wire_error_page(page)
+        if self._toolbar_host is container:
+            self._place_toolbar()
 
     def select_page(self, page_id: Optional[str]) -> bool:
         if not page_id or page_id not in self.containers:
@@ -310,20 +346,23 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_device_added(self, _devices, monitor) -> None:
         from ..devices.base import FailedMonitor
+        page_id = monitor.info.id
+        was_visible = self.visible_page_id() == page_id
+        # Out with a placeholder (or an error page) first: removing a page
+        # forgets its lazy entry, so the new one must be registered after.
+        if page_id in self.containers:
+            self.remove_page(page_id)
         if self.lazy is not None and not isinstance(monitor, FailedMonitor):
-            page = self.lazy.add(monitor.info.id, lambda: self.pages.create(monitor),
+            page = self.lazy.add(page_id, lambda: self.pages.create(monitor),
                                  lambda: StubPage.for_monitor(monitor, self.settings))
         else:
             page = self.pages.create(monitor)
-        was_visible = self.visible_page_id() == page.page_id
-        if page.page_id in self.containers:      # replaces a placeholder (or an error page)
-            self.remove_page(page.page_id)
         self.add_page(page)
         if was_visible:
             self.select_page(page.page_id)        # a retried device stays on screen
 
     def _on_retry(self, page) -> None:
-        """An error page's *Try Again* (M55): set the device up again, or,
+        """An error page's *Try Again*: set the device up again, or,
         if only its page failed, build the page again."""
         from ..devices.base import FailedMonitor
         if isinstance(page.monitor, FailedMonitor):
@@ -387,7 +426,7 @@ class MainWindow(Adw.ApplicationWindow):
             self.replace_page(self.lazy.stub(page_id))
 
     def show_overview(self) -> None:
-        """Every launch opens on the Overview (M55), whatever was shown last
+        """Every launch opens on the Overview, whatever was shown last
         time; the first entry if there's somehow none."""
         if not self.select_page(PageKind.OVERVIEW.value):
             self.select_page(self.sidebar.order()[0])
@@ -401,13 +440,52 @@ class MainWindow(Adw.ApplicationWindow):
             built = self.lazy.shown(page_id)
             if built is not None:
                 self.replace_page(built)
+        self._place_toolbar()
         if page_id:
             self.goto_action.set_state(GLib.Variant("s", page_id))
             if not self._navigating:
                 self.history.visit(page_id)
             self._update_nav_actions()
 
-    # -- back and forward (M49) ---------------------------------------------------
+    # -- the collector ---------------------------------------------------
+
+    def _follow_collector(self, devices) -> None:
+        """Show the banner while no readings arrive: once the collector
+        goes, or if it isn't there 5 seconds after opening (not during the
+        first moment's connecting)."""
+        self._collector_waited = False
+
+        def waited() -> bool:
+            self._collector_waited = True
+            self._show_collector(devices)
+            return False
+
+        self._collector_wait = GLib.timeout_add_seconds(COLLECTOR_GRACE_S, waited)
+        self.connections.connect(devices, "connection-changed",
+                                 lambda d: self._show_collector(d))
+        self.collector_banner.connect("button-clicked", lambda _b: devices.reconnect())
+
+    def _show_collector(self, devices) -> None:
+        lost = not devices.connected and (self._collector_waited or devices.readings > 0
+                                          or "isn't running" in devices.status)
+        self.collector_banner.set_title(devices.status if lost else "")
+        self.collector_banner.set_revealed(lost)
+
+    def _place_toolbar(self) -> None:
+        """Move the graph toolbar under the shown page's header and show
+        the items that apply to it."""
+        container = self.containers.get(self.visible_page_id() or "")
+        if self.graph_toolbar is None or container is None:
+            return
+        if self._toolbar_host is not container:
+            if self._toolbar_host is not None:
+                self._toolbar_host.detach_toolbar(self.graph_toolbar)
+            container.attach_toolbar(self.graph_toolbar)
+            self._toolbar_host = container
+        page = container.page
+        self.graph_toolbar.set_page(page.kind.value, page.has_graphs)
+
+    # -- back and forward ---------------------------------------------------
 
     def _update_nav_actions(self) -> None:
         self.nav_actions["back"].set_enabled(self.history.can_go_back())
@@ -448,13 +526,16 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_close_request(self, *_a) -> bool:
         save_window_state(self, self.settings)
+        if getattr(self, "_collector_wait", 0):
+            GLib.source_remove(self._collector_wait)
+            self._collector_wait = 0
         if getattr(self, "_launch_auth_source", 0):
             GLib.source_remove(self._launch_auth_source)
             self._launch_auth_source = 0
-        for source, handler in self._handlers:
-            source.disconnect(handler)
-        self._handlers.clear()
+        self.connections.disconnect_all()
         self.sidebar_visibility.shutdown()
+        if self.graph_toolbar is not None:
+            self.graph_toolbar.release()
         for container in self.containers.values():
             container.release()
             container.page.shutdown()

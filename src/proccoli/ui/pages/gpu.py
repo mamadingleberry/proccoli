@@ -1,4 +1,4 @@
-"""The GPU page (DESIGN.md §7.3): one page per GPU with up to three tabs.
+"""The GPU page: one page per GPU with up to three tabs.
 
 - **Overview** (always): Resources' GPU page, fed by the controller's
   summary, which comes from the detail source while it runs.
@@ -17,6 +17,7 @@ from typing import Optional
 
 from gi.repository import Adw, Gtk
 
+from ...core.connections import Connections
 from ...core.units import (format_bytes, format_frequency, format_percent, format_power,
                            format_temperature)
 from ...gpu.backend import DetailServices, DetailView, GpuSummary
@@ -46,6 +47,16 @@ STATE_TEXT = {
 
 def is_intel(controller: GpuController) -> bool:
     return controller.gpu.driver in ("i915", "xe")
+
+
+def memory_title(s: GpuSummary) -> str:
+    """"Graphics Memory" for an APU's shared memory, else VRAM."""
+    return "Graphics Memory" if s.shared_memory else "Video Memory"
+
+
+def power_title(s: GpuSummary) -> str:
+    """An APU reports its whole package's power, not the GPU's."""
+    return "Processor Package Power" if s.power_is_package else "Power Usage"
 
 
 class DetailHost(Gtk.Stack):
@@ -93,7 +104,7 @@ class DetailHost(Gtk.Stack):
 
 class GpuPage(DevicePage):
     def __init__(self, controller: GpuController, settings, app_icon=None) -> None:
-        """``app_icon(pid)`` (processes.apps.AppIconLookup.icon_for_pid) gives
+        """``app_icon(pid)`` (processes.apps.AppIconLookup.icon_for_pid()) gives
         the vendor Processes tab its app icons."""
         super().__init__(controller, settings, PageKind.GPU)
         self.controller = controller
@@ -104,8 +115,8 @@ class GpuPage(DevicePage):
         tabs = controller.detail_class.TABS if controller.detail_class else ()
         self.hosts: dict[str, DetailHost] = {}
         self._views_from = None          # the backend the current views came from
-        self._view_handlers = None       # (backend, handler ids) feeding those views
-        self._view_charts = None         # ChartSettings of those views (Idea 4)
+        self.view_connections = Connections()   # the backend feeding those views
+        self._view_charts = None         # ChartSettings of those views
         self.stack = Adw.ViewStack(vexpand=True)
         overview = self.get_child()
         self.set_child(None)
@@ -143,7 +154,7 @@ class GpuPage(DevicePage):
         super().shutdown()
 
     def set_entry_color(self, index) -> None:
-        """The Details tabs start at the GPU entry's color too (Idea 4)."""
+        """The Details tabs start at the GPU entry's color too."""
         super().set_entry_color(index)
         if self._view_charts is not None:
             self._view_charts.set_entry_base(index)
@@ -186,7 +197,7 @@ class GpuPage(DevicePage):
         self.sensors.set_visible(False)
         props = dict(c.info.properties)
         props["Max Power Cap"] = ""
-        # What detection chose for this GPU, and why (M55).
+        # What detection chose for this GPU, and why.
         props["Detailed Statistics"] = c.plan.detail_text()
         self.add_properties(props)
 
@@ -196,13 +207,18 @@ class GpuPage(DevicePage):
         self.video_combined.set_info(format_percent(s.decode))
         self.video.start.set_info(format_percent(s.encode))
         self.video.end.set_info(format_percent(s.decode))
-        self.vram.set_visible(bool(s.vram_total))
-        if s.vram_total:
-            self.vram.set_info(f"{format_bytes(s.vram_used, self.base)} of "
-                               f"{format_bytes(s.vram_total, self.base)}")
+        total = s.memory_total
+        self.vram.set_visible(bool(total))
+        if total:
+            # An APU's graphics memory is system memory: its carve-out and
+            # GTT together.
+            self.vram.set_title(memory_title(s))
+            self.vram.set_info(f"{format_bytes(s.memory_used, self.base)} of "
+                               f"{format_bytes(total, self.base)}")
         self.frequency.set_value(format_frequency(s.frequency_hz) if s.frequency_hz else None)
         self.vram_frequency.set_value(
             format_frequency(s.vram_frequency_hz) if s.vram_frequency_hz else None)
+        self.power.set_title(power_title(s))
         if s.power_w is not None:
             text = format_power(s.power_w)
             if s.power_cap_w:
@@ -287,11 +303,7 @@ class GpuPage(DevicePage):
         self._on_tab_changed()
 
     def _set_views(self, backend) -> None:
-        if self._view_handlers:
-            source, handlers = self._view_handlers
-            for h in handlers:
-                source.disconnect(h)
-        self._view_handlers = None
+        self.view_connections.disconnect_all()
         if self._view_charts is not None:
             self._view_charts.release()
             self._view_charts = None
@@ -305,7 +317,7 @@ class GpuPage(DevicePage):
             built = backend.create_views(self.controller, dataclasses.replace(
                 self.services, charts=self._view_charts))
             views = built.views
-            self._view_handlers = (backend, built.handlers)
+            self.view_connections.adopt(backend, built.handlers)
         by_name = {v.name: v for v in views}
         seen: list[Gtk.Widget] = []
         for name, host in self.hosts.items():

@@ -1,4 +1,4 @@
-"""Milestone 1: pages, sidebar and the main window shell.
+"""pages, sidebar and the main window shell.
 
 Runs only on the private headless display (``make ui-test``); a plain
 ``make test`` skips the display-dependent tests."""
@@ -182,7 +182,7 @@ class SidebarTest(unittest.TestCase):
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class SidebarArrangeTest(unittest.TestCase):
-    """Milestone 28: reorder and minimise; Apps and Processes stay on top."""
+    """reorder and minimise; Apps and Processes stay on top."""
 
     def make(self, settings=None):
         self.settings = settings or Settings.for_tests()
@@ -229,7 +229,7 @@ class SidebarArrangeTest(unittest.TestCase):
         self.assertTrue(item.details.get_visible())
 
     def test_icons_only_shows_just_the_icon_with_hover_text(self):
-        # Milestone 54: the compact style, for every row (pinned ones too).
+        # the compact style, for every row (pinned ones too).
         sidebar = self.make()
         sidebar.set_compact(True)
         for page_id, item in sidebar.items.items():
@@ -465,8 +465,8 @@ class WindowTest(unittest.TestCase):
         win = self.make()
         self.assertEqual(win.sidebar.order(),
                          ["overview", "apps", "processes", "cpu", "memory", "gpu-demo",
-                          "demo"])
-        self.assertEqual(win.visible_page_id(), "overview")         # Milestone 39
+                          "gpu-demo-amd", "demo"])
+        self.assertEqual(win.visible_page_id(), "overview")
         self.assertEqual(win.sidebar.selected_id(), "overview")
 
     def test_without_demo(self):
@@ -474,7 +474,7 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(win.sidebar.order(), ["overview", "apps", "processes", "cpu", "memory"])
 
     def test_always_opens_on_the_overview(self):
-        # M55: whatever was shown when the app closed.
+        # whatever was shown when the app closed.
         win = self.make()
         self.assertEqual(win.visible_page_id(), "overview")
         win.sidebar.select("cpu")
@@ -518,7 +518,7 @@ class WindowTest(unittest.TestCase):
         self.assertTrue(page.shut_down)
         self.assertEqual(win.visible_page_id(), "demo")      # next in order
         win.remove_page("demo")
-        self.assertEqual(win.visible_page_id(), "gpu-demo")  # previous at the end
+        self.assertEqual(win.visible_page_id(), "gpu-demo-amd")  # previous at the end
 
     def test_demo_updates_sidebar_on_tick(self):
         win = self.make()

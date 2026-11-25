@@ -1,5 +1,5 @@
-"""The GPU *Details* tabs' layout (Idea 4; the Intel tab's own grid from
-Idea 3, moved here so every tab uses it).
+"""The GPU *Details* tabs' layout (the Intel tab's own grid from
+moved here so every tab uses it).
 
 ``ChartGrid`` fits ``ChartCard``s into whatever space the window has:
 instead of fixed graph heights and a fixed number of columns, it picks the

@@ -1,5 +1,4 @@
-"""A legend for a graph with many lines (used by ``LegendChart``;
-Milestones 55, 58 and 59).
+"""A legend for a graph with many lines (used by ``LegendChart``, 58 and 59).
 
 One toggle per series: a color swatch in the line's color, its name and
 its current value. Left-click an item to hide or show its line; right-click

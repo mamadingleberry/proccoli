@@ -1,5 +1,4 @@
-"""ui.hover and the shared axis gutter / value ticks in ui.axes (Idea 3:
-what the Intel Details tab's own graphs had, now shared by every graph)."""
+"""ui.hover and the shared axis gutter / value ticks in ui.axes (what the Intel Details tab's own graphs had, now shared by every graph)."""
 
 import os
 import sys

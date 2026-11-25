@@ -12,7 +12,7 @@ CSS = """
 /* The Intel Details tab: intel_gpu_top_gui's look. */
 .graph-section { padding: 12px 6px 6px 6px; }
 .legend-item { padding: 2px 8px; min-height: 0; }
-/* The per-CPU legend (M57): no slot padding, so it takes little of the
+/* The per-CPU legend: no slot padding, so it takes little of the
    chart's area. */
 flowbox.graph-legend > flowboxchild { padding: 0; margin: 0; }
 .legend-off { opacity: 0.45; }
@@ -59,7 +59,7 @@ class ThemeCss:
     def __init__(self, theme, display=None, css_variables: Optional[bool] = None) -> None:
         self.theme = theme
         # GTK 4.14 (Ubuntu 24.04) can't read :root variables: leave them out
-        # there (compat.has_css_variables); injectable for tests.
+        # there (compat.has_css_variables()); injectable for tests.
         self.css_variables = has_css_variables() if css_variables is None else css_variables
         self.provider = Gtk.CssProvider()
         self.display = display or Gdk.Display.get_default()

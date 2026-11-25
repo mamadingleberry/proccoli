@@ -1,4 +1,4 @@
-"""*Export Statistics…* (DESIGN.md §13.2, Idea 2): the running session's
+"""*Export Statistics…*: the running session's
 readings, from the history database, as files in a folder the user picks.
 
 ``export_session`` writes into a new folder inside the chosen one
@@ -11,7 +11,18 @@ readings, from the history database, as files in a folder the user picks.
 - when the session is longer than the detail kept, the older part as
   ``<device>-minutes.csv`` with ``_avg``/``_min``/``_max`` columns;
 - ``export.json``: Proccoli's version, the session's start and end (UTC),
-  and each file's device, kind, level and columns with units.
+  the machine (``machine``: OS, kernel, architecture, computer model; never
+  the host name), each device's details (``devices``: name, kind,
+  description and properties as they were during the export, with any
+  ``changes``) and each file's device, kind, level and columns with
+  units;
+- ``devices.csv``: the same device details for spreadsheets, one row per
+  device and property (long form: every kind has different properties).
+
+Properties that identify the machine (``IDENTIFYING``: a network card's
+hardware address) are left out unless ``include_addresses``. Devices
+recorded before the history kept their details get what they are now
+(``current``), marked ``"as_of": "export"``.
 
 It opens its own read-only connection, so it can run on a worker thread
 while the main loop keeps recording. ``progress(done, total)`` is called
@@ -27,13 +38,16 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Mapping, Optional, Sequence
 
 from .. import APP_NAME
 from .history_db import HistoryDb, from_fixed
 from .units import iso_utc
 
 CHUNK_MS = 3_600_000            # rows read an hour at a time
+# Properties left out of exports unless asked: they identify the machine.
+IDENTIFYING = frozenset({"Hardware Address"})
+DEVICES_CSV = "devices.csv"
 
 
 def format_value(value: Optional[float]) -> str:
@@ -82,9 +96,14 @@ def _csv_line(fields) -> str:
 
 def export_session(db_path: Path, parent: Path, start_ms: int, end_ms: int,
                    version: str = "", now_s: Optional[float] = None,
-                   progress: Optional[Callable[[int, int], None]] = None) -> ExportResult:
+                   progress: Optional[Callable[[int, int], None]] = None,
+                   machine: Optional[Mapping[str, str]] = None,
+                   current: Optional[Mapping[str, Mapping]] = None,
+                   include_addresses: bool = False) -> ExportResult:
     """Write the readings from ``start_ms`` to ``end_ms`` (UTC ms) into a
-    new folder in ``parent``."""
+    new folder in ``parent``. ``machine`` is ``machine_info``;
+    ``current`` maps device IDs to ``{"description", "properties"}`` as
+    they are now (for devices the history has no details of)."""
     import time
     db = HistoryDb(db_path, readonly=True)
     try:
@@ -92,17 +111,82 @@ def export_session(db_path: Path, parent: Path, start_ms: int, end_ms: int,
         manifest = {"application": APP_NAME, "version": version,
                     "session": {"start_utc": iso_utc(start_ms / 1000),
                                 "end_utc": iso_utc(end_ms / 1000)},
-                    "files": []}
+                    "machine": {"proccoli_version": version, **dict(machine or {})},
+                    "devices": [], "files": []}
         devices = db.devices()
         for done, device in enumerate(devices, 1):
+            before = len(manifest["files"])
             _export_device(db, device, result, manifest, start_ms, end_ms)
+            files = [f["file"] for f in manifest["files"][before:]]
+            if files:
+                manifest["devices"].append(device_details(
+                    db, device, start_ms, end_ms, (current or {}).get(device["id"]),
+                    include_addresses, files))
             if progress is not None:
                 progress(done, len(devices))
-        _write(result.folder / "export.json", json.dumps(manifest, indent=2) + "\n")
+        _write(result.folder / DEVICES_CSV, devices_csv(manifest["devices"]))
+        result.files.append(DEVICES_CSV)
+        _write(result.folder / "export.json", json.dumps(manifest, indent=2,
+                                                         ensure_ascii=False) + "\n")
         result.files.append("export.json")
         return result
     finally:
         db.close()
+
+
+def _visible(properties: Mapping[str, str], include_addresses: bool) -> dict[str, str]:
+    return {k: v for k, v in properties.items() if include_addresses or k not in IDENTIFYING}
+
+
+def device_details(db: HistoryDb, device: dict, start_ms: int, end_ms: int,
+                   current: Optional[Mapping], include_addresses: bool = False,
+                   files: Sequence[str] = ()) -> dict:
+    """What ``device`` was during the export: the details in effect at its
+    end, with each change before that (time and what changed)."""
+    rows = db.device_info(device["table"], start_ms, end_ms)
+    out = {"device": device["id"], "name": device["name"], "kind": device["kind"],
+           "files": list(files)}
+    if not rows:
+        now = current or {}
+        out.update(description=now.get("description", ""),
+                   properties=_visible(now.get("properties", {}), include_addresses),
+                   as_of="export")
+        return out
+    shown = [(r["time"], r["description"], _visible(r["properties"], include_addresses))
+             for r in rows]
+    changes, previous = [], None
+    for time_ms, description, props in shown:
+        if previous is not None:
+            change = {"time_utc": iso_utc(max(time_ms, start_ms) / 1000)}
+            if description != previous[0]:
+                change["description"] = description
+            changed = {k: v for k, v in props.items() if previous[1].get(k) != v}
+            removed = [k for k in previous[1] if k not in props]
+            if changed:
+                change["properties"] = changed
+            if removed:
+                change["removed"] = removed
+            if len(change) > 1:
+                changes.append(change)
+        previous = (description, props)
+    out.update(description=previous[0], properties=previous[1], as_of="history",
+               since_utc=iso_utc(max(shown[0][0], start_ms) / 1000))
+    if changes:
+        out["changes"] = changes
+    return out
+
+
+def devices_csv(devices: Sequence[Mapping]) -> str:
+    """One row per device and property (a device without any gets one
+    row), as the details stood at the end of the export."""
+    lines = [_csv_line(["device_id", "name", "kind", "description", "property", "value",
+                        "files"])]
+    for d in devices:
+        base = [d["device"], d["name"], d["kind"], d.get("description", "")]
+        files = " ".join(d.get("files", ()))
+        for key, value in (d.get("properties") or {"": ""}).items():
+            lines.append(_csv_line(base + [key, value, files]))
+    return "".join(lines)
 
 
 def _export_device(db: HistoryDb, device: dict, result: ExportResult, manifest: dict,

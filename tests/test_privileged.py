@@ -67,7 +67,7 @@ class HelperClientTest(unittest.TestCase):
 
 
 class LocatingTest(unittest.TestCase):
-    """Milestone 40: only a helper that only root can change runs as root."""
+    """only a helper that only root can change runs as root."""
 
     def argv(self, installed, trusted=(), env=None):
         return helper_argv(installed, trusted=lambda p: p in trusted, env=env or {},
@@ -110,7 +110,7 @@ class LocatingTest(unittest.TestCase):
 
     def test_protocol_is_read_from_the_helper_file(self):
         self.assertEqual(helper_protocol([SOURCE_HELPER]), PROTOCOL_GPU_TOP)   # this version
-        old = "#!/usr/bin/python3\nSIGNALS = {}\n"                    # before M40
+        old = "#!/usr/bin/python3\nSIGNALS = {}\n"                    # an older helper
         self.assertEqual(helper_protocol(["/usr/libexec/x"], read=lambda p: old), 1)
         self.assertEqual(helper_protocol(None), 1)
         self.assertEqual(helper_protocol(["/nonexistent"]), 1)

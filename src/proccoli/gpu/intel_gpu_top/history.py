@@ -15,7 +15,7 @@ from ...core.history import Series as CoreSeries
 _SKIP_GROUPS = {"period", "clients", "engines"}
 
 # intel_gpu_top's units -> (factor, base unit): readings are kept in base
-# units, so charts format them in the user's units like every other (Idea 4).
+# units, so charts format them in the user's units like every other.
 BASE_UNITS = {"MiB/s": (1024.0 * 1024.0, "B/s"), "MHz": (1e6, "Hz")}
 
 
@@ -35,7 +35,7 @@ def flatten_sample(sample: dict) -> dict[str, tuple[str, dict[str, float]]]:
     """Return ``{group: (unit, {series_name: value})}`` for one sample.
 
     ``engines`` becomes the group ``"engines"`` with one series per engine
-    (its ``busy`` value).  Every other top-level object with numeric members
+    (its ``busy`` value). Every other top-level object with numeric members
     (frequency, power, rc6, interrupts, imc-bandwidth, and whatever future
     versions of intel_gpu_top add) becomes a group of its own.
     """
@@ -104,7 +104,7 @@ class History:
         self._units: dict[tuple[str, str], str] = {}
 
     def set_plan(self, points: int, every: int = 1, step_s: Optional[float] = None) -> None:
-        """As ``core.history.History.set_plan``: a new step regroups the
+        """As ``core.history.History.set_plan()``: a new step regroups the
         points held (a longer one) or drops them (a shorter one)."""
         old_step = self.step_s
         self.set_max_points(points)
@@ -145,7 +145,7 @@ class History:
         return values, units
 
     def backfill(self, times, values, offline=None) -> int:
-        """Older points in front (as ``core.history.History.backfill``)."""
+        """Older points in front (as ``core.history.History.backfill()``)."""
         oldest = self.times[0] if self.times else float("inf")
         room = self.room()
         keep = [i for i, t in enumerate(times) if t < oldest][-room:] if room > 0 else []

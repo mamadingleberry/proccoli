@@ -29,7 +29,7 @@ class FakeHelper:
 
 
 class IdentityTest(unittest.TestCase):
-    """Milestone 40: the helper gets PID and start time, read when the user acts."""
+    """the helper gets PID and start time, read when the user acts."""
 
     def setUp(self):
         self.system = FakeSystem()
