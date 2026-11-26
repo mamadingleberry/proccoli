@@ -123,7 +123,7 @@ Class and module names refer to [DESIGN.md](DESIGN.md). Section references
 | Recording from boot (lingering) | 💡 Idea | The recorder starts at boot, not only at log-in: lingering offered at the right moments, or turned on by the package, or a system-wide recorder; see *Ideas*, Idea 22 |
 | Refactoring candidates | 💡 Idea (R1–R3 done in M84) | Twelve places to restructure into classes, base classes or helpers (signal connections, a common device-source base, monitors that describe themselves, `System` split, `Graph` axes and hover, …); see *Ideas*, Idea 21 |
 | Preferences in named sections | 💡 Idea | Split Preferences' long *General* page into named pages (Appearance, Graphs, Recording, Access, Performance, Diagnostics…) and move long lists (table columns, per-device options) to subpages; see *Ideas*, Idea 20 |
-| Bugs 15–18 | 🐞 Open | A second recorder waits instead of leaving (Bug 15); a recorder stopped by a signal isn't restarted (Bug 16); one-point gaps every few minutes in graphs loaded from the history (Bug 17); changing the *Time Range* shows the last seconds as "not running" (Bug 18); see *Bugs* |
+| Bugs 15–21 | 🐞 Open | A second recorder waits instead of leaving (Bug 15); a recorder stopped by a signal isn't restarted (Bug 16); one-point gaps every few minutes in graphs loaded from the history (Bug 17); changing the *Time Range* shows the last seconds as "not running" (Bug 18); an idle Intel GPU's Overview card is a blank chart (Bug 19); a chart with no readings is drawn blank instead of "No data" (Bug 20); an NVIDIA GPU too new for `pci.ids` is named "NVIDIA GPU" (Bug 21); see *Bugs* |
 | 84 Restart keeps its name; signal connections, device sources, device descriptions | ✅ Done | *Restart Now* runs the launcher itself, so the window isn't listed as `python3` (Bug 14); `Connections` in 17 modules, a `DeviceSource` base for both device managers, monitors that describe themselves (Idea 21: R1, R2, R3) |
 | 83 More styles; the programs renamed; 0.5.0 | ✅ Done | 18 more styles (High Contrast Light and Dark among them); the recorder is now `proccoli` (program, unit, package) and the window `proccoli-gui`; the meta package is gone; version 0.5.0 |
 | 82 Palettes, padlocks, steady tables, no stray collectors | ✅ Done | 13 more palettes (five color-blind safe first after System); Lightweight Mode's fixed settings get a padlock and each page a notice; the Overview's tables keep their size (Bug 13); tests and the window can no longer start a collector by accident (Bug 12) |
@@ -4432,3 +4432,122 @@ after it, so it looks like a restart. Every range does it; on long ones
 |---|---|---|
 | B18.1 | `metrics_service.py`: `Flush()` (commits, returns the newest time written); `devices/remote.py`: `RemoteDeviceManager.flush(callback)` with `NO_AUTO_START` | Unit, on a private bus: rows buffered before `Flush` are readable after it |
 | B18.2 | `core/history_store.py`: a range change flushes, then refills; `offline_slots` takes "running since" for the open run | Unit: after a range change with uncommitted readings, no slot in the last 10 s is offline; UI: *30 Seconds* after *1 Minute* has no shaded strip |
+
+### Bug 19: An idle Intel GPU's Overview card is a blank chart
+
+*Open.*
+
+**Seen:** "why aren't GPU stats appearing on the overview page? it's just
+a blank graph … it appears to be trying to display Intel GPU but that
+individual pane is empty." On a Lenovo Legion with an Arrow Lake-U iGPU
+(i915, `0000:00:02.0`) and an RTX 5060 Laptop GPU, GNOME on Wayland,
+`prime-select` *on-demand*, with the laptop panel wired to the NVIDIA GPU
+(`card1-eDP-1`). Every reading of the Intel GPU's summary was `None`
+(usage, frequency, temperature, power, memory), tick after tick.
+
+**Cause:**
+
+1. **Nothing uses the Intel GPU.** gnome-shell, Xwayland and the rest
+   render on the NVIDIA GPU (they hold `card1` and `renderD128`); no
+   process has the Intel GPU's `card0` or `renderD129` open, and its
+   frequency counters (`gt_act_freq_mhz`, `gt_cur_freq_mhz`) read 0:
+   the GT is asleep in RC6.
+2. **The summary source reads "no clients" as "no reading".**
+   `GenericDrmBackend.refresh` takes usage from `gpu_busy_percent` (AMD
+   only) or from the busiest engine in DRM fdinfo. With no clients the
+   engine map is empty, so usage stays `None` rather than 0 %. The
+   frequency is dropped too, because 0 MHz is treated as missing
+   (`if mhz:`), and an iGPU has no `hwmon` for temperature or power.
+3. **The detail source never runs here.** `intel_gpu_top` needs
+   administrator rights. The window reads from the collector, which runs
+   under the metrics profile (`gpu_elevate=False`) and never asks for a
+   password, so the Intel GPU's Details stay off and can't fill the gap.
+
+The NVIDIA GPU is unaffected: `nvidia-smi` reads its usage, memory,
+power and temperature.
+
+**Fix (proposed):**
+
+1. **Usage from RC6 residency, without root:** i915 exposes
+   `gt/gt<N>/rc6_residency_ms` per GT (render GT0, media GT1 on Meteor
+   Lake and later) and xe exposes
+   `device/tile<T>/gt<N>/gtidle/idle_residency_ms`; anyone can read them.
+   Busy ≈ `100 × (1 − Δresidency / Δt)`. Used when fdinfo has no engine
+   figures for the GPU; fdinfo's per-engine figures still win when there
+   are clients. RC6 is entered a few ms after work stops, so this slightly
+   overstates light loads; it reads 0 % for an idle GPU, which is the
+   case that matters here.
+2. **An idle frequency is a reading:** when the frequency file exists
+   and reads 0, the summary says 0 Hz (the detail line "Idle"), not
+   `None`; `GpuController.sample` stops treating 0 as missing.
+3. **The media GT counts as video:** GT1's residency feeds the combined
+   video figure when fdinfo has none, as `intel_gpu_top` does for i915.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B19.1 | `gpu/generic_drm.py`: a small residency sampler (pure: previous and current `(time, ms)` → percent) and its use in `refresh` for i915 and xe when fdinfo has no engines | Unit on a fixture `SysRoot`: residency advancing 1000 ms in 1 s gives 0 %, 250 ms gives 75 %; a counter that goes backwards (resume) gives `None` once, then resumes; fdinfo engines take precedence |
+| B19.2 | `gpu/generic_drm.py`, `gpu/controller.py`: 0 MHz is a reading; the detail line says "Idle" | Unit: `gt_act_freq_mhz` = 0 gives `frequency_hz == 0` and the detail text "Idle" |
+| B19.3 | Fixture of this machine's i915 sysfs (both GTs, no fdinfo clients) | Unit: the summary has a usage every tick; UI smoke: the Overview card for the fixture GPU draws a line at 0 % |
+| B19.4 | DESIGN §7 (the summary source's sources of usage) and §14.19; README (*GPUs*: what the Intel card shows without administrator rights) | — |
+
+**Done when:** an Intel GPU that nothing uses shows 0 % on its Overview
+card and page, without a password, in the window and in the collector.
+
+### Bug 20: A chart with no readings is drawn blank instead of "No data"
+
+*Open.*
+
+**Seen:** while diagnosing Bug 19: the idle Intel GPU's Overview card
+showed an empty chart frame instead of its "No data" label.
+
+**Cause:** `SidebarSummary.has_chart()` is `bool(self.series)`: true as
+soon as the device has a series, even when every point in it is `None`.
+`OverviewCard.update` then shows the graph and hides `empty_label`, and
+the graph has nothing to draw.
+
+**Fix (proposed):** `has_chart()` is true only when some series holds a
+reading. `Series` keeps a count of the non-`None` values it holds
+(updated on append and when old points drop off), so the check stays
+O(1) per update rather than a scan of up to a day of points. A card
+whose device starts reading switches from "No data" to the chart on the
+next `summary-changed`.
+
+| Step | Create / change | Test |
+|---|---|---|
+| B20.1 | `core/history.py`: `Series.has_values()` from a running count | Unit: empty, all-`None`, one value then aged out, mixed |
+| B20.2 | `ui/page.py`: `SidebarSummary.has_chart()` uses it | Unit: a summary over an all-`None` series has no chart; UI smoke: such a card shows "No data", then the chart after its first reading |
+| B20.3 | DESIGN §14.20 | — |
+
+**Done when:** no Overview card draws an empty chart; a device without
+readings says "No data".
+
+### Bug 21: An NVIDIA GPU too new for pci.ids is named "NVIDIA GPU"
+
+*Open.*
+
+**Seen:** while diagnosing Bug 19: the RTX 5060 Laptop GPU (`10de:2d59`)
+is listed, on its card, page and sidebar entry, as "NVIDIA GPU".
+
+**Cause:** `discover_gpus` names a GPU from the system's `pci.ids`
+(`pretty_name`). Ubuntu's `hwdata` doesn't list `10de:2d59` yet, so the
+name falls back to the vendor prefix. The NVIDIA driver knows it:
+`/proc/driver/nvidia/gpus/<slot>/information` says
+`Model: NVIDIA GeForce RTX 5060 Laptop GPU` (world-readable), and
+`nvidia-smi` returns the same `name` on every sample (`NvidiaSample.name`),
+but neither is used for the name.
+
+**Fix (proposed):** at discovery, for a GPU on the `nvidia` driver, read
+the `Model:` line of the driver's `information` file through `SysRoot`
+and prefer it to `pci.ids` (it already starts with "NVIDIA", as
+`pretty_name` wants). It's a file
+read, so discovery stays fast and the collector sends the right name to
+the window in `describe()`; no renaming after start. `pci.ids` stays the
+fallback (nouveau, a missing file).
+
+| Step | Create / change | Test |
+|---|---|---|
+| B21.1 | `gpu/info.py`: `nvidia_model(sysroot, slot)` and its use in `discover_gpus` | Unit on a fixture `SysRoot`: the driver file's model wins over `pci.ids`; without the file, `pci.ids`; with neither, "NVIDIA GPU" |
+| B21.2 | DESIGN §7 (where GPU names come from) and §14.21 | — |
+
+**Done when:** a GPU the driver knows but `pci.ids` doesn't is listed by
+its model name.

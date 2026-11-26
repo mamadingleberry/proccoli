@@ -4005,6 +4005,44 @@ command line's second word): `proccoli-metric` →
 window fills its graphs from the database as it subscribes; `Subscribe`
 now commits first.
 
+### 14.21 An NVIDIA GPU too new for pci.ids is named "NVIDIA GPU"
+
+*PLAN.md, Bug 21. Open.* Names come from `pci.ids` alone; a device ID it
+doesn't list (`10de:2d59`, RTX 5060 Laptop GPU, on Ubuntu's `hwdata`)
+falls back to the vendor prefix. Proposed: for the `nvidia` driver, the
+`Model:` line of `/proc/driver/nvidia/gpus/<slot>/information`
+(world-readable, read through `SysRoot` at discovery) wins over
+`pci.ids`.
+
+### 14.20 A chart with no readings is drawn blank
+
+*PLAN.md, Bug 20. Open.* `SidebarSummary.has_chart()` is true whenever a
+series exists, so an Overview card whose series is all `None` hides its
+"No data" label and draws an empty frame. Proposed: `Series` counts its
+non-`None` values, and `has_chart()` asks for at least one.
+
+### 14.19 An idle Intel GPU's Overview card is a blank chart
+
+*PLAN.md, Bug 19. Open.* Where an Intel GPU's usage can come from, and
+why each source is empty when nothing uses the GPU and the window reads
+from the collector:
+
+```mermaid
+flowchart TD
+    U["Intel GPU usage"] --> F["DRM fdinfo engines<br/>(GenericDrmBackend)"]
+    U --> B["gpu_busy_percent"]
+    U --> T["intel_gpu_top<br/>(detail source)"]
+    U -.-> R["rc6_residency_ms per GT<br/>(proposed)"]
+    F --> F0["no process has the GPU open<br/>→ no engines → usage None"]
+    B --> B0["AMD only<br/>→ missing"]
+    T --> T0["needs administrator rights;<br/>the collector never elevates<br/>→ off"]
+    R --> R0["world-readable;<br/>busy = 1 − Δresidency / Δt<br/>→ 0 % when idle"]
+```
+
+Proposed: the summary source falls back to RC6 (i915) or gtidle (xe)
+residency when fdinfo has no engine figures, and a frequency file that
+reads 0 MHz is an "Idle" reading rather than a missing one.
+
 ### 14.18 A Time Range change shows the last seconds as "not running"
 
 *PLAN.md, Bug 18. Open.*
