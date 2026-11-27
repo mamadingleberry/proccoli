@@ -17,10 +17,10 @@ from gi.repository import GObject
 
 from .. import GPU_ICON
 from ..core.connections import Connections
-from ..core.units import format_frequency, format_percent
+from ..core.units import format_percent
 from ..devices.base import DeviceInfo, DeviceKind, Monitor, Snapshot
 from ..devices.manager import Discoverer
-from .backend import DetailBackend, GpuBackend, GpuDeps, GpuSummary, Probe
+from .backend import DetailBackend, GpuBackend, GpuDeps, GpuSummary, Probe, frequency_text
 from .detect import GpuPlan, plan_gpu
 from .info import GpuInfo, discover_gpus
 from .registry import GpuBackendRegistry
@@ -293,7 +293,7 @@ class GpuController(Monitor):
                          else ({}, {}))
         return GpuSnapshot(time=now, usage=s.usage,
                            usage_text=format_percent(s.usage) if s.usage is not None else "",
-                           detail_text=format_frequency(s.frequency_hz) if s.frequency_hz else "",
+                           detail_text=frequency_text(s.frequency_hz) or "",
                            summary=s, detail=detail, detail_units=units)
 
     def detail_history(self):

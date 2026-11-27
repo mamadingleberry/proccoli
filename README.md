@@ -91,7 +91,7 @@ packages there, or build them elsewhere and copy the file over):
 
 ```sh
 sudo apt install ./dist/proccoli_0.5.0_all.deb
-sudo loginctl enable-linger $USER                # optional: record from boot
+proccoli --start-at-boot                 # optional: record from boot
 proccoli --status                        # is it recording?
 ```
 
@@ -153,7 +153,7 @@ and activity.
   - On Apps, *Switch To* brings the app's window to the front. GNOME lets
     an app bring only its own windows forward, so for apps that can't be
     asked to show themselves (Firefox, VS Code and many others) Proccoli
-    needs its small GNOME Shell extension: Preferences → General →
+    needs its small GNOME Shell extension: Preferences → System →
     *Window Switching* → *Install* (or *Turn On* if Proccoli was installed
     as a package). After installing, log out and back in once. The
     extension can only list windows and bring one to the front. On an X11
@@ -195,8 +195,10 @@ and activity.
   takes every reading and keeps the history, from when you log in,
   window or not; the window shows what it sends and reads nothing itself.
   It's on for everyone once installed, and opening Proccoli starts it if
-  it isn't running. *Start at Boot* (Preferences → General → *History*)
-  also has it record before you log in and after you log out. If the
+  it isn't running. *Start at Boot* (Preferences → *Recording*)
+  also has it record before you log in and after you log out; the
+  first time Proccoli opens with it off, it asks once whether to turn it
+  on (for your account only). If the
   window stops getting readings, a banner above the pages says so, with
   *Try Again*. It has no window and never asks for a password, so Intel
   GPU *Details*, which need one, aren't available for now (the other
@@ -204,10 +206,12 @@ and activity.
   around 1 % of one processor core. On the *Apps* page it counts as part
   of Proccoli; on *Processes* it's `proccoli`. *Recording* in
   Preferences says since when. From a terminal: `proccoli
-  --status` says the same, and `proccoli --watch` prints each
-  reading as it's taken.
+  --status` says the same (and whether it records from boot), `proccoli
+  --watch` prints each reading as it's taken, and `proccoli
+  --start-at-boot` or `--no-start-at-boot` turns recording from boot on
+  or off.
 - **Exporting statistics:** the logo → *Export Statistics…* (or
-  Preferences → General → *History* → *Export…*) saves every reading
+  Preferences → *Recording* → *Export…*) saves every reading
   since Proccoli started to a folder you choose. Proccoli makes a new
   folder there (`proccoli-statistics-20261124T101530Z`), so nothing is
   overwritten. It holds one CSV file per device, which opens in any
@@ -224,8 +228,13 @@ and activity.
   kernel and Proccoli version the readings came from. `devices.csv` has
   the same device details for a spreadsheet, one row per detail. The
   computer's name is never included, and neither are network cards'
-  hardware addresses unless you turn on Preferences → General →
-  *History* → *Include Hardware Addresses*.
+  hardware addresses unless you turn on Preferences → *Recording* →
+  *Include Hardware Addresses*.
+- **An Intel GPU nothing is using** shows 0 % and its speed as *Idle*,
+  without a password (laptops that draw the desktop on another GPU often
+  leave the Intel one asleep). Until a program opens it, its usage comes
+  from how long the GPU spends asleep, which reads a little high for
+  light loads.
 - **Graphics details:** on an Intel GPU, open the *Details* tab for
   per-engine charts, frequency, power, memory bandwidth and interrupts,
   and the *Processes* tab for each app's graphics use. In a chart's
@@ -288,7 +297,7 @@ need administrator rights:
 
 At start-up Proccoli offers to unlock these, and you can say *Not Now*.
 Each page also keeps its own button, and the main menu has *Show All
-Details…*. To stop the offer at start-up, turn off Preferences → General
+Details…*. To stop the offer at start-up, turn off Preferences → System
 → *Ask for Administrator Rights at Start-Up*.
 
 When you agree, your system asks for your password, and Proccoli runs a
@@ -301,9 +310,10 @@ off, because its files can be changed without administrator rights.
 
 Open with Ctrl+, or from the main menu.
 
-- **General:**
-  - *Memory Use:* *Lightweight Mode* (see *Lightweight mode* above).
-  - *Appearance:* style and color palette. Styles: *Follow System*,
+Six pages, chosen at the bottom; the search button finds any setting.
+
+- **Appearance:**
+  - *Style:* style and color palette. Styles: *Follow System*,
     *Light*, *Dark*; light tints (*Sand*, *Sky*, *Mint*, *Rose*,
     *Lavender*, *Paper*, *Solarized Light*, *Gruvbox Light*, *Catppuccin
     Latte*, *High Contrast Light*); dark tints (*Twilight*, *Midnight*,
@@ -316,40 +326,49 @@ Open with Ctrl+, or from the main menu.
     *ColorBrewer Set 1* and *Dark 2*); editor themes (*Catppuccin*,
     *Gruvbox*, *One*, *Tokyo Night*); and terminal schemes (*GNOME*,
     *Tango*, *Solarized*, *Linux Console*, *XTerm*, *Rxvt*, *Nord*).
+  - *Graphs:* axes, grids, and *Graph Time Range* (how much time charts
+    show, whatever the update interval: 30 seconds to a day, or
+    *Custom…*, any number of seconds, minutes, hours or days from 10
+    seconds to 30 days).
   - *Units:* data units, network speeds in bits, temperature unit.
-  - *User Interface:* *Update Interval* (how often Proccoli takes
-    readings: every 1, 2, 3, 5 or 10 seconds; 1 by default. It replaced
-    *Refresh Speed*, whose fastest choices went too fast; a choice you made
-    there carries over), chart grids and axes, *Graph Time Range* (how
-    much time charts show, whatever the update interval: 30 seconds to a
-    day, or *Custom…*, any number of seconds, minutes, hours or days from
-    10 seconds to 30 days), and *Normalize Processor Usage*: on, each app's or
-    process's processor use is its share of the whole processor (the
-    column adds up to the total); off, one fully busy core is 100 %, as in
-    `top`.
-  - *Diagnostics:* the log's detail level and size, with a button to
-    open its folder.
-  - *Window Switching:* whether the extension that lets *Switch To*
-    reach every app is on, with a button to install or turn it on.
-  - *History:* keep a history of every reading (on by default), how many
-    hours every reading is kept, the most it may take on disk (512 MiB by
-    default), how much it takes now, *Delete History…*, *Export…*,
-    whether exports include network cards' hardware addresses (off by
-    default), *Start at Boot* and since when it's been recording
-    (*Record in the Background* turns the recorder off, and with it the
-    window's readings, until Proccoli is opened again).
 - **Sidebar:** full entries or icons only, the chart style, and for each
   entry, what it shows and where it sits.
-- **Apps** and **Processes:** which columns to show.
-- **Devices:** whether to list virtual drives and network connections.
-- **GPU:** detailed statistics on or off per graphics card, and how
-  often `intel_gpu_top` takes a reading. How much time their charts show is the *Graph Time
-  Range*.
+- **Tables:** *Normalize Processor Usage* (on, each app's or process's
+  processor use is its share of the whole processor, so the column adds
+  up to the total; off, one fully busy core is 100 %, as in `top`), *Show
+  Niceness Values*, and which columns *Apps* and *Processes* show (each
+  list opens in place).
+- **Recording:**
+  - *History:* keep a history of every reading (on by default), how many
+    hours every reading is kept, the most it may take on disk (512 MiB by
+    default).
+  - *In the Background:* *Record in the Background* (off turns the
+    recorder off, and with it the window's readings, until Proccoli is
+    opened again) and *Start at Boot*.
+  - *Exports:* whether exports include network cards' hardware addresses
+    (off by default).
+  - *Status and Actions:* since when it's been recording, how much the
+    history takes now with *Delete History…*, and *Export…*.
+- **Devices:** whether to list virtual drives and network connections;
+  detailed GPU statistics on or off per graphics card, and how often
+  `intel_gpu_top` takes a reading (how much time their charts show is
+  the *Graph Time Range*).
+- **System:**
+  - *Memory Use:* *Lightweight Mode* (see *Lightweight mode* below).
+  - *Readings:* *Update Interval* (how often Proccoli takes readings:
+    every 1, 2, 3, 5 or 10 seconds; 1 by default. It replaced *Refresh
+    Speed*, whose fastest choices went too fast; a choice you made there
+    carries over).
+  - *Administrator Rights:* whether to offer them at start-up.
+  - *Window Switching:* whether the extension that lets *Switch To*
+    reach every app is on, with a button to install or turn it on.
+  - *Diagnostics:* the log's detail level and size, with a button to
+    open its folder.
 
 ## Lightweight mode
 
 For older machines, or to leave Proccoli running all day: Preferences →
-General → *Memory Use* → *Lightweight Mode*, then *Restart Now* (or start
+System → *Memory Use* → *Lightweight Mode*, then *Restart Now* (or start
 it once with `proccoli --lightweight`). Proccoli then uses less than half
 the memory and processor time of the full window:
 
@@ -388,7 +407,7 @@ and *Restart Now* to change.
   MiB after a year and about 120 MiB after
   ten; it never grows past *Maximum Size* (512 MiB by default), dropping
   the oldest hours first. Turn it off, change the limits, or delete it in
-  Preferences → General → *History*. Older versions of Proccoli kept CSV
+  Preferences → *Recording*. Older versions of Proccoli kept CSV
   files in `~/.local/state/proccoli/stats/`; they're moved into the
   history the first time this version starts, and the folder is removed.
 - **Background recording:** `proccoli` keeps its own log beside
@@ -396,14 +415,17 @@ and *Restart Now* to change.
   same level and size limit, and `history.lock` there says which of the
   two is writing the history. Its systemd user unit is
   `proccoli.service` (`journalctl --user -u proccoli`
-  shows its messages too).
+  shows its messages too). One recorder per user is enough: started
+  again while one runs, `proccoli` says which process records and exits.
+  If it stops for any reason other than `systemctl --user stop
+  proccoli`, systemd starts it again within 10 seconds.
 - **Diagnostics log:** the window's is
   `~/.local/state/proccoli/proccoli-gui.log` (`proccoli.log` before
   0.5.0, which is now the recorder's), readable
   only by you. By default it records everything (*Everything (Debug)*),
   with times in UTC (for example `2026-11-23T21:41:25.154Z`). It's capped
   at 1 MiB by default, plus one older file. Set the level or size, or turn
-  it off, in Preferences → General → *Diagnostics*.
+  it off, in Preferences → System → *Diagnostics*.
 
 ## Troubleshooting
 
@@ -424,7 +446,7 @@ and *Restart Now* to change.
   Proccoli is installed (not only run from the folder) and that `pkexec`
   is installed.
 - **Something looks wrong or the window stops responding:** check the
-  log (Preferences → General → *Diagnostics* → *Open Folder*). If the
+  log (Preferences → System → *Diagnostics* → *Open Folder*). If the
   window ever stops responding for more than a few seconds, Proccoli
   writes details of where it was stuck there.
 

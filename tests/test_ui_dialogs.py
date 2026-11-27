@@ -161,10 +161,14 @@ class PreferencesTest(unittest.TestCase):
         self.dialog = PreferencesDialog(self.settings)
 
     def test_every_switch_works_both_ways(self):
+        from proccoli.ui import preferences_layout as layout
         switches = {k: r for k, r in self.dialog.rows.items() if isinstance(r, Adw.SwitchRow)}
-        # General 9 (with Keep History and Lightweight Mode), Apps columns,
-        # Processes 1 + columns, Devices 2, GPU 1.
-        self.assertEqual(len(switches), 9 + len(APP_COLUMNS) + 1 + len(PROCESS_COLUMNS) + 2 + 1)
+        # Every on/off setting the layout places, but the one that needs an
+        # export (none given here).
+        booleans = {k for k in layout.placed_keys()
+                    if isinstance(self.settings.spec.keys[k].default, bool)}
+        self.assertEqual(set(switches), booleans - {"export-hardware-addresses"})
+        self.assertGreaterEqual(len(switches), len(APP_COLUMNS) + len(PROCESS_COLUMNS))
         for key, row in switches.items():
             if key == "lightweight":
                 continue      # shows the running mode, not the setting (its own tests)
@@ -329,6 +333,37 @@ class PreferencesTest(unittest.TestCase):
     def test_without_gpus(self):
         self.assertEqual(self.dialog.gpu_rows, {})
 
+    def test_six_pages_in_order(self):
+        child = self.dialog.get_visible_page()
+        self.assertEqual([p.get_title() for p in self.dialog.pages.values()],
+                         ["Appearance", "Sidebar", "Tables", "Recording", "Devices", "System"])
+        self.assertIs(child, self.dialog.pages["appearance"])       # opens on the first
+
+    def test_every_row_is_on_its_page(self):
+        from proccoli.ui import preferences_layout as layout
+        for key, row in self.dialog.rows.items():
+            page = row.get_ancestor(Adw.PreferencesPage)
+            self.assertIs(page, self.dialog.pages[layout.page_of(key)], key)
+        self.assertEqual(set(self.dialog._builders()), set(layout.items()))
+
+    def test_column_lists_open_in_place(self):
+        row = self.dialog.rows["processes-show-commandline"]
+        expander = row.get_ancestor(Adw.ExpanderRow)
+        self.assertIsNotNone(expander)
+        self.assertEqual(expander.get_title(), "Processes")
+        self.assertEqual(self.dialog.rows["apps-show-cpu"].get_ancestor(Adw.ExpanderRow)
+                         .get_title(), "Apps")
+
+    def test_groups_without_their_service_are_hidden(self):
+        groups = self.dialog.groups
+        for gid in ("status", "exports", "background", "window-switching"):
+            self.assertFalse(groups[gid].get_visible(), gid)
+        self.assertTrue(groups["history"].get_visible())
+        self.assertTrue(groups["entries"].get_visible())            # keeps its note
+        full = PreferencesDialog(self.settings, history=FakeHistory(0), export=lambda: None)
+        self.assertTrue(full.groups["status"].get_visible())
+        self.assertTrue(full.groups["exports"].get_visible())
+
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
 class SidebarPreferencesTest(unittest.TestCase):
@@ -469,6 +504,74 @@ class LaunchAuthTest(unittest.TestCase):
         dialog.switches["gpu-0000:00:02.0"].set_active(False)
         self.assertEqual(dialog.chosen(), [])
         self.assertFalse(dialog.get_response_enabled("authenticate"))
+
+
+@unittest.skipUnless(HAVE_DISPLAY, "no display")
+class RecordFromBootTest(unittest.TestCase):
+    """Asked once, after start-up, whether to record from boot."""
+
+    def setUp(self):
+        from proccoli.core.background import BackgroundService
+        self.settings = Settings.for_tests()
+        self.system = FakeSystem(programs={"systemctl": "/usr/bin/systemctl",
+                                           "loginctl": "/usr/bin/loginctl"})
+        self.background = BackgroundService(self.system)
+
+    def answers(self, linger="no"):
+        # is-enabled, is-active, Linger
+        self.system.run_results = [(0, "enabled\n", ""), (0, "active\n", ""),
+                                   (0, f"{linger}\n", "")]
+
+    def app_and_window(self):
+        from types import SimpleNamespace
+        from proccoli.app import Application
+        app = Application.__new__(Application)        # only the offer is used
+        app.ctx = SimpleNamespace(settings=self.settings)
+        window = Adw.ApplicationWindow()
+        self.addCleanup(window.destroy)
+        window.present()
+        return app, window
+
+    def test_turn_on(self):
+        from proccoli.ui.dialogs.record_from_boot import TURN_ON, RecordFromBootDialog
+        done = []
+        dialog = RecordFromBootDialog(self.settings, self.background, finished=done.append)
+        self.answers("yes")                                     # the refresh after it
+        dialog.emit("response", TURN_ON)
+        self.assertTrue(self.settings.get("linger-offered"))
+        self.assertEqual(self.system.runs[0], ["loginctl", "enable-linger", "1000"])
+        self.assertEqual(done, [TURN_ON])
+
+    def test_not_now(self):
+        from proccoli.ui.dialogs.record_from_boot import NOT_NOW, RecordFromBootDialog
+        dialog = RecordFromBootDialog(self.settings, self.background)
+        dialog.emit("response", NOT_NOW)
+        self.assertTrue(self.settings.get("linger-offered"))   # not asked again
+        self.assertEqual(self.system.runs, [])
+
+    def test_offered_once_when_it_would_help(self):
+        app, window = self.app_and_window()
+        self.answers("no")
+        app.offer_record_from_boot(window, self.background)
+        self.assertIsNotNone(window.get_visible_dialog())
+        app.record_from_boot.emit("response", "not-now")
+        app.record_from_boot.close()
+        self.system.runs.clear()
+        app.offer_record_from_boot(window, self.background)    # answered: never again
+        self.assertEqual(self.system.runs, [])
+
+    def test_not_offered_with_lingering_on_or_another_dialog_up(self):
+        app, window = self.app_and_window()
+        self.answers("yes")
+        app.offer_record_from_boot(window, self.background)
+        self.assertIsNone(window.get_visible_dialog())
+        self.assertFalse(self.settings.get("linger-offered"))  # still asks next time
+        other = Adw.AlertDialog(heading="Show All Details?")
+        other.present(window)
+        self.answers("no")
+        app.offer_record_from_boot(window, self.background)
+        self.assertIs(window.get_visible_dialog(), other)       # not on top of it
+        self.assertFalse(self.settings.get("linger-offered"))
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")

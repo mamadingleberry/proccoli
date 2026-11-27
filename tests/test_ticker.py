@@ -33,7 +33,7 @@ class FakeLoop:
         for sid, (interval, cb) in list(self.sources.items()):
             self.now += interval / 1000
             if not cb():
-                del self.sources[sid]
+                self.sources.pop(sid, None)   # (a handler may have removed it)
 
 
 def make(interval=1000):
@@ -113,6 +113,59 @@ class TickerTest(unittest.TestCase):
         self.assertEqual(interval_for("fast"), 1000)
         self.assertEqual(interval_for("slow"), 2000)
         self.assertEqual(interval_for("very-slow"), 5000)
+
+
+class NoDriftTest(unittest.TestCase):
+    """Ticks stay on ``start + n × interval`` however long each tick's
+    work takes; a repeating timer drifts by that work every tick."""
+
+    def busy(self, work_s):
+        t, loop, ticks = make(1000)
+        t.connect("tick", lambda *_: setattr(loop, "now", loop.now + work_s))
+        return t, loop, ticks
+
+    def test_work_doesnt_push_ticks_later(self):
+        t, loop, ticks = self.busy(0.005)
+        t.start()
+        for _ in range(1000):
+            loop.fire()
+        self.assertEqual(len(ticks), 1001)
+        self.assertAlmostEqual(ticks[-1], 100.0 + 1000, delta=0.001)   # 5 s late before
+        self.assertTrue(all(0.99 < b - a < 1.01 for a, b in zip(ticks, ticks[1:])))
+
+    def test_a_late_tick_isnt_made_up(self):
+        t, loop, ticks = make(1000)
+        t.start()
+        loop.now += 2.5                       # a busy main loop, or a suspend
+        loop.fire()                           # fires at 103.5
+        self.assertEqual(ticks, [100.0, 103.5])
+        (delay, _cb), = loop.sources.values()
+        self.assertEqual(delay, 500)          # the next due time ahead: 104
+        loop.fire()
+        self.assertEqual(ticks[-1], 104.0)
+
+    def test_an_early_timer_doesnt_tick_twice(self):
+        t, loop, ticks = make(1000)
+        t.start()
+        loop.now -= 0.0004                    # the timer fires 0.4 ms early
+        loop.fire()
+        (delay, _cb), = loop.sources.values()
+        self.assertEqual(delay, 1000)         # aims at 102, not at 101 again
+
+    def test_a_handler_that_rearms_leaves_one_timer(self):
+        t, loop, ticks = make(1000)
+        t.connect("tick", lambda *_: t.set_interval(2000) if len(ticks) == 2 else None)
+        t.start()
+        loop.fire()
+        self.assertEqual(len(loop.sources), 1)
+        self.assertEqual([i for i, _ in loop.sources.values()], [2000])
+
+    def test_a_handler_that_stops_leaves_none(self):
+        t, loop, ticks = make(1000)
+        t.connect("tick", lambda *_: t.stop() if len(ticks) == 2 else None)
+        t.start()
+        loop.fire()
+        self.assertEqual(loop.sources, {})
 
 
 class TimeRangeTest(unittest.TestCase):

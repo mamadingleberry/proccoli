@@ -102,7 +102,7 @@ class AppsPage(TablePage):
 
     def offer_setup(self, app) -> None:
         """GNOME lets an app raise only its own windows: say how to let
-        Proccoli raise any (Preferences → General → *Window Switching*)."""
+        Proccoli raise any (Preferences → System → *Window Switching*)."""
         self.last_message = (f"{app.name} can only be brought to the front with "
                              "window switching turned on")
         toast = Adw.Toast(title=GLib.markup_escape_text(self.last_message), timeout=6,

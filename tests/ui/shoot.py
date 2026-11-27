@@ -75,6 +75,9 @@ SCENES = {
     "portrait-demo": (480, 768, "demo", {}, False),
     "portrait-gpu-details": (480, 768, "gpu", {"gpu-view": "details"}, False),
     "dialog-preferences": (1024, 768, "demo", {}, "preferences"),
+    # Each page of Preferences.
+    **{f"preferences-{page}": (1024, 768, "demo", {}, f"preferences:{page}")
+       for page in ("appearance", "sidebar", "tables", "recording", "devices", "system")},
     "dialog-about": (1024, 768, "demo", {}, "about"),
     # Lightweight Mode's Preferences: the notice, padlocks on fixed settings.
     "lightweight-preferences": (1024, 768, "overview", {"_lightweight": True}, "preferences"),
@@ -210,8 +213,11 @@ def shoot(app: Adw.Application, name: str, scene, outdir: str, real: bool = Fals
         from proccoli.devices.base import DeviceKind
         from proccoli.ui.dialogs.about import about_dialog
         from proccoli.ui.dialogs.preferences import PreferencesDialog
+        kind, _, prefs_page = sidebar_open.partition(":")
         dialog = (PreferencesDialog(settings, ctx.devices.monitors(DeviceKind.GPU), ctx.theme)
-                  if sidebar_open == "preferences" else about_dialog())
+                  if kind == "preferences" else about_dialog())
+        if prefs_page:
+            dialog.set_visible_page(dialog.pages[prefs_page])
         dialog.present(win)
         pump(0.8)
     shown = dialog if sidebar_open not in (True, False) else None

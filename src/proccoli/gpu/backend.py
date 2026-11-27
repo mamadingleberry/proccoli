@@ -14,6 +14,7 @@ from typing import Callable, Optional
 from gi.repository import GObject
 
 from ..core.sysroot import SysRoot
+from ..core.units import format_frequency
 from .info import GpuInfo
 
 
@@ -84,6 +85,14 @@ class Capability(IntFlag):
     TEMPERATURE = 16
     VRAM = 32
     EXPORT = 64
+
+
+def frequency_text(hz: Optional[float]) -> Optional[str]:
+    """A GPU clock for display: None when there's no reading, "Idle" for
+    0 Hz (an Intel GT asleep reads 0 MHz: a reading, not a missing one)."""
+    if hz is None:
+        return None
+    return "Idle" if hz == 0 else format_frequency(hz)
 
 
 @dataclass

@@ -247,6 +247,50 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(status["devices"], 3)             # the Renoir fixture
         self.assertEqual(status["subscribers"], 0)
 
+    def test_a_second_service_hands_over_to_the_first(self):
+        first = self.owner()
+        lost = []
+        second_ctx = collector_context(self, RENOIR)
+        second = MetricsService(second_ctx.devices, second_ctx.ticker,
+                                on_superseded=lost.append)
+        second.start(self.connect())
+        self.addCleanup(second.stop)
+        self.assertTrue(pump(lambda: lost))
+        self.assertEqual(lost, [os.getpid()])        # both connections are this process's
+        self.assertEqual(self.owner(), first)        # the first keeps serving
+        self.assertIn("cpu", [d["id"] for d in json.loads(self.call("Devices"))])
+
+    def test_a_second_recorder_leaves(self):
+        """``run`` returns (its own status) once it finds the readings served,
+        writes out and frees the history, and says why."""
+        import tempfile
+        from pathlib import Path
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "history.sqlite3"
+        ctx = collector_context(self, RENOIR)
+        loop = GLib.MainLoop()
+        timed_out = []
+        GLib.timeout_add(5000, lambda: timed_out.append(1) or loop.quit())
+        with self.assertLogs("proccoli.metrics", "INFO") as logs:
+            code = metrics.run(ctx, path, loop=loop, signals=lambda *_a: None,
+                               bus=self.connect(), interactive=True)
+        self.assertEqual(code, metrics.EXIT_SUPERSEDED)
+        self.assertEqual(timed_out, [])
+        text = "\n".join(logs.output)
+        self.assertIn("one recorder per user is enough", text)
+        self.assertIn("the window is proccoli-gui", text)
+        self.assertIsNotNone(self.owner())          # the first still serves
+
+    def test_without_a_bus_it_stays(self):
+        lost = []
+        service = MetricsService(self.ctx.devices, self.ctx.ticker, on_superseded=lost.append)
+        conn = self.connect()
+        conn.close_sync(None)
+        with self.assertLogs("proccoli.metrics_service", "WARNING"):
+            service._name_lost(conn)
+        self.assertEqual(lost, [])
+
     def test_watch_prints_each_update(self):
         lines = []
         loop = GLib.MainLoop()

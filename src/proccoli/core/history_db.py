@@ -468,10 +468,39 @@ class HistoryDb:
 
         minutes_end = end if first is None else min(first, end)
         grouped(tbl + "_m", [c + "_avg" for c in columns], origin_ms, minutes_end)
-        if first is not None:
-            grouped(tbl, columns, max(origin_ms, first), end)
+        if first is not None and max(origin_ms, first) < end:
+            exprs = ", ".join(f"avg({q(c)})" for c in columns)
+            detail = {int(row[0]): (row[1], row[2], tuple(row[3:])) for row in self.conn.execute(
+                f"SELECT (time - ?) / ? AS i, min(time), max(time), {exprs} FROM {q(tbl)} "
+                "WHERE time >= ? AND time < ? GROUP BY i",
+                (origin_ms, bucket_ms, max(origin_ms, first), end))}
+            out.update(mend_drift(detail, origin_ms, bucket_ms))
         return out
 
+
+# Readings this close together (in steps) are one run of the recorder even
+# when they straddle an empty slot.
+DRIFT_TOLERANCE = 1.5
+
+
+def mend_drift(slots: dict[int, tuple], origin_ms: int, bucket_ms: int) -> dict[int, tuple]:
+    """``{i: values}`` from ``{i: (first_ms, last_ms, values)}`` (slot
+    ``i`` is ``[origin + i·bucket, origin + (i+1)·bucket)``), with one-slot
+    holes filled where the readings either side of the hole are less than
+    ``DRIFT_TOLERANCE`` steps apart. A recorder's ticks are never exactly
+    one interval apart, so now and then a reading lands in the next slot
+    and leaves one empty: that's not a gap. The hole takes the values of
+    the neighbor whose reading is nearer to it. A recorder that really
+    stopped leaves readings further apart than that, and the gap stays."""
+    out = {i: values for i, (_first, _last, values) in slots.items()}
+    for i, (_first, last, values) in slots.items():
+        after = slots.get(i + 2)
+        if i + 1 in slots or after is None or after[0] - last >= DRIFT_TOLERANCE * bucket_ms:
+            continue
+        hole_start = origin_ms + (i + 1) * bucket_ms
+        hole_end = hole_start + bucket_ms
+        out[i + 1] = values if hole_start - last <= after[0] - hole_end else after[2]
+    return out
 
 def delete_files(path: Path) -> None:
     """Remove the database and its WAL and shared-memory files."""

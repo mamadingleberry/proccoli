@@ -52,6 +52,14 @@ class Series:
     def latest(self) -> Optional[float]:
         return self.values[-1] if self.values else None
 
+    def has_values(self) -> bool:
+        """Whether any point holds a reading. Looks from the newest point,
+        so a series that's reading stops at once; one with nothing but
+        gaps is at most a graph's points (``MAX_GRAPH_POINTS``) long.
+        (``values`` is changed in place by its history, so a running count
+        would have to follow every one of those changes.)"""
+        return any(v is not None for v in reversed(self.values))
+
     def peak(self) -> Optional[float]:
         """Largest value currently held (for auto-scaling graphs)."""
         present = [v for v in self.values if v is not None]

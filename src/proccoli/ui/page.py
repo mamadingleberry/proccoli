@@ -69,7 +69,9 @@ class SidebarSummary:
         return text
 
     def has_chart(self) -> bool:
-        return bool(self.series)
+        """A chart is worth drawing once some series holds a reading; a
+        device with none yet says "No data" instead of an empty frame."""
+        return any(s is not None and s.has_values() for s in self.series)
 
 
 class ResourcePage(Adw.Bin):

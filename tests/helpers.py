@@ -245,9 +245,11 @@ class FakeSystem:
         return reader
 
     def run_async(self, argv, callback):
+        callback(*self.run(argv))
+
+    def run(self, argv, timeout=30):
         self.runs.append(list(argv))
-        rc, out, err = self.run_results.pop(0) if self.run_results else (0, "", "")
-        callback(rc, out, err)
+        return self.run_results.pop(0) if self.run_results else (0, "", "")
 
     def desktop_app(self, app_id):
         return self.apps.get(app_id)

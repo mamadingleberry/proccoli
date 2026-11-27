@@ -11,8 +11,14 @@ Type=exec
 # page among them) group it with the window instead of system processes.
 Slice=app-@APP_ID@.slice
 ExecStart=@BINDIR@/proccoli
-Restart=on-failure
+# Back within 10 s after any exit (a crash, or a kill that ends it
+# cleanly); `systemctl --user stop` is never restarted. Status 3 means
+# another recorder already serves the readings: not a failure, and
+# nothing to restart for.
+Restart=always
 RestartSec=10
+SuccessExitStatus=3
+RestartPreventExitStatus=3
 Nice=10
 IOSchedulingClass=idle
 

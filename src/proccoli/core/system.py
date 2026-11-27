@@ -172,6 +172,16 @@ class System:
         from .runner import StreamReader
         return StreamReader()
 
+    def run(self, argv: Sequence[str], timeout: float = 30) -> tuple[int, str, str]:
+        """Run ``argv`` and wait: ``(rc, stdout, stderr)``. For the command
+        line, which has no main loop; the window uses ``run_async``."""
+        import subprocess
+        try:
+            done = subprocess.run(list(argv), capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return 127, "", str(exc)
+        return done.returncode, done.stdout, done.stderr
+
     def run_async(self, argv: Sequence[str], callback: RunCallback) -> None:
         """Run ``argv`` without blocking the main loop (pkexec prompts can
         take a while); ``callback(rc, stdout, stderr)`` runs on the main loop."""

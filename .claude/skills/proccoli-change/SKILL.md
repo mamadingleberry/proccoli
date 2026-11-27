@@ -43,7 +43,7 @@ Write code that a test can drive without the real machine or a display.
   Milestone notes such as "(M52)" go in docs/DESIGN.md and docs/PLAN.md
   only (`tests/test_static.py` checks the code).
 - **New GPU backends** live in their own `gpu/<vendor>/` package and need
-  only a registration line outside it (PLAN M16 checklist).
+  only a registration line outside it (the checklist in `docs/plan/milestones/M16-*.md`).
 - `tests/test_static.py` enforces much of this (OS calls, Gtk imports,
   docstrings, settings keys, icons, duplicate test class names, no
   planning references in user-visible strings). Don't weaken it to make a
@@ -78,22 +78,45 @@ Write code that a test can drive without the real machine or a display.
 
 Check all three every time, and change whichever no longer matches.
 
-- **docs/PLAN.md** (the build plan and progress log):
-  - new work gets a milestone (or step) section in the existing format:
-    a short why, then a `Step | Create / change | Test` table, and a
-    *Done when* line where useful;
-  - add or update its row in the **Progress** table;
-  - update the test counts under the table (`make ui-test` total, and how
-    many plain `make test` runs);
+**The two docs are indexes.** Read `docs/PLAN.md` and `docs/DESIGN.md`,
+then open only the files the change needs; don't read all of `docs/`.
+Files are named after their numbers, so a reference opens directly:
+
+| Reference | File |
+|---|---|
+| Milestone 53, M53 | `docs/plan/milestones/M53-*.md` |
+| Idea 19 | `docs/plan/ideas/idea-19-*.md` (design note: `docs/design/ideas/idea-19-*.md`) |
+| Bug 22 | `docs/plan/bugs/bug-22-*.md` (design note: `docs/design/bugs/bug-22-*.md`) |
+| DESIGN §7.2 | `docs/design/07.2-*.md`, or the section's file `docs/design/07-*.md` when it isn't split |
+
+- **docs/PLAN.md** (the index: current state, open bugs, ideas,
+  milestones by phase) and **docs/plan/**:
+  - new work gets its own file, `docs/plan/milestones/M<n>-<slug>.md`:
+    a `# Milestone <n>: <title>` heading, then its status and a
+    one-sentence summary (`*✅ Done.* …`), a short why, a
+    `Step | Create / change | Test` table, and a *Done when* line where
+    useful; add one line for it under its phase in PLAN.md;
+  - a new idea or bug is `docs/plan/ideas/idea-<nn>-<slug>.md` or
+    `docs/plan/bugs/bug-<nn>-<slug>.md` (status line first: `*Open.*`,
+    `*Fixed in Milestone <n>.*`, `*Done as Milestone <n>.*`), with a
+    line in PLAN.md's *Open bugs* or *Ideas*; when fixed or built, move
+    it to the *Fixed* / *Built* line;
+  - update the test counts in PLAN.md's *Current state* (`make ui-test`
+    total, and how many plain `make test` runs);
   - record anything found along the way, or any deviation from the plan,
-    with the reason (*Found while doing N:* ... or the Deviations list);
+    with the reason (*Found while doing N:* ...) in the milestone's file;
   - mark superseded steps as *(Superseded by ...)* rather than deleting
     them.
-- **docs/DESIGN.md** (how it's built): update the class diagrams, package
-  layout (§4.1), `AppContext`/seams (§4.2), settings keys (§11), and any
-  section whose behaviour changed. Keep Mermaid diagrams in line with the
-  code; note the milestone that introduced a behaviour (e.g. "(M52)")
-  there, never in the code.
+- **docs/DESIGN.md** (the index) and **docs/design/** (how it's built):
+  update the class diagrams, package layout (§4.1), `AppContext`/seams
+  (§4.2), settings keys (§11), and any section whose behaviour changed,
+  in that section's file. A new section or design note gets its own file
+  and a line in DESIGN.md. Keep Mermaid diagrams in line with the code;
+  note the milestone that introduced a behaviour (e.g. "(M52)") there,
+  never in the code.
+- Link between files with relative links. `tests/test_docs.py` checks
+  that they resolve, that every file is in its index, and that each index
+  stays under 32 KB; when an index nears that, move detail out of it.
 - **README.md** is a **user guide only**: what users see and do, keyboard
   shortcuts, preferences, files Proccoli keeps, troubleshooting. Update it
   when anything user-visible changes. Never put milestones, class names or
@@ -119,8 +142,10 @@ While in the code, leave it a little better:
 - [ ] New code is injectable and reaches the OS only through `SysRoot` /
       `System` / other injected seams
 - [ ] Tests added or updated; `make test` and `make ui-test` pass
-- [ ] PLAN.md: milestone/steps, Progress row, test counts, findings
-- [ ] DESIGN.md: diagrams and sections match the code
+- [ ] PLAN.md: the milestone's file and its index line, test counts,
+      findings
+- [ ] DESIGN.md: the sections' files (diagrams) match the code; new
+      files are in the index
 - [ ] README.md: user-visible changes described (no design details)
 - [ ] Light refactoring done where the change touched messy code
 - [ ] Commit at the end of each numbered step (when asked to commit)

@@ -8,7 +8,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.dirname(__file__))
 
 from helpers import FakeSystem  # noqa: E402
-from proccoli.core.background import (BackgroundService, BackgroundState, parse_enabled,  # noqa: E402
+from proccoli.core.background import (BackgroundService, BackgroundState, linger_on,  # noqa: E402
+                                      parse_enabled, should_offer_linger, start_at_boot,
                                       status_text)
 
 UNIT = "proccoli.service"
@@ -70,6 +71,54 @@ class ServiceTest(unittest.TestCase):
         s = system()
         BackgroundService(s).set_linger(True, lambda st: None)
         self.assertEqual(s.runs[0], ["loginctl", "enable-linger", "1000"])
+
+
+class StartAtBootTest(unittest.TestCase):
+    """Recording from boot: when the window asks, and the command line."""
+
+    def test_when_to_offer(self):
+        on = BackgroundState(available=True, enabled=True)
+        self.assertTrue(should_offer_linger(on, offered=False, history_on=True))
+        self.assertFalse(should_offer_linger(on, offered=True, history_on=True))   # once
+        self.assertFalse(should_offer_linger(on, offered=False, history_on=False))
+        for state in (BackgroundState(available=True, enabled=True, linger=True),
+                      BackgroundState(available=True, enabled=False),
+                      BackgroundState()):
+            self.assertFalse(should_offer_linger(state, offered=False, history_on=True), state)
+
+    def test_linger_on(self):
+        s = system((0, "no\n", ""))
+        self.assertIs(linger_on(s), False)
+        self.assertEqual(s.runs, [["loginctl", "show-user", "1000", "--property=Linger",
+                                   "--value"]])
+        self.assertIs(linger_on(system((0, "yes\n", ""))), True)
+        self.assertIsNone(linger_on(system((1, "", "no logind"))))
+        self.assertIsNone(linger_on(FakeSystem()))                    # no loginctl
+
+    def test_turning_it_on_and_off(self):
+        s = system((0, "", ""), (0, "enabled\n", ""))
+        ok, text = start_at_boot(s, True)
+        self.assertTrue(ok)
+        self.assertIn("from boot", text)
+        self.assertNotIn("itself is off", text)
+        self.assertEqual(s.runs[0], ["loginctl", "enable-linger", "1000"])
+        s = system((0, "", ""))
+        ok, text = start_at_boot(s, False)
+        self.assertTrue(ok)
+        self.assertEqual(s.runs, [["loginctl", "disable-linger", "1000"]])
+
+    def test_says_when_the_recorder_itself_is_off(self):
+        ok, text = start_at_boot(system((0, "", ""), (1, "disabled\n", "")), True)
+        self.assertTrue(ok)
+        self.assertIn(f"systemctl --user enable --now {UNIT}", text)
+
+    def test_failures(self):
+        ok, text = start_at_boot(FakeSystem(), True)
+        self.assertFalse(ok)
+        self.assertIn("loginctl isn't available", text)
+        ok, text = start_at_boot(system((1, "", "Access denied")), True)
+        self.assertFalse(ok)
+        self.assertIn("Access denied", text)
 
 
 class StatusTextTest(unittest.TestCase):

@@ -109,8 +109,9 @@ class LayeringTest(unittest.TestCase):
         items set them; domain code may read the time range to size
         histories)."""
         keys = re.compile(r"[\"'](show-graph-axes|show-graph-grids|graph-time-range)[\"']")
+        # (preferences_layout only says which page each setting is on.)
         allowed = {"ui/chart_settings.py", "ui/dialogs/preferences.py",
-                   "ui/toolbar_items.py"}
+                   "ui/preferences_layout.py", "ui/toolbar_items.py"}
         offenders = []
         for rel, text in modules():
             is_view = rel.startswith("ui/") or (rel.startswith("gpu/")

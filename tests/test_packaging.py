@@ -2,6 +2,7 @@
 install.sh / build-deb.sh produce a complete, removable installation."""
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,7 @@ from helpers import read_file  # noqa: E402
 from proccoli import (APP_ID, GPU_ICON, MEMORY_ICON, MISSING_APP_ICON, OVERVIEW_ICON,  # noqa: E402
                      PROCESSOR_ICON, __version__)
 from proccoli.core.privileged import INSTALLED_HELPERS  # noqa: E402
+from proccoli.metrics import EXIT_SUPERSEDED  # noqa: E402
 from proccoli.helper.proccoli_helper import COMMANDS  # noqa: E402
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -140,6 +142,11 @@ class InstallTest(unittest.TestCase):
                 self.assertIn(f"ExecStart={prefix}/bin/proccoli", unit)
                 self.assertNotIn("@BINDIR@", unit)
                 self.assertIn("WantedBy=default.target", unit)
+                # Restarted after any exit but the one that means another
+                # recorder already serves.
+                self.assertIn("Restart=always", unit)
+                self.assertIn(f"RestartPreventExitStatus={EXIT_SUPERSEDED}", unit)
+                self.assertIn(f"SuccessExitStatus={EXIT_SUPERSEDED}", unit)
                 # Grouped with the window by the desktop's app slice.
                 self.assertIn(f"Slice=app-{APP_ID}.slice", unit)
                 self.assertNotIn("@APP_ID@", unit)
@@ -164,8 +171,11 @@ class InstallTest(unittest.TestCase):
         # The ExecStart path is /usr/bin (not this staging dir): only that may be reported.
         # Without a user session (some test runners) it can't find the
         # runtime directory: that's the environment, not the unit.
+        # Warnings about other units on this machine aren't this unit's.
         problems = [l for l in (r.stdout + r.stderr).splitlines()
                     if l.strip() and "proccoli" not in l.split(":")[-1]
+                    and not (re.match(r"/\S+\.(service|socket|target|timer):\d+:", l)
+                             and "/proccoli.service:" not in l)
                     and "Command /usr/bin/proccoli" not in l
                     and "RuntimeDirectory" not in l and "runtime directory" not in l]
         self.assertEqual(problems, [], r.stderr)

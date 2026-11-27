@@ -70,10 +70,29 @@ def reading(monitor) -> Optional[dict]:
     return monitor.reading(snapshot_codec.encode)
 
 
+def owner_pid(connection: Gio.DBusConnection, name: str = BUS_NAME) -> Optional[int]:
+    """The process ID of ``name``'s owner on ``connection``, or None (no
+    owner, or the bus won't say). Asked of the bus daemon itself, so it
+    can't wait on this process."""
+    try:
+        reply = connection.call_sync(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+            "GetConnectionUnixProcessID", GLib.Variant("(s)", (name,)),
+            GLib.VariantType("(u)"), Gio.DBusCallFlags.NONE, 1000, None)
+    except GLib.Error:
+        return None
+    return reply.unpack()[0]
+
+
 class MetricsService:
     def __init__(self, devices, ticker, store=None, settings=None,
-                 wall_clock: Callable[[], float] = time.time) -> None:
+                 wall_clock: Callable[[], float] = time.time,
+                 on_superseded: Optional[Callable[[Optional[int]], None]] = None) -> None:
+        """``on_superseded(pid)``: called when another process already
+        serves ``BUS_NAME`` (``pid`` is its process ID, None if the bus
+        can't say), so this one has nothing to do."""
         self.devices = devices
+        self.on_superseded = on_superseded
         self.ticker = ticker
         self.store = store
         self.settings = settings
@@ -100,14 +119,25 @@ class MetricsService:
             self._owner = Gio.bus_own_name_on_connection(
                 connection, BUS_NAME, Gio.BusNameOwnerFlags.NONE,
                 lambda *_: log.info("serving readings as %s", BUS_NAME),
-                lambda *_: log.warning("another collector serves %s", BUS_NAME))
+                lambda conn, _n: self._name_lost(conn))
             return
         self._owner = Gio.bus_own_name(
             Gio.BusType.SESSION, BUS_NAME, Gio.BusNameOwnerFlags.NONE,
             lambda conn, _n: self._acquired(conn),
             lambda *_: log.info("serving readings as %s", BUS_NAME),
-            lambda *_: log.warning("can't serve %s: no session bus, or another collector",
-                                   BUS_NAME))
+            lambda conn, _n: self._name_lost(conn))
+
+    def _name_lost(self, connection) -> None:
+        """The name is someone else's, or there's no bus. With a bus,
+        another recorder serves the readings: say which and hand over."""
+        if connection is None or connection.is_closed():
+            log.warning("can't serve %s: no session bus", BUS_NAME)
+            return
+        pid = owner_pid(connection)
+        log.info("another recorder (PID %s) already serves %s",
+                 pid if pid is not None else "unknown", BUS_NAME)
+        if self.on_superseded is not None:
+            self.on_superseded(pid)
 
     def _acquired(self, connection) -> None:
         self.connection = connection

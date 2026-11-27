@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from proccoli.core.history import Averager, History  # noqa: E402
 from proccoli.core.history_db import (DAY_MS, HOUR_MS, MINUTE_MS, HistoryDb, delete_files,  # noqa: E402
                                       column_name, from_fixed, scale_for, table_name,
-                                      to_fixed, unit_of_column)
+                                      mend_drift, to_fixed, unit_of_column)
 from proccoli.core.history_export import (export_session, file_stem,  # noqa: E402
                                           folder_name, format_value)
 from proccoli.core import history_store  # noqa: E402
@@ -267,6 +267,33 @@ class HistoryDbTest(TempFolder):
         self.assertNotIn(1, points)                            # nothing there: a gap
         self.assertNotIn(64, points)
         self.assertEqual(self.db.buckets(tbl, ["usage_percent"], 0, 0, 1000), {})
+
+    def test_readings_that_drift_fill_every_slot(self):
+        """A recorder's ticks 1005 ms apart leave a 1-s slot empty every
+        200 readings; those holes aren't gaps. A stopped recorder's are."""
+        with self.db.transaction():
+            tbl = self.db.ensure_device("cpu")
+            cols = self.db.ensure_columns(tbl, {"usage": "%"})
+        self.write(tbl, cols, 0, 600, 1005, value=lambda i: i % 100)
+        self.write(tbl, cols, 603_000 + 71_000, 10, 1000, value=lambda i: 5)
+        points = self.db.buckets(tbl, ["usage_percent"], 0, 700, 1000)
+        self.assertEqual([i for i in range(602) if i not in points], [])     # 2 holes before
+        self.assertEqual([i for i in range(604, 674) if i in points], [])    # the 71-s gap stays
+
+    def test_mend_drift(self):
+        b = 1000
+        # A reading at 1999 and the next at 3001: slot 2 is empty; 3001 is
+        # 1 ms past slot 2's end, 1999 1 ms before its start: the earlier is
+        # as near, and wins the tie.
+        self.assertEqual(mend_drift({1: (1999, 1999, (1,)), 3: (3001, 3001, (3,))}, 0, b),
+                         {1: (1,), 2: (1,), 3: (3,)})
+        self.assertEqual(mend_drift({1: (1600, 1600, (1,)), 3: (3001, 3001, (3,))}, 0, b)[2],
+                         (3,))                                   # the later is nearer
+        gap = {1: (1000, 1000, (1,)), 3: (3600, 3600, (3,))}     # 2.6 steps apart
+        self.assertEqual(mend_drift(gap, 0, b), {1: (1,), 3: (3,)})
+        two = {1: (1999, 1999, (1,)), 4: (4001, 4001, (4,))}     # two empty slots
+        self.assertEqual(mend_drift(two, 0, b), {1: (1,), 4: (4,)})
+        self.assertEqual(mend_drift({}, 0, b), {})
 
     def test_series_uses_minutes_where_detail_is_gone(self):
         with self.db.transaction():

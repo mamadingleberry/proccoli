@@ -5,6 +5,8 @@ start at boot). Display-free; everything runs through ``System.run_async()``
 
 There's no settings key for this: the unit's enabled state *is* the
 choice, so a change made with ``systemctl`` shows in Preferences too.
+Lingering, too, is logind's own state; only whether the window has
+offered it once is a setting (``linger-offered``).
 """
 
 from __future__ import annotations
@@ -85,8 +87,55 @@ class BackgroundService:
 
     def set_linger(self, on: bool, done: Callable[[BackgroundState], None]) -> None:
         """``loginctl enable-linger`` (logind may ask for a password)."""
-        argv = ["loginctl", "enable-linger" if on else "disable-linger", self.uid]
-        self.system.run_async(argv, lambda *_r: self.refresh(done))
+        self.system.run_async(linger_argv(on, self.uid), lambda *_r: self.refresh(done))
+
+
+# -- recording from boot (lingering) -----------------------------------------------------
+
+
+def linger_argv(on: bool, uid: str) -> list[str]:
+    return ["loginctl", "enable-linger" if on else "disable-linger", uid]
+
+
+def linger_query_argv(uid: str) -> list[str]:
+    return ["loginctl", "show-user", uid, "--property=Linger", "--value"]
+
+
+def should_offer_linger(state: BackgroundState, offered: bool, history_on: bool) -> bool:
+    """Whether the window asks, once, to record from boot: the recorder is
+    installed and on, the history kept, lingering off, and never asked
+    before. Each person decides for their own account."""
+    return (state.available and state.enabled and history_on and not state.linger
+            and not offered)
+
+
+def linger_on(system) -> Optional[bool]:
+    """Lingering for this user, or None when logind can't say."""
+    if system.which("loginctl") is None:
+        return None
+    rc, out, _err = system.run(linger_query_argv(str(system.geteuid())))
+    if rc != 0:
+        return None
+    return out.strip() == "yes"
+
+
+def start_at_boot(system, on: bool) -> tuple[bool, str]:
+    """``proccoli --start-at-boot`` / ``--no-start-at-boot``: ``(ok, text)``."""
+    if system.which("loginctl") is None:
+        return False, "loginctl isn't available: no systemd-logind to start it at boot."
+    rc, _out, err = system.run(linger_argv(on, str(system.geteuid())))
+    if rc != 0:
+        return False, f"loginctl failed: {err.strip() or f'exit {rc}'}"
+    if not on:
+        return True, "Recording only while you're logged in, from the next boot."
+    text = "Recording from boot, before you log in and after you log out."
+    if system.which("systemctl") is not None:
+        rc, out, err = system.run(["systemctl", "--user", "is-enabled", UNIT])
+        available, enabled, _reason = parse_enabled(rc, out, err)
+        if available and not enabled:
+            text += (f"\nThe recorder itself is off: `systemctl --user enable --now {UNIT}` "
+                     "turns it on.")
+    return True, text
 
 
 def status_text(writer: Optional[dict], recording_here: bool, history_on: bool,

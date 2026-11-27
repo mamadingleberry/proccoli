@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -208,6 +208,27 @@ class CommandLineTest(unittest.TestCase):
         self.assertIn("Recording: by proccoli 9.9 (process 42)", text)
         self.assertRegex(text, r"Size on disk: \d+(\.\d)? KiB")
         self.assertIn("Runs in the last day: 1", text)
+
+    def test_status_suggests_recording_from_boot(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "history.sqlite3"
+        db = HistoryDb(path)
+        db.start_session(1_795_600_000_000, "9.9")
+        db.close()
+        system = FakeSystem(programs={"loginctl": "/usr/bin/loginctl"})
+        system.run_results = [(0, "no\n", "")]
+        _code, text = metrics.status(path, system, now_s=1_795_600_100)
+        self.assertIn("proccoli --start-at-boot", text)
+        system.run_results = [(0, "yes\n", "")]
+        _code, text = metrics.status(path, system, now_s=1_795_600_100)
+        self.assertNotIn("--start-at-boot", text)
+
+    def test_start_at_boot_options(self):
+        self.assertTrue(metrics.parse_args(["--start-at-boot"]).start_at_boot)
+        self.assertTrue(metrics.parse_args(["--no-start-at-boot"]).no_start_at_boot)
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            metrics.parse_args(["--start-at-boot", "--no-start-at-boot"])
 
     def test_version_and_help(self):
         with redirect_stdout(io.StringIO()) as out, self.assertRaises(SystemExit):

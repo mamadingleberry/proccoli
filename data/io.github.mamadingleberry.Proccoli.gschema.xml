@@ -261,6 +261,11 @@
       <summary>Offer to authenticate at start-up</summary>
       <description>Ask once at start-up whether to unlock everything that needs administrator rights. Every page keeps its own button either way.</description>
     </key>
+    <key name="linger-offered" type="b">
+      <default>false</default>
+      <summary>Asked once whether to record from boot</summary>
+      <description>Set once the window has asked whether the recorder should start at boot (lingering). Preferences → Recording → Start at Boot changes it at any time.</description>
+    </key>
     <key name="palette" enum="io.github.mamadingleberry.Proccoli.Palette">
       <default>'system'</default>
       <summary>Color palette for graphs, meters and the accent color</summary>

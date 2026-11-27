@@ -28,11 +28,15 @@ import time
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
-from . import COLLECTOR, __version__
+from . import COLLECTOR, WINDOW, __version__
 
 log = logging.getLogger("proccoli.metrics")
 
 PROGRAM = COLLECTOR
+# The exit status of a recorder that left because another one already
+# serves the readings. The systemd unit counts it as success and doesn't
+# restart on it, so a unit started beside a stray recorder doesn't loop.
+EXIT_SUPERSEDED = 3
 LOG_NAME = f"{COLLECTOR}.log"
 
 
@@ -47,6 +51,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
                       help="say who's recording, since when, and how big the history is")
     what.add_argument("--watch", action="store_true",
                       help="print each update the running collector sends (Ctrl+C stops)")
+    what.add_argument("--start-at-boot", action="store_true",
+                      help="record from boot, not only while you're logged in "
+                           "(turns on lingering for your account)")
+    what.add_argument("--no-start-at-boot", action="store_true",
+                      help="record only while you're logged in")
     parser.add_argument("--debug", action="store_true", help="log debugging to stderr")
     return parser.parse_args(argv)
 
@@ -119,6 +128,10 @@ def status(history_path: Path, system, now_s: Optional[float] = None) -> tuple[i
     lines.append(f"Size on disk: {format_bytes(files_size(history_path), Base.BINARY)}")
     if oldest is not None:
         lines.append(f"Oldest recording: {iso_utc(oldest / 1000)}")
+    from .core.background import linger_on
+    if linger_on(system) is False:
+        lines.append(f"Not recording before you log in: `{PROGRAM} --start-at-boot` "
+                     "records from boot.")
     day_ago = (now_s - 86400) * 1000
     lines.append(f"Runs in the last day: {sum(1 for _, end in sessions if end >= day_ago)}")
     return (0 if recording else 1), "\n".join(lines)
@@ -132,10 +145,13 @@ class Collector:
     ``start`` begins recording, ``stop`` writes everything out."""
 
     def __init__(self, context, history_path: Path, *, wall_clock=time.time,
-                 idle=None, bus=None, import_dir=None) -> None:
+                 idle=None, bus=None, import_dir=None,
+                 on_superseded: Optional[Callable[[Optional[int]], None]] = None) -> None:
         """``bus``: a ``Gio.DBusConnection`` to serve readings on (tests);
-        None: the session bus; False: don't serve. ``import_dir``: Milestone
-        58's statistics files, imported once by the writer."""
+        None: the session bus; False: don't serve. ``import_dir``: the old
+        per-day statistics files, imported once by the writer.
+        ``on_superseded(pid)``: another recorder already serves the
+        readings."""
         from .core.history_lock import HistoryLock, lock_path
         from .core.history_store import HistoryStore
         self.context = context
@@ -145,6 +161,7 @@ class Collector:
                                   lock=self.lock, program=PROGRAM, graphs=False,
                                   import_dir=import_dir)
         self.bus = bus
+        self.on_superseded = on_superseded
         self.service = None
 
     def start(self) -> None:
@@ -159,7 +176,8 @@ class Collector:
             # Every reading, for the window.
             from .metrics_service import MetricsService
             self.service = MetricsService(self.context.devices, self.context.ticker,
-                                          self.store, self.context.settings)
+                                          self.store, self.context.settings,
+                                          on_superseded=self.on_superseded)
             self.service.start(self.bus)
 
     def stop(self) -> None:
@@ -171,8 +189,12 @@ class Collector:
 
 
 def run(context=None, history_path: Optional[Path] = None, loop=None,
-        signals: Optional[Callable] = None, file_log=None, bus=None) -> int:
-    """Record until SIGTERM or SIGINT. Everything is injectable."""
+        signals: Optional[Callable] = None, file_log=None, bus=None,
+        interactive: bool = False) -> int:
+    """Record until SIGTERM or SIGINT (status 0), or until it turns out
+    another recorder already serves the readings (one per user is all
+    there's ever a use for; ``EXIT_SUPERSEDED``). ``interactive``: started from a terminal, where a
+    word about the window helps. Everything is injectable."""
     from gi.repository import GLib
     from .context import build_metrics_context
     from .core.history_store import history_path as default_history_path, old_stats_dir
@@ -182,6 +204,16 @@ def run(context=None, history_path: Optional[Path] = None, loop=None,
                           idle=GLib.idle_add, bus=bus,
                           import_dir=None if history_path else old_stats_dir())
     loop = loop or GLib.MainLoop()
+    left = []
+
+    def superseded(_pid) -> None:
+        log.info("leaving: one recorder per user is enough")
+        left.append(True)
+        if interactive:
+            log.info("this program records in the background; the window is %s",
+                     WINDOW)
+        loop.quit()
+    collector.on_superseded = superseded
 
     def quit_loop(*_a) -> bool:
         log.info("stopping on a signal")
@@ -199,7 +231,7 @@ def run(context=None, history_path: Optional[Path] = None, loop=None,
         collector.stop()
         if file_log is not None:
             file_log.shutdown()
-    return 0
+    return EXIT_SUPERSEDED if left else 0
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -216,6 +248,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         code, text = status(history_path(), System())
         print(text)
         return code
+    if args.start_at_boot or args.no_start_at_boot:
+        from .core.background import start_at_boot
+        ok, text = start_at_boot(System(), args.start_at_boot)
+        print(text)
+        return 0 if ok else 1
     if args.watch:
         from .metrics_service import watch
         try:
@@ -233,7 +270,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
     from .core.applog import FileLog, log_path
     file_log = FileLog(context.settings, log_path().with_name(LOG_NAME))
-    return run(context, file_log=file_log)
+    return run(context, file_log=file_log, interactive=sys.stderr.isatty())
 
 
 if __name__ == "__main__":

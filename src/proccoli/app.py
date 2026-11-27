@@ -38,6 +38,7 @@ class Application(Adw.Application):
         self.import_dir = import_dir
         self.history = None         # core.history_store.HistoryStore (not in --demo)
         self.exporter = None        # ui.export.StatisticsExport
+        self.record_from_boot = None   # the one-time Record from Boot? dialog
         self.ctx = None  # created in do_startup
         self.profile = None          # core.profile.Profile, chosen in do_startup
         self.restart_requested = False
@@ -207,6 +208,29 @@ class Application(Adw.Application):
             win.show_overview()                     # launched again: same rule
         win.present()
         self.ctx.ticker.start()
+        self.offer_record_from_boot(win)
+
+    def offer_record_from_boot(self, window, background=None) -> None:
+        """Once: ask whether the recorder should also run from boot, when it
+        would help (``core.background.should_offer_linger``). Not while
+        another dialog is up (the start-up authentication): then next time."""
+        if self.ctx.settings.get("linger-offered"):
+            return
+        background = background or self._background_service()
+        if background is None:
+            return
+
+        def answered(state) -> None:
+            from .core.background import should_offer_linger
+            if not should_offer_linger(state, bool(self.ctx.settings.get("linger-offered")),
+                                       bool(self.ctx.settings.get("history"))):
+                return
+            if window.get_visible_dialog() is not None:
+                return
+            from .ui.dialogs.record_from_boot import RecordFromBootDialog
+            self.record_from_boot = RecordFromBootDialog(self.ctx.settings, background)
+            self.record_from_boot.present(window)
+        background.refresh(answered)
 
 
 def signal_adder(glib_unix, glib):

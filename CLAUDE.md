@@ -4,8 +4,11 @@ A GTK 4 / libadwaita system monitor for the Linux desktop, in Python
 (PyGObject, system packages only, no build step).
 
 - `README.md`: the user guide (users only, no design details).
-- `docs/DESIGN.md`: how it's built (layers, classes, diagrams).
-- `docs/PLAN.md`: the milestone plan and progress log.
+- `docs/DESIGN.md`: how it's built: an index of `docs/design/` (one file
+  per section; ideas' and bugs' design notes in `ideas/` and `bugs/`).
+- `docs/PLAN.md`: the plan: current state, open bugs, ideas and the
+  milestones by phase, an index of `docs/plan/` (one file per milestone,
+  idea and bug).
 
 ## Every change
 
@@ -27,6 +30,18 @@ each change:
    data files ("(M72)", "Idea 19", "Bug 8", "DESIGN.md §9.2"). Say what
    the code does and why in plain words; the history belongs in
    `docs/PLAN.md` and `docs/DESIGN.md`. `tests/test_static.py` checks it.
+7. **Read and write the docs as indexes:** read `docs/PLAN.md` and
+   `docs/DESIGN.md` (both short), then open only the files the change
+   needs; never read the whole `docs/` tree. File names follow the
+   numbers, so a reference can be opened without the index:
+   `docs/plan/milestones/M53-*.md`, `docs/plan/ideas/idea-19-*.md`,
+   `docs/plan/bugs/bug-22-*.md`, `docs/design/07.2-*.md`,
+   `docs/design/ideas/idea-19-*.md`, `docs/design/bugs/bug-22-*.md`.
+   New work gets its own file and one line in its index (a milestone's
+   first line is its status and a one-sentence summary); the indexes hold
+   no detail. Link between files with relative links. `tests/test_docs.py`
+   checks that links resolve, every file is in its index, and each index
+   stays under 32 KB.
 
 ## Commands
 

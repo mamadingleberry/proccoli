@@ -38,7 +38,28 @@ class SummaryTextTest(unittest.TestCase):
 
     def test_has_chart(self):
         self.assertFalse(SidebarSummary(5.0).has_chart())
-        self.assertTrue(SidebarSummary(series=[History(10).define("usage", "%")]).has_chart())
+        history = History(10)
+        series = history.define("usage", "%")
+        self.assertFalse(SidebarSummary(series=[series]).has_chart())      # no points
+        history.add(1.0, {"usage": None})
+        history.add(2.0, {"usage": None})
+        self.assertFalse(SidebarSummary(series=[series]).has_chart())      # only gaps
+        history.add(3.0, {"usage": 0.0})
+        self.assertTrue(SidebarSummary(series=[series]).has_chart())       # 0 % is a reading
+        self.assertFalse(SidebarSummary(series=[None]).has_chart())        # a missing series
+        self.assertTrue(SidebarSummary(series=[None, series]).has_chart())
+
+    def test_series_has_values(self):
+        history = History(3)
+        series = history.define("usage", "%")
+        self.assertFalse(series.has_values())
+        history.add(1.0, {"usage": 5.0})
+        self.assertTrue(series.has_values())
+        for t in (2.0, 3.0, 4.0):                       # the reading ages out
+            history.add(t, {"usage": None})
+        self.assertFalse(series.has_values())
+        history.add(5.0, {"usage": 1.0})
+        self.assertTrue(series.has_values())
 
 
 if HAVE_DISPLAY:
@@ -50,6 +71,7 @@ if HAVE_DISPLAY:
                              description=f"{page_id} model")
             self.history = History(30)
             self.series = [self.history.define("usage", "%")]
+            self.history.add(0.0, {"usage": usage})
             self.usage = usage
             self.summary = summary
             self.facts = list(facts)
@@ -62,6 +84,7 @@ if HAVE_DISPLAY:
 
         def set_usage(self, usage):
             self.usage = usage
+            self.history.add(float(len(self.history)), {"usage": usage})
             self.summary_changed()
 
 
@@ -101,6 +124,16 @@ class OverviewPageTest(unittest.TestCase):
         self.assertEqual(card.graph.series, a.series)
         a.set_usage(55.0)
         self.assertEqual(card.usage_label.get_label(), "55 %")
+
+    def test_a_device_without_readings_says_no_data(self):
+        a = FakePage("a", usage=None)
+        self.page.sync([(a, 0)])
+        card = self.page.cards["a"]
+        self.assertFalse(card.graph.get_visible())          # not an empty frame
+        self.assertTrue(card.empty_label.get_visible())
+        a.set_usage(0.0)                                    # its first reading
+        self.assertTrue(card.graph.get_visible())
+        self.assertFalse(card.empty_label.get_visible())
 
     def test_pages_without_a_summary_get_no_card(self):
         self.page.sync([(FakePage("ph", summary=False), 0), (FakePage("a"), 1)])

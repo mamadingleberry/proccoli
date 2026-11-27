@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import sys
 import time
@@ -16,11 +17,12 @@ from proccoli.core.settings import Settings  # noqa: E402
 from proccoli.core.sysroot import SysRoot  # noqa: E402
 from proccoli.devices.base import DeviceInfo, DeviceKind  # noqa: E402
 from proccoli.gpu.backend import (BackendRole, DetailBackend, GpuBackend, GpuDeps,  # noqa: E402
-                                 GpuProcessUsage, GpuSummary, Probe, SupportLevel, TabSpec)
+                                 GpuProcessUsage, GpuSummary, Probe, SupportLevel, TabSpec,
+                                 frequency_text)
 from proccoli.gpu.controller import (DetailState, GpuController, GpuDiscoverer,  # noqa: E402
                                     merge_summaries)
 from proccoli.gpu.fdinfo import FdinfoReader, parse_fdinfo  # noqa: E402
-from proccoli.gpu.generic_drm import GenericDrmBackend, active_dpm_hz  # noqa: E402
+from proccoli.gpu.generic_drm import GenericDrmBackend, Residency, active_dpm_hz  # noqa: E402
 from proccoli.gpu.info import GpuInfo, GpuVendor, discover_gpus, pretty_name  # noqa: E402
 from proccoli.gpu.intel_gpu_top import backend as igt  # noqa: E402
 from proccoli.gpu.registry import GpuBackendRegistry, standard_registry  # noqa: E402
@@ -130,6 +132,77 @@ class GenericBackendTest(unittest.TestCase):
         self.assertTrue(s.combined_video)
         self.assertIsNone(s.vram_total)
         self.assertIsNone(s.temperature_c)
+
+    def test_residency_gives_busy(self):
+        r = Residency()
+        self.assertIsNone(r.sample(10.0, 5000))              # nothing to compare yet
+        self.assertEqual(r.sample(11.0, 6000), 0.0)          # asleep the whole second
+        self.assertEqual(r.sample(12.0, 6250), 75.0)
+        self.assertIsNone(r.sample(13.0, 100))               # went backwards: a reset
+        self.assertEqual(r.sample(14.0, 600), 50.0)          # and on from there
+        self.assertEqual(r.sample(15.0, 1700), 0.0)          # rounding past Δt clamps
+        self.assertIsNone(r.sample(16.0, None))
+        self.assertIsNone(r.sample(17.0, 2000))              # starts over after a gap
+
+    def idle_intel(self, xe=False):
+        """An Intel GPU nothing has open: its GTs asleep, 0 MHz."""
+        if xe:
+            gt = "/sys/class/drm/card1/device/tile0/gt{n}/gtidle/idle_residency_ms"
+            files = {"/sys/class/drm/card1/device/tile0/gt0/freq0/act_freq": "0\n"}
+            info = dataclasses.replace(INTEL, driver="xe")
+        else:
+            gt = "/sys/class/drm/card1/gt/gt{n}/rc6_residency_ms"
+            files = {"/sys/class/drm/card1/gt_act_freq_mhz": "0\n",
+                     "/sys/class/drm/card1/gt_cur_freq_mhz": "300\n"}
+            info = INTEL
+        files.update({gt.format(n=0): "1000\n", gt.format(n=1): "2000\n"})
+        root = FakeRoot(self, files)
+        return root, gt, GenericDrmBackend(info, deps(root.sysroot))
+
+    def test_an_idle_intel_gpu_reads_zero(self):
+        for xe in (False, True):
+            with self.subTest(xe=xe):
+                root, gt, b = self.idle_intel(xe)
+                b.refresh(1.0)
+                self.assertIsNone(b.summary().usage)
+                root.write(gt.format(n=0), "2000\n")          # asleep all second
+                root.write(gt.format(n=1), "2900\n")          # media GT 10 % busy
+                b.refresh(2.0)
+                s = b.summary()
+                self.assertEqual(s.usage, 0.0)
+                self.assertAlmostEqual(s.decode, 10.0)
+                self.assertEqual(s.frequency_hz, 0.0)        # a reading, not a gap
+                self.assertEqual(frequency_text(s.frequency_hz), "Idle")
+
+    def test_fdinfo_engines_come_first(self):
+        root, gt, b = self.idle_intel()
+
+        class Clients:
+            engines = {"render": 40.0, "video": 20.0}
+            processes = {}
+
+            def read(self, _now):
+                pass
+        b.fdinfo = Clients()
+        b.refresh(1.0)
+        root.write(gt.format(n=0), "2000\n")
+        b.refresh(2.0)
+        s = b.summary()
+        self.assertEqual(s.usage, 40.0)
+        self.assertEqual(s.decode, 20.0)                     # not the media GT's figure
+
+    def test_older_intel_gpus_without_residency_are_unchanged(self):
+        root = FakeRoot(self, {"/sys/class/drm/card1/gt_act_freq_mhz": "850\n"})
+        b = GenericDrmBackend(INTEL, deps(root.sysroot))
+        b.refresh(1.0)
+        b.refresh(2.0)
+        self.assertIsNone(b.summary().usage)
+        self.assertIsNone(b.summary().decode)
+
+    def test_frequency_text(self):
+        self.assertIsNone(frequency_text(None))
+        self.assertEqual(frequency_text(0), "Idle")
+        self.assertEqual(frequency_text(850e6), "850 MHz")
 
     def test_amd_dgpu(self):
         dev = "/sys/class/drm/card0/device"

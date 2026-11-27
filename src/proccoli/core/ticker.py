@@ -136,8 +136,14 @@ def graph_points(settings) -> int:
 class Ticker(GObject.Object):
     """Emits ``tick(now)`` every ``interval_ms`` while running.
 
-    ``now`` is a monotonic timestamp in seconds. The timer functions are
-    injectable for tests.
+    ``now`` is a monotonic timestamp in seconds. Ticks are due at
+    ``start + n × interval`` on that clock, each timer set for the time
+    left, so the work a tick does never pushes the next one later; a
+    repeating timer would count each interval from when the previous
+    tick's work ended and drift a few milliseconds every tick. A tick that
+    comes late (a busy main loop, a suspend) isn't made up: the next one
+    is the next due time still ahead. The timer functions are injectable
+    for tests.
     """
 
     __gsignals__ = {
@@ -157,6 +163,8 @@ class Ticker(GObject.Object):
         self._clock = clock
         self._source: Optional[int] = None
         self._settings_handler: Optional[int] = None
+        self._start = 0.0            # when the current schedule began
+        self._n = 0                  # the last due tick taken, counted from it
 
     @property
     def interval_ms(self) -> int:
@@ -199,8 +207,22 @@ class Ticker(GObject.Object):
             "update-interval", lambda _k, v: self.set_interval(interval_for(v)))
 
     def _arm(self) -> None:
-        self._source = self._timeout_add(self._interval_ms, self._on_timeout)
+        self._start = self._clock()
+        self._n = 0
+        self._schedule()
+
+    def _schedule(self) -> None:
+        due = self._start + (self._n + 1) * self._interval_ms / 1000
+        delay_ms = max(0, round((due - self._clock()) * 1000))
+        self._source = self._timeout_add(delay_ms, self._on_timeout)
 
     def _on_timeout(self) -> bool:
+        fired = self._source
+        elapsed = (self._clock() - self._start) * 1000 / self._interval_ms
+        # The due tick just reached, never one already taken (a timer can
+        # fire a fraction of a millisecond early).
+        self._n = max(self._n + 1, int(elapsed))
         self.tick_now()
-        return True  # keep the GLib source alive
+        if self._source == fired:        # not stopped or re-armed by a handler
+            self._schedule()
+        return False                     # each timer fires once

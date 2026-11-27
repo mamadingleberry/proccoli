@@ -20,7 +20,7 @@ from gi.repository import Adw, Gtk
 from ...core.connections import Connections
 from ...core.units import (format_bytes, format_frequency, format_percent, format_power,
                            format_temperature)
-from ...gpu.backend import DetailServices, DetailView, GpuSummary
+from ...gpu.backend import DetailServices, DetailView, GpuSummary, frequency_text
 from ...gpu.controller import DetailState, GpuController, GpuSnapshot
 from .. import compat
 from ..chart_settings import ChartSettings
@@ -215,7 +215,7 @@ class GpuPage(DevicePage):
             self.vram.set_title(memory_title(s))
             self.vram.set_info(f"{format_bytes(s.memory_used, self.base)} of "
                                f"{format_bytes(total, self.base)}")
-        self.frequency.set_value(format_frequency(s.frequency_hz) if s.frequency_hz else None)
+        self.frequency.set_value(frequency_text(s.frequency_hz))
         self.vram_frequency.set_value(
             format_frequency(s.vram_frequency_hz) if s.vram_frequency_hz else None)
         self.power.set_title(power_title(s))

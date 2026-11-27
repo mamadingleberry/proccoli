@@ -26,6 +26,15 @@ def pump(until, timeout=5.0):
 
 
 class SystemTest(unittest.TestCase):
+    def test_run_waits_and_returns_the_output(self):
+        rc, out, err = System().run([sys.executable, "-c",
+                                     "import sys; print('hi'); print('oops', file=sys.stderr); "
+                                     "sys.exit(3)"])
+        self.assertEqual((rc, out, err), (3, "hi\n", "oops\n"))
+        rc, _out, err = System().run(["/nonexistent/program"])
+        self.assertEqual(rc, 127)
+        self.assertTrue(err)
+
     def setUp(self):
         self.s = System()
 
