@@ -7,7 +7,7 @@ import logging
 import os
 import signal
 import sys
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 import gi
 
@@ -43,6 +43,7 @@ class Application(Adw.Application):
         self.ctx = None  # created in do_startup
         self.profile = None          # core.profile.Profile, chosen in do_startup
         self.restart_requested = False
+        self._open_dialogs: dict[str, object] = {}   # name -> the one open dialog
 
         for name, callback in (
                 ("quit", lambda *_: self.quit()),
@@ -151,21 +152,37 @@ class Application(Adw.Application):
             dialog.set_transient_for(window)
             dialog.present()
 
+    def _present_once(self, name: str, build: Callable[[], object]) -> object:
+        """Show the ``name`` dialog: the one already open, brought to the
+        front, or a new one from ``build()``. Asking again (a shortcut held
+        down, the menu clicked twice) never stacks another copy, each of
+        which would hold its rows, swatches and settings handlers."""
+        dialog = self._open_dialogs.get(name)
+        if dialog is None:
+            dialog = build()
+            self._open_dialogs[name] = dialog
+            signal = "closed" if isinstance(dialog, Adw.Dialog) else "close-request"
+
+            def forget(*_a):
+                if self._open_dialogs.get(name) is dialog:
+                    del self._open_dialogs[name]
+                return False                     # let a window close
+            dialog.connect(signal, forget)
+        self._present(dialog)
+        return dialog
+
     def show_preferences(self) -> None:
         from .core.windows import extension_source
         from .devices.base import DeviceKind
         from .ui.dialogs.preferences import PreferencesDialog
         gpus = self.ctx.devices.monitors(DeviceKind.GPU) if self.ctx.devices else []
         window = self.get_active_window()
-        self._present(PreferencesDialog(self.ctx.settings, gpus, self.ctx.theme,
-                                        log_file=self.file_log.path,
-                                        sidebar=getattr(window, "sidebar", None),
-                                        history=self.history,
-                                        export=self.export_statistics,
-                                        restart=self.restart,
-                                        windows=getattr(self.ctx, "windows", None),
-                                        extension_source=extension_source(),
-                                        background=self._background_service()))
+        self._present_once("preferences", lambda: PreferencesDialog(
+            self.ctx.settings, gpus, self.ctx.theme, log_file=self.file_log.path,
+            sidebar=getattr(window, "sidebar", None), history=self.history,
+            export=self.export_statistics, restart=self.restart,
+            windows=getattr(self.ctx, "windows", None),
+            extension_source=extension_source(), background=self._background_service()))
 
     def _background_service(self):
         """*Record in the Background*: not in --demo, whose
@@ -194,11 +211,11 @@ class Application(Adw.Application):
 
     def show_shortcuts(self) -> None:
         from .ui.dialogs.about import shortcuts_dialog
-        self._present(shortcuts_dialog())
+        self._present_once("shortcuts", shortcuts_dialog)
 
     def show_about(self) -> None:
         from .ui.dialogs.about import about_dialog
-        self._present(about_dialog())
+        self._present_once("about", about_dialog)
 
     def do_activate(self) -> None:
         from .ui.window import MainWindow  # needs a display; import late

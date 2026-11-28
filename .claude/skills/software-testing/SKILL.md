@@ -48,12 +48,19 @@ they don't say, and wins where they differ.
 - Run the fast suite while working and the whole suite before saying
   it's done. Report the real numbers (ran, passed, failed, skipped) and
   any failure's output.
-- **Quiet by default:** a project's test command prints one summary line
-  when everything passes, and for each failure only its name and the end
-  of its traceback; a verbose target keeps the full output for people.
-  A full verbose run can cost tens of thousands of tokens to read; the
-  quiet one, tens. Read the quiet output as it is rather than trimming a
-  verbose one.
+- **Critical: only ever run quiet tests.** A project's test command must
+  print one summary line when everything passes, and for each failure
+  only its name and the end of its traceback; a verbose target is for
+  people, never for the agent. A verbose run can cost tens of thousands
+  of tokens to read; a quiet one, tens. Don't trim a verbose run with
+  `grep`/`tail` instead: use the quiet command.
+- **Verify every run was quiet.** After each test run, check the output
+  before reading on: a passing run is exactly the summary line; a failing
+  run is the failures and the summary line, nothing else. If anything
+  more comes out (warnings, prints, per-test lines, a crash dump), stop:
+  don't read on, and fix the quiet runner or the noisy test first (or
+  report it), then run again. Say in the test report that the runs were
+  quiet.
 - Slow, rarely-needed checks (screenshots, benchmarks) are their own
   targets, run when a change calls for them and before a release.
 - Never weaken a test or a static check to make a change pass: fix the

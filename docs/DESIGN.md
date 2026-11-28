@@ -122,10 +122,13 @@ The cause and the fix design of each bug; the plan side is linked from each.
 - [Bug 20: A chart with no readings is drawn blank](design/bugs/bug-20-a-chart-with-no-readings-is.md) (fixed)
 - [Bug 21: An NVIDIA GPU too new for pci.ids is named "NVIDIA GPU"](design/bugs/bug-21-an-nvidia-gpu-too-new-for.md) (fixed)
 - [Bug 22: The window freezes after unlocking or waking from suspend](design/bugs/bug-22-the-window-freezes-after-unlocking-or.md) (fixed)
+- [Bug 23: Dialogs stack on every press](design/bugs/bug-23-preferences-and-other-dialogs-stack.md) (fixed)
+- [Bug 24: Memory grows each time Preferences opens](design/bugs/bug-24-memory-grows-each-time-preferences-opens.md) (open)
 
 
 ### Bugs that Require Human Input
 
 NOTE: Keep this subsection but move Bugs to a proper index after human input has been given to clarify the bug.
 
-- There still appears to be a memory leak with some of the Preferences menus
+*None waiting.* The memory leak became Bugs 23 and 24.
+

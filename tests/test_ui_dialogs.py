@@ -615,6 +615,59 @@ class AboutTest(unittest.TestCase):
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
+class OneDialogEachTest(unittest.TestCase):
+    """Pressing F2 (or F1, or About) again never stacks another dialog:
+    each copy held its rows and settings handlers."""
+
+    def setUp(self):
+        from proccoli.app import Application
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.settings = Settings.for_tests()
+        self.app = Application(argparse.Namespace(demo=True, debug=False),
+                               context_factory=lambda s, d: make_context(
+                                   self, demo=True, settings=self.settings),
+                               log_file=os.path.join(tmp.name, "l.log"))
+        self.app.set_flags(self.app.get_flags() | Gio.ApplicationFlags.NON_UNIQUE)
+        self.app.register(None)
+        self.app.activate()
+        self.addCleanup(lambda: self.app.get_active_window() and
+                        self.app.get_active_window().destroy())
+
+    def handlers(self):
+        return len(self.settings._store.handlers)
+
+    def test_preferences_pressed_again_brings_back_the_same_one(self):
+        self.app.activate_action("preferences", None)
+        first = self.app._open_dialogs["preferences"]
+        handlers = self.handlers()
+        for _ in range(5):
+            self.app.activate_action("preferences", None)
+        self.assertIs(self.app._open_dialogs["preferences"], first)
+        self.assertEqual(self.handlers(), handlers)          # nothing new connected
+        self.assertIsInstance(first, PreferencesDialog)
+
+    def test_a_closed_dialog_is_forgotten_and_disconnected(self):
+        before = self.handlers()
+        self.app.activate_action("preferences", None)
+        first = self.app._open_dialogs["preferences"]
+        self.assertGreater(self.handlers(), before)
+        first.emit("closed")                                  # as libadwaita does on close
+        self.assertNotIn("preferences", self.app._open_dialogs)
+        self.assertEqual(self.handlers(), before)             # every handler let go
+        self.app.activate_action("preferences", None)
+        self.assertIsNot(self.app._open_dialogs["preferences"], first)
+
+    def test_shortcuts_and_about_are_one_each_too(self):
+        for name in ("shortcuts", "about"):
+            self.app.activate_action(name, None)
+            first = self.app._open_dialogs[name]
+            self.app.activate_action(name, None)
+            self.assertIs(self.app._open_dialogs[name], first, name)
+
+
+@unittest.skipUnless(HAVE_DISPLAY, "no display")
 class ApplicationTest(unittest.TestCase):
     def test_app_with_injected_context(self):
         from proccoli.app import Application
