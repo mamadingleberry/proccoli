@@ -70,6 +70,18 @@ Designed but not built, or the design record of an idea that was; the plan side 
 - [Idea 23: Icons Only on narrow windows](design/ideas/idea-23-icons-only-on-narrow-windows.md)
 - [Idea 25: A recorder for the whole machine](design/ideas/idea-25-a-recorder-for-the-whole-machine.md)
 
+### Ideas that Require Human Input
+
+NOTE: Keep this subsection but move Ideas to a proper index after human input has been given to clarify the idea.
+
+- We no longer really need Milestones at the grain they're currently at; we'll stick with Ideas/Features and rename Milestones to Releases
+- Graph axes for Eth/Wifi to keep sidebar view consistent
+- Preferences Sidebar Style menu MUST show all applicable options (ie. the same set as those found in the burger main menu)
+- Preferences Sidebar option 'Meter Type' must be renamed to 'Graph Type'
+- Sidebar 'Graph Type' must be configurable at the individual Entry grain (ie. one graph type config per sidebar entry)
+- Pane graph groups to maintain/help with sizing/auto-resizing
+- Make the Preferences and 'Keyboard Shortcuts' menu entries' shortcuts simpler, such as 'F2' or other single or at most double-key shortcuts for these menus 
+
 ## Bugs' design notes
 
 The cause and the fix design of each bug; the plan side is linked from each.
@@ -96,3 +108,11 @@ The cause and the fix design of each bug; the plan side is linked from each.
 - [Bug 20: A chart with no readings is drawn blank](design/bugs/bug-20-a-chart-with-no-readings-is.md) (fixed)
 - [Bug 21: An NVIDIA GPU too new for pci.ids is named "NVIDIA GPU"](design/bugs/bug-21-an-nvidia-gpu-too-new-for.md) (open)
 - [Bug 22: The window freezes after unlocking or waking from suspend](design/bugs/bug-22-the-window-freezes-after-unlocking-or.md) (open)
+
+
+### Ideas that Require Human Input
+
+NOTE: Keep this subsection but move Bugs to a proper index after human input has been given to clarify the bug.
+
+- Graphs include a small area of 'Proccoli wasn't running (#s)' whenever the 'Time Range' is adjusted
+- There still appears to be a memory leak with some of the Preferences menus
