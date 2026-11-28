@@ -104,6 +104,7 @@ proccoli/
 │               make-logo.py  render-icons.py
 └── tests/      helpers.py (FakeRoot, FakeSystem, make_context, pump, resize_window)  fixtures/  test_*.py
                 ui/shoot.py (screenshots)  ui/perf.py (CPU use)  run-headless.sh
+                run_quiet.py (make test / check: one line, or the failures)
 ```
 
 ## 4.2 Dependency injection: the composition root

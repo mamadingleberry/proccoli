@@ -2,7 +2,7 @@
 
 Plan: [plan/features/feature-38-cheaper-test-runs.md](../../plan/features/feature-38-cheaper-test-runs.md)
 
-*Proposed (A and C recommended).*
+*Built (A and C).*
 
 ```mermaid
 flowchart LR

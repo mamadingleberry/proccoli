@@ -25,16 +25,17 @@ the files a change needs.
 3. UI code gets a **smoke test**: build the widget and feed it a snapshot, on
    the headless Broadway backend (`GDK_BACKEND=broadway`, `make ui-test`).
    Visual checks use the screenshot script, `tests/ui/shoot.py`.
-4. `make test` stays green at the end of every step.
+4. `make test` stays green at the end of every step; `make check` before
+   saying it's done.
 5. Commit at the end of every numbered step (when asked to commit).
 6. Documenting and indexing features, bugs and releases: the
    `software-design` skill, *Tracking work*.
 
 ## Current state
 
-Tests: 1307, all passing on the headless display (`make ui-test`; on
+Tests: 1312, all passing on the headless display (`make ui-test`; on
 GTK 4.14, 3 skip because they need a window taller than the 1024×768
-headless screen; [why](plan/archive/milestones/M53-runs-on-ubuntu-24-04.md)). A plain `make test` runs the 994 that need no
+headless screen; [why](plan/archive/milestones/M53-runs-on-ubuntu-24-04.md)). A plain `make test` runs the 999 that need no
 display and skips the rest, so it never opens windows on your desktop.
 
 **Platform floor:** Ubuntu 24.04 (Python 3.12, GTK 4.14, libadwaita 1.5,
@@ -71,9 +72,8 @@ Designed but not built. Each ships in the next release once it's built.
 - 💡 [Feature 35: Sidebar groups you can turn off, per kind](plan/features/feature-35-optional-sidebar-groups.md): group (or not) GPUs, Drives, Network and Batteries
 - 💡 [Feature 36: Each device's meter on a collapsed group](plan/features/feature-36-meters-on-collapsed-groups.md): a slim bar per device on a collapsed group's row, toggleable
 - 💡 [Feature 37: A `software-prototype` skill for quick ideas](plan/features/feature-37-software-prototype-skill.md): a lighter `software-project` for idea-to-creation
-- 💡 [Feature 38: Cheaper test runs for the agent](plan/features/feature-38-cheaper-test-runs.md): quiet test output, screenshots apart, maybe CI
 
-Built: [1](plan/features/feature-01-lightweight-mode.md) (v0.3.0), [2](plan/features/feature-02-metrics-history-in-a-sqlite-database.md) (v0.3.0), [3](plan/features/feature-03-intel-details-graphs-on-the-shared.md) (v0.3.0), [4](plan/features/feature-04-one-chart-family-everywhere.md) (v0.3.0), [5](plan/features/feature-05-switch-to-any-running-app.md) (v0.3.0), [6](plan/features/feature-06-update-interval-instead-of-refresh-speed.md) (v0.3.0), [8](plan/features/feature-08-lightweight-mode-small-charts-on-the.md) (v0.5.0), [9](plan/features/feature-09-custom-graph-time-range.md) (v0.5.0), [10](plan/features/feature-10-shade-the-time-proccoli-wasn-t.md) (v0.4.0), [12](plan/features/feature-12-a-graph-toolbar.md) (v0.5.0), [13](plan/features/feature-13-record-the-history-in-the-background.md) (v0.5.0), [14](plan/features/feature-14-exported-statistics-describe-their-devices.md) (v0.5.0), [15](plan/features/feature-15-separate-installs-proccoli-metrics-and-proccoli.md) (v0.5.0), [24](plan/features/feature-24-docs-as-indexes-with-one-file.md) (the next release), [20](plan/features/feature-20-preferences-in-named-sections.md) (the next release), [22](plan/features/feature-22-recording-from-boot.md) (the next release), [26](plan/features/feature-26-releases-and-features.md) (v0.6.0), [27](plan/features/feature-27-uml-and-database-design-docs.md) (v0.6.0), [28](plan/features/feature-28-voice-and-audience.md) (v0.6.0), [29](plan/features/feature-29-engineering-skills.md) (v0.6.0), [34](plan/features/feature-34-f1-and-f2-shortcuts.md) (v0.6.0), [21](plan/features/feature-21-refactoring-candidates.md) (v0.6.0), [11](plan/features/feature-11-a-shorter-friendlier-readme.md) (v0.6.0), [18](plan/features/feature-18-overview-pages-for-groups-of-devices.md) (v0.6.0), [32](plan/features/feature-32-graph-type-per-sidebar-entry.md) (v0.6.0).
+Built: [1](plan/features/feature-01-lightweight-mode.md) (v0.3.0), [2](plan/features/feature-02-metrics-history-in-a-sqlite-database.md) (v0.3.0), [3](plan/features/feature-03-intel-details-graphs-on-the-shared.md) (v0.3.0), [4](plan/features/feature-04-one-chart-family-everywhere.md) (v0.3.0), [5](plan/features/feature-05-switch-to-any-running-app.md) (v0.3.0), [6](plan/features/feature-06-update-interval-instead-of-refresh-speed.md) (v0.3.0), [8](plan/features/feature-08-lightweight-mode-small-charts-on-the.md) (v0.5.0), [9](plan/features/feature-09-custom-graph-time-range.md) (v0.5.0), [10](plan/features/feature-10-shade-the-time-proccoli-wasn-t.md) (v0.4.0), [12](plan/features/feature-12-a-graph-toolbar.md) (v0.5.0), [13](plan/features/feature-13-record-the-history-in-the-background.md) (v0.5.0), [14](plan/features/feature-14-exported-statistics-describe-their-devices.md) (v0.5.0), [15](plan/features/feature-15-separate-installs-proccoli-metrics-and-proccoli.md) (v0.5.0), [24](plan/features/feature-24-docs-as-indexes-with-one-file.md) (the next release), [20](plan/features/feature-20-preferences-in-named-sections.md) (the next release), [22](plan/features/feature-22-recording-from-boot.md) (the next release), [26](plan/features/feature-26-releases-and-features.md) (v0.6.0), [27](plan/features/feature-27-uml-and-database-design-docs.md) (v0.6.0), [28](plan/features/feature-28-voice-and-audience.md) (v0.6.0), [29](plan/features/feature-29-engineering-skills.md) (v0.6.0), [34](plan/features/feature-34-f1-and-f2-shortcuts.md) (v0.6.0), [21](plan/features/feature-21-refactoring-candidates.md) (v0.6.0), [11](plan/features/feature-11-a-shorter-friendlier-readme.md) (v0.6.0), [18](plan/features/feature-18-overview-pages-for-groups-of-devices.md) (v0.6.0), [32](plan/features/feature-32-graph-type-per-sidebar-entry.md) (v0.6.0), [38](plan/features/feature-38-cheaper-test-runs.md) (Unreleased).
 
 ## Releases
 
@@ -81,7 +81,7 @@ Each release file has its description (also the tag message and the
 GitHub release notes), its Features and Bugs, and the archived milestones
 it shipped. Newest first.
 
-- 🚧 [Unreleased](plan/releases/unreleased.md): nothing yet
+- 🚧 [Unreleased](plan/releases/unreleased.md): quieter test runs (Feature 38)
 - ✅ [v0.6.0](plan/releases/v0.6.0.md) (2026-11-28): sidebar groups, a Graph Type per entry, Preferences in six pages, recording from boot, a steadier window
 - ✅ [v0.5.0](plan/releases/v0.5.0.md) (2026-11-25): the background recorder `proccoli` and the window `proccoli-gui`; AMD statistics; the graph toolbar
 - ✅ [v0.4.0](plan/releases/v0.4.0.md) (2026-11-24): honest graph time; the time Proccoli wasn't running is shaded

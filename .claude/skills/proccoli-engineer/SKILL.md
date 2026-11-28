@@ -57,13 +57,14 @@ is done and the tests pass.
 - A new key in `data/io.github.mamadingleberry.Proccoli.gschema.xml`
   needs a settings test and must actually be used (the static test checks
   both ways).
-- Visual changes: add or update a scene in `tests/ui/shoot.py` and look
-  at the screenshots.
-- Before finishing, run both and report the real results:
-  ```sh
-  make test       # no display needed
-  make ui-test    # everything, on a private headless display, plus screenshots
-  ```
+- Visual changes: add or update a scene in `tests/ui/shoot.py`, run
+  `make screenshots` and look at the scenes that changed (a scene that
+  reports FAIL may be the headless display's blank-frame race: run it
+  again before suspecting the change).
+- While working, `make test` (no display, seconds); before finishing,
+  `make check` (everything, on the headless display), and report the
+  real results. Both print one line when all pass, and only the failures
+  otherwise (`tests/run_quiet.py`); `make test-verbose` is for people.
 
 ## 3. Docs: PLAN.md, DESIGN.md, the user guide and README.md
 
@@ -117,14 +118,16 @@ Follow `software-project`'s release steps. The version is written in:
 - `README.md` and `docs/USER-GUIDE.md` (the `.deb` names;
   `tests/test_meta.py` checks them).
 
-Build with `packaging/build-deb.sh`; it writes `dist/proccoli_X.Y.Z_all.deb`
+Before tagging: `make check`, then `make screenshots` (it also refreshes
+the README's images). Build with `packaging/build-deb.sh`; it writes `dist/proccoli_X.Y.Z_all.deb`
 and `dist/proccoli-gui_X.Y.Z_all.deb`, which the GitHub release attaches.
 
 ## Finishing checklist
 
 - [ ] New code is injectable and reaches the OS only through `SysRoot` /
       `System` / other injected seams
-- [ ] Tests added or updated; `make test` and `make ui-test` pass
+- [ ] Tests added or updated; `make check` passes (and `make screenshots`
+      for visual changes)
 - [ ] PLAN.md: the feature's or bug's file, its index line, *Unreleased*,
       test counts
 - [ ] DESIGN.md: the section files, `DESIGN_UML.md` and `DESIGN_DB.md`

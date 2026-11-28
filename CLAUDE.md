@@ -77,9 +77,16 @@ In short, with each change:
 ```sh
 make run        # from the checkout (PYTHONPATH=src python3 -m proccoli)
 make demo       # made-up devices
-make test       # tests that need no display
-make ui-test    # all tests on a private headless Broadway display + screenshots
+make test       # tests that need no display; quiet: one line, or the failures
+make ui-test    # all tests on a private headless Broadway display; quiet
+make check      # everything, quietly: run before saying a change is done
+make test-verbose / make ui-test-verbose   # every test by name (people, not the agent)
+make screenshots  # the UI scenes into tests/ui/out (visual changes, releases)
 ```
+
+Run tests quietly (`make test`, `make check`) and read their output as
+it is; never run the `-verbose` targets or pipe through `grep`/`tail`
+just to shorten them: a full run's output is ~36 000 tokens.
 
 ## Platform floor
 

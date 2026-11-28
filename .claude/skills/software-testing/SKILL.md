@@ -48,5 +48,13 @@ they don't say, and wins where they differ.
 - Run the fast suite while working and the whole suite before saying
   it's done. Report the real numbers (ran, passed, failed, skipped) and
   any failure's output.
+- **Quiet by default:** a project's test command prints one summary line
+  when everything passes, and for each failure only its name and the end
+  of its traceback; a verbose target keeps the full output for people.
+  A full verbose run can cost tens of thousands of tokens to read; the
+  quiet one, tens. Read the quiet output as it is rather than trimming a
+  verbose one.
+- Slow, rarely-needed checks (screenshots, benchmarks) are their own
+  targets, run when a change calls for them and before a release.
 - Never weaken a test or a static check to make a change pass: fix the
   change.

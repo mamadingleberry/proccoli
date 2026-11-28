@@ -2,7 +2,7 @@
 
 Design note: [design/features/feature-38-cheaper-test-runs.md](../../design/features/feature-38-cheaper-test-runs.md)
 
-*Open.* Asked: refactor tests or run them on a local Jenkins (or
+*✅ Built; in Unreleased* (options A and C, chosen by the user). Asked: refactor tests or run them on a local Jenkins (or
 similar) so test results cost the agent fewer tokens.
 
 **Measured (2026-11-28):**
@@ -40,4 +40,22 @@ since its saving over A is small; E is worth having for its own sake.
 | F38.2 | `make ui-test` without screenshots; `make screenshots` (already there) runs them | – |
 | F38.3 | `software-testing` / `proccoli-engineer`: run `make check`; full output only to read a failure | Read through |
 
-**Open questions for the user:** see the plan's options; which of A–E?
+**Chosen:** A and C, after an explanation of how it works and what it
+saves (the user confirmed they understood before it was built).
+
+**Done:**
+
+| Step | Done | Test |
+|---|---|---|
+| F38.1 | `tests/run_quiet.py`: discovers and runs the suite with standard output and error pointed at `/dev/null` (tests, child processes and GTK's warnings print there), then prints one line, or each failure's name and the last 12 lines of its traceback; exit status 0 or 1. `make test` (no display), `make ui-test` (headless), `make check` (everything), `make test-verbose` and `make ui-test-verbose` (the old output) | `test_run_quiet`: all passing is one line; a failure and an error are named with their reason and the passing test isn't; long tracebacks keep their end; standard output and error come back, also after an exception. A deliberate failing test showed the report and exit status through `make` |
+| F38.2 | `make ui-test` no longer takes the screenshots; `make screenshots` does (and copies the README's) | – |
+| F38.3 | CLAUDE.md (*Commands*), `software-testing` (*Quiet by default*), `proccoli-engineer` §2 and §5; PLAN.md's working rules | Read through |
+
+**Measured after:** a passing `make test` prints 32 bytes (was 146 KB,
+about 4 500 times less); `make check` a single line too. A failing run
+prints only its failures (a short assertion: 8 lines).
+
+**Found while doing it:** unittest's `buffer` mode broke a test that
+writes to `sys.stdout.buffer`, so the runner silences the file
+descriptors instead; and one test prints "nowhere" to standard error,
+which the silencing now hides.
