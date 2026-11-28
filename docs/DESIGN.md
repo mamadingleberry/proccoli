@@ -74,7 +74,8 @@ Designed but not built, or the design record of an idea that was; the plan side 
 
 NOTE: Keep this subsection but move Ideas to a proper index after human input has been given to clarify the idea.
 
-- We no longer really need Milestones at the grain they're currently at; we'll stick with Ideas/Features and rename Milestones to Releases
+- We no longer really need Milestones at the grain they're currently at; we'll stick with Ideas/Features and rename Milestones to Releases. We need to update DESIGN.md to call out a Release is a set of Ideas and that the LLM must collect the list of Ideas/Bugs addressed for each Release when the human asks for a new release.
+- There should always be high-level UML and Database design documents that are referenced and kept updated in `design/` named `DESIGN_UML.md` and `DESIGN_DB.md`. We need to update the DESIGN.md to call this out.
 - Graph axes for Eth/Wifi to keep sidebar view consistent
 - Preferences Sidebar Style menu MUST show all applicable options (ie. the same set as those found in the burger main menu)
 - Preferences Sidebar option 'Meter Type' must be renamed to 'Graph Type'
