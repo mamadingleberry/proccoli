@@ -203,7 +203,9 @@ class OverviewWindowTest(unittest.TestCase):
     def test_one_card_per_charted_entry_in_sidebar_order_and_color(self):
         win = self.make()
         overview = win.page("overview")
-        charted = [i for i in win.sidebar.order() if i not in ("overview", "apps", "processes")]
+        # a card per device: a sidebar group (GPUs, Drives...) has none
+        charted = [i for i in win.sidebar.order() if i not in ("overview", "apps", "processes")
+                   and not win.sidebar.items[i].page.is_group]
         self.assertEqual(overview.order(), charted)
         for page_id in charted:
             self.assertEqual(overview.cards[page_id].graph.entry_index,

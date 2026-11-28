@@ -134,3 +134,42 @@ class AxisGutter:
         for graph, _w in list(self._widths.values()):
             self._redraw(graph)
         return False
+
+
+class PaneAxes:
+    """How a chart on a pane shows its axes: with *Show Graph Axes*, for a
+    percentage graph or one with an ``axis_format``; as many labelled value
+    ticks as fit; the grid when *Show Graph Grids* says so."""
+
+    grid = True
+
+    def has_axes(self, show_axes: bool, percent: bool, formatted: bool) -> bool:
+        return show_axes and (percent or formatted)
+
+    def ticks(self, percent: bool, axis_format, y_max: float, plot_h: float,
+              label_h: float) -> list:
+        """(fraction of the plot height from the bottom, label or None)."""
+        if percent or axis_format is None:
+            return [(v / 100.0, label) for v, label in percent_ticks(plot_h, label_h)]
+        return [(v / y_max, axis_format(v)) for v in value_ticks(y_max, plot_h, label_h)]
+
+
+class SidebarAxes(PaneAxes):
+    """A sidebar chart's (and the Overview's in Lightweight Mode): never a
+    grid (too small to read); the time axis whenever axes are on (network
+    speeds too, which have no percentage scale); a value axis only where
+    the graph has one, and then just its minimum and maximum."""
+
+    grid = False
+
+    def has_axes(self, show_axes: bool, percent: bool, formatted: bool) -> bool:
+        return show_axes
+
+    def ticks(self, percent: bool, axis_format, y_max: float, plot_h: float,
+              label_h: float) -> list:
+        if not (percent or axis_format is not None):
+            return []
+        if percent or axis_format is None:
+            return [(0.0, "0 %"), (1.0, "100 %")]
+        return [(0.0, axis_format(0.0)), (1.0, axis_format(y_max))]
+

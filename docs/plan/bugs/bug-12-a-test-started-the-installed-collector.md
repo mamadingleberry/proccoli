@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-12-a-test-started-the-installed-collector.md](../../design/bugs/bug-12-a-test-started-the-installed-collector.md)
 
-*Fixed in Milestone 82.*
+*Fixed in v0.5.0.*
 
 **Seen:** "what does this debug log imply? … WARNING
 proccoli.metrics_service: can't serve io.github.mamadingleberry.Proccoli.Metrics:

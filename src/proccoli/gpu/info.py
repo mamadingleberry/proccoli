@@ -82,6 +82,30 @@ def amd_is_apu(sysroot: SysRoot, dev: str, vram_total: Optional[int]) -> bool:
     return vram_total is not None and vram_total < 2 * 2 ** 30
 
 
+def nvidia_model(sysroot: SysRoot, slot: str) -> Optional[str]:
+    """The model NVIDIA's driver reports for the GPU at ``slot``
+    (``Model:`` in ``/proc/driver/nvidia/gpus/<slot>/information``, readable
+    by everyone), or None. The driver knows GPUs newer than the system's
+    ``pci.ids``."""
+    text = sysroot.read_text(f"/proc/driver/nvidia/gpus/{slot}/information") or ""
+    for line in text.splitlines():
+        key, _, value = line.partition(":")
+        if key.strip() == "Model":
+            return value.strip() or None
+    return None
+
+
+def gpu_name(sysroot: SysRoot, pci: pciids.PciIds, vendor: GpuVendor, vendor_id: int,
+             device_id: int, driver: str, slot: str) -> str:
+    """What to call a GPU: on NVIDIA's own driver, the model it reports;
+    otherwise (or when it reports none) the name ``pci.ids`` gives."""
+    if driver == "nvidia":
+        model = nvidia_model(sysroot, slot)
+        if model:
+            return pretty_name(vendor, pci.vendor(vendor_id), model)
+    return pretty_name(vendor, pci.vendor(vendor_id), pci.device(vendor_id, device_id))
+
+
 def discover_gpus(sysroot: SysRoot, pci: pciids.PciIds) -> list[GpuInfo]:
     gpus = []
     for card in sysroot.listdir("/sys/class/drm"):
@@ -117,6 +141,6 @@ def discover_gpus(sysroot: SysRoot, pci: pciids.PciIds) -> list[GpuInfo]:
         if speed and width and not speed.startswith("Unknown") and width != "0":
             props["Link"] = f"{speed} x{width}"
         gpus.append(GpuInfo(card, slot, vendor, vendor_id, device_id, driver,
-                            pretty_name(vendor, vendor_name, pci.device(vendor_id, device_id)),
+                            gpu_name(sysroot, pci, vendor, vendor_id, device_id, driver, slot),
                             integrated, render, props))
     return gpus

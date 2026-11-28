@@ -9,6 +9,10 @@ NVIDIA tool output for tests/test_nvidia.py.
 - settings-readings-wayland.stderr: real `settings_argv` stderr (exit 1) in
   that session: utilisation and clocks need NV-CONTROL (X11), so the query
   fails and the backend falls back to nvidia-smi.
+- information-rtx5060-laptop.txt: real
+  `/proc/driver/nvidia/gpus/0000:02:00.0/information` from the same
+  machine (driver 580.178.04), with the GPU UUID zeroed. Its model isn't
+  in Ubuntu 24.04's pci.ids.
 - settings-targets.txt, settings-readings.txt: nvidia-settings output in
   its normal and terse (-t) formats for a two-GPU X11 machine, written from
   the real Wayland output above and NVIDIA's documented formats. Not

@@ -10,8 +10,8 @@ form a plain list in columns, and the tables show five rows each, without
 icons.
 
 The cards form an N × M grid that tries to fill the height the page
-gives it, each chart shorter than it is wide (Milestone
-51): ``layout.plan_grid()`` picks the columns and chart height for the
+gives it, each chart shorter than it is wide:
+``layout.plan_grid()`` picks the columns and chart height for the
 space left above the tables, on every size change.
 
 The page knows nothing about the sidebar: the window hands it the entries
@@ -320,10 +320,13 @@ class OverviewPage(FittingPage):
     has_graphs = True
 
     def __init__(self, settings, navigate: Callable[[str], None],
-                 processes=None, grouper=None, profile: Optional[Profile] = None) -> None:
+                 processes=None, grouper=None, profile: Optional[Profile] = None,
+                 page_id: str = "overview", kind: PageKind = PageKind.OVERVIEW,
+                 title: str = "Overview", icon: str = OVERVIEW_ICON) -> None:
         """``profile``: Lightweight Mode makes it a list of cards with small
-        charts, and short busiest tables without icons."""
-        super().__init__("overview", PageKind.OVERVIEW, "Overview", OVERVIEW_ICON)
+        charts, and short busiest tables without icons. ``page_id``, ``kind``,
+        ``title`` and ``icon``: another page of cards (a sidebar group's)."""
+        super().__init__(page_id, kind, title, icon)
         self.settings = settings
         self.profile = profile or Profile.full()
         self.navigate = navigate

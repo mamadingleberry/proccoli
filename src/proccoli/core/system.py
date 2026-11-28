@@ -12,8 +12,11 @@ touches the OS goes through ``System``:
 - desktop-file lookups
 - file locks (who writes the history)
 
-Production code receives a ``System`` from the composition root
-(``proccoli.context``); tests pass a fake with the same methods.
+``System`` is made of six parts, one class each: ``Programs``, ``Locks``,
+``ProcessControl``, ``ChildProcesses``, ``AppLauncher`` and
+``ShellIntegration``. Production code receives a ``System`` from the
+composition root (``proccoli.context``); tests pass a fake with the same
+methods (``tests/helpers.FakeSystem``, which a test keeps in step).
 """
 
 from __future__ import annotations
@@ -74,11 +77,11 @@ def restart_command(argv0: str, interpreter: str,
     return interpreter, [interpreter, argv0]
 
 
-class System:
+class Programs:
+    """Finding and starting programs, the user's credentials, user names, clock ticks."""
+
     def __init__(self) -> None:
         self._user_names: dict[int, str] = {}
-
-    # -- programs and credentials -------------------------------------------------
 
     def which(self, name: str) -> Optional[str]:
         return shutil.which(name)
@@ -125,7 +128,9 @@ class System:
     def machine(self) -> str:
         return os.uname().machine
 
-    # -- file locks ---------------------------------------------------------------------
+
+class Locks:
+    """File locks (who writes the history)."""
 
     def try_lock(self, path) -> Optional[int]:
         """An exclusive lock on ``path`` (created 0600), or None when
@@ -148,7 +153,9 @@ class System:
         finally:
             os.close(handle)
 
-    # -- processes ----------------------------------------------------------------------
+
+class ProcessControl:
+    """Signals, priorities and CPU affinity of other processes."""
 
     def kill(self, pid: int, sig: int) -> None:
         os.kill(pid, sig)
@@ -165,7 +172,9 @@ class System:
     def set_affinity(self, pid: int, cpus: set[int]) -> None:
         os.sched_setaffinity(pid, cpus)
 
-    # -- child processes ------------------------------------------------------------------
+
+class ChildProcesses:
+    """Child processes, one-shot and streaming."""
 
     def stream_reader(self):
         """A new ``StreamReader`` (JSON records from a long-running child)."""
@@ -207,7 +216,33 @@ class System:
 
         proc.communicate_utf8_async(None, None, done)
 
-    # -- desktop integration ------------------------------------------------------------------
+
+class SessionBus:
+    """Calls on the session bus, for the parts that talk to the desktop."""
+
+    def _session_call(self, dest: str, path: str, iface: str, method: str, args=None,
+                      reply: Optional[str] = None, timeout_ms: int = 1000):
+        """A session-bus call; its unpacked reply, or None on any error."""
+        from gi.repository import Gio, GLib
+        try:
+            result = Gio.bus_get_sync(Gio.BusType.SESSION, None).call_sync(
+                dest, path, iface, method, args,
+                GLib.VariantType(reply) if reply else None,
+                Gio.DBusCallFlags.NO_AUTO_START, timeout_ms, None)
+        except GLib.Error:
+            return None
+        return result.unpack() if result is not None else ()
+
+    def bus_name_owned(self, name: str) -> bool:
+        from gi.repository import GLib
+        reply = self._session_call("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                                   "org.freedesktop.DBus", "NameHasOwner",
+                                   GLib.Variant("(s)", (name,)), "(b)")
+        return bool(reply and reply[0])
+
+
+class AppLauncher(SessionBus):
+    """Desktop files: what an app is, and how to bring it to the front."""
 
     @staticmethod
     def _desktop_info(app_id: str):
@@ -223,6 +258,14 @@ class System:
             return cls.new(f"{app_id}.desktop")
         except TypeError:
             return None
+
+    def desktop_app(self, app_id: str) -> Optional[AppInfo]:
+        """Name, icon and description from ``<app_id>.desktop``, or None."""
+        info = self._desktop_info(app_id)
+        if info is None:
+            return None
+        return AppInfo(info.get_display_name() or info.get_name() or app_id,
+                       info.get_icon(), info.get_description() or "")
 
     def app_switch_method(self, app_id: str) -> Optional[str]:
         """How Proccoli can bring an app's window to the front, if at all
@@ -266,27 +309,11 @@ class System:
             return bool(self._desktop_info(app_id).launch([], launch_context))
         return False
 
-    # -- windows (core.windows decides) ------------------------------------
 
-    def _session_call(self, dest: str, path: str, iface: str, method: str, args=None,
-                      reply: Optional[str] = None, timeout_ms: int = 1000):
-        """A session-bus call; its unpacked reply, or None on any error."""
-        from gi.repository import Gio, GLib
-        try:
-            result = Gio.bus_get_sync(Gio.BusType.SESSION, None).call_sync(
-                dest, path, iface, method, args,
-                GLib.VariantType(reply) if reply else None,
-                Gio.DBusCallFlags.NO_AUTO_START, timeout_ms, None)
-        except GLib.Error:
-            return None
-        return result.unpack() if result is not None else ()
+class ShellIntegration(SessionBus):
+    """The session bus, GNOME Shell's windows and extensions, and wmctrl on X11."""
 
-    def bus_name_owned(self, name: str) -> bool:
-        from gi.repository import GLib
-        reply = self._session_call("org.freedesktop.DBus", "/org/freedesktop/DBus",
-                                   "org.freedesktop.DBus", "NameHasOwner",
-                                   GLib.Variant("(s)", (name,)), "(b)")
-        return bool(reply and reply[0])
+
 
     def shell_windows(self) -> Optional[list[tuple]]:
         """Every window, from Proccoli's Shell extension, or None when it
@@ -376,10 +403,10 @@ class System:
         except (OSError, subprocess.SubprocessError):
             return False
 
-    def desktop_app(self, app_id: str) -> Optional[AppInfo]:
-        """Name, icon and description from ``<app_id>.desktop``, or None."""
-        info = self._desktop_info(app_id)
-        if info is None:
-            return None
-        return AppInfo(info.get_display_name() or info.get_name() or app_id,
-                       info.get_icon(), info.get_description() or "")
+
+
+class System(Programs, Locks, ProcessControl, ChildProcesses, AppLauncher, ShellIntegration):
+    """Every OS service in one object, the one the composition root hands
+    out. Each part is its own class above, so a part can be read, tested
+    and replaced on its own; callers (and ``FakeSystem``) see one flat
+    interface."""

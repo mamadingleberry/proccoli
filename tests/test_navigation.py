@@ -146,14 +146,14 @@ class BackForwardWindowTest(unittest.TestCase):
         win.sidebar.select("cpu")                            # by the sidebar
         win.activate_action("win.go-to", GLib.Variant("s", "memory"))   # by Go To
         back = FakeGesture(MOUSE_BACK)
-        self.assertTrue(win.on_mouse_button(back))
+        self.assertTrue(win.navigation.on_mouse_button(back))
         self.assertEqual(back.states, [Gtk.EventSequenceState.CLAIMED])
         self.assertEqual(win.visible_page_id(), "cpu")
         self.assertEqual(win.sidebar.selected_id(), "cpu")
-        win.on_mouse_button(FakeGesture(MOUSE_BACK))
+        win.navigation.on_mouse_button(FakeGesture(MOUSE_BACK))
         self.assertEqual(win.visible_page_id(), first)
-        win.on_mouse_button(FakeGesture(MOUSE_FORWARD))
-        win.on_mouse_button(FakeGesture(MOUSE_FORWARD))
+        win.navigation.on_mouse_button(FakeGesture(MOUSE_FORWARD))
+        win.navigation.on_mouse_button(FakeGesture(MOUSE_FORWARD))
         self.assertEqual(win.visible_page_id(), "memory")
 
     def test_other_buttons_are_left_to_their_widgets(self):
@@ -161,24 +161,24 @@ class BackForwardWindowTest(unittest.TestCase):
         win.sidebar.select("cpu")
         for button in (1, 2, 3):
             g = FakeGesture(button)
-            self.assertFalse(win.on_mouse_button(g))
+            self.assertFalse(win.navigation.on_mouse_button(g))
             self.assertEqual(g.states, [Gtk.EventSequenceState.DENIED])
         self.assertEqual(win.visible_page_id(), "cpu")
 
     def test_the_gesture_listens_to_every_button_first(self):
         win = self.make()
-        self.assertEqual(win.mouse_nav.get_button(), 0)
-        self.assertEqual(win.mouse_nav.get_propagation_phase(), Gtk.PropagationPhase.CAPTURE)
+        self.assertEqual(win.navigation.mouse_gesture.get_button(), 0)
+        self.assertEqual(win.navigation.mouse_gesture.get_propagation_phase(), Gtk.PropagationPhase.CAPTURE)
 
     def test_keyboard_and_action_state(self):
         win = self.make()
         self.assertEqual(self.app.get_accels_for_action("win.back"), ["<Alt>Left"])
         self.assertEqual(self.app.get_accels_for_action("win.forward"), ["<Alt>Right"])
-        self.assertFalse(win.nav_actions["back"].get_enabled())   # nowhere to go yet
+        self.assertFalse(win.navigation.actions["back"].get_enabled())   # nowhere to go yet
         win.sidebar.select("cpu")
-        self.assertTrue(win.nav_actions["back"].get_enabled())
+        self.assertTrue(win.navigation.actions["back"].get_enabled())
         win.activate_action("win.back", None)
-        self.assertTrue(win.nav_actions["forward"].get_enabled())
+        self.assertTrue(win.navigation.actions["forward"].get_enabled())
         win.activate_action("win.forward", None)
         self.assertEqual(win.visible_page_id(), "cpu")
 
@@ -186,8 +186,8 @@ class BackForwardWindowTest(unittest.TestCase):
         win = self.make()
         win.sidebar.select("cpu")
         win.sidebar.select("memory")
-        win.go_back()
-        self.assertEqual(win.history.forward_stack, ["memory"])
+        win.navigation.go_back()
+        self.assertEqual(win.navigation.history.forward_stack, ["memory"])
 
     def test_unplugged_page_is_skipped(self):
         win = self.make(demo=False)
@@ -196,7 +196,7 @@ class BackForwardWindowTest(unittest.TestCase):
         win.sidebar.select(net)
         win.sidebar.select("memory")
         win.remove_page(net)
-        win.go_back()
+        win.navigation.go_back()
         self.assertEqual(win.visible_page_id(), "cpu")
 
 
@@ -230,29 +230,29 @@ class GotoWindowTest(unittest.TestCase):
         win = self.make(demo=False)
         targets = [t for _, t in menu_targets(self.goto_submenu(win))]
         self.assertEqual(targets, win.sidebar.order())
-        self.assertIs(self.goto_submenu(win), win.goto_menu)    # the menu shown is filled
+        self.assertIs(self.goto_submenu(win), win.navigation.goto_menu)    # the menu shown is filled
 
     def test_choosing_an_item_switches_pane_and_marks_it(self):
         win = self.make()
         win.activate_action("win.go-to", GLib.Variant("s", "memory"))
         self.assertEqual(win.visible_page_id(), "memory")
         self.assertEqual(win.sidebar.selected_id(), "memory")
-        self.assertEqual(win.goto_action.get_state().get_string(), "memory")
+        self.assertEqual(win.navigation.goto_action.get_state().get_string(), "memory")
         win.select_page("cpu")                                  # by any other way
-        self.assertEqual(win.goto_action.get_state().get_string(), "cpu")
+        self.assertEqual(win.navigation.goto_action.get_state().get_string(), "cpu")
 
     def test_first_page_is_marked_from_the_start(self):
         win = self.make()
-        self.assertEqual(win.goto_action.get_state().get_string(), win.visible_page_id())
+        self.assertEqual(win.navigation.goto_action.get_state().get_string(), win.visible_page_id())
 
     def test_menu_follows_moves_and_removals(self):
         win = self.make(demo=False)
         win.sidebar.move("memory", -1)
-        targets = [t for _, t in menu_targets(win.goto_menu)]
+        targets = [t for _, t in menu_targets(win.navigation.goto_menu)]
         self.assertLess(targets.index("memory"), targets.index("cpu"))
         net = next(i for i in targets if i.startswith("net-"))
         win.remove_page(net)
-        self.assertNotIn(net, [t for _, t in menu_targets(win.goto_menu)])
+        self.assertNotIn(net, [t for _, t in menu_targets(win.navigation.goto_menu)])
 
     def test_placeholders_say_nothing_about_the_project(self):
         from proccoli.ui.window import placeholder_reason

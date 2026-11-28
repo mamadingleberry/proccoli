@@ -198,10 +198,19 @@
       <default>[]</default>
       <summary>Sidebar entries shown with only their icon and name</summary>
     </key>
+    <key name="sidebar-collapsed-groups" type="as">
+      <default>[]</default>
+      <summary>Sidebar groups (GPUs, Drives, Network, Batteries) with their devices hidden</summary>
+    </key>
     <key name="sidebar-hidden-fields" type="a{sas}">
       <default>{}</default>
       <summary>Parts each sidebar entry hides</summary>
       <description>Page ID to hidden parts: name, description, usage, chart.</description>
+    </key>
+    <key name="sidebar-graph-types" type="a{ss}">
+      <default>{}</default>
+      <summary>Graph Type of each sidebar entry that has its own</summary>
+      <description>Page ID to graph or progress-bar; entries not listed follow sidebar-meter-type.</description>
     </key>
     <key name="log-level" enum="io.github.mamadingleberry.Proccoli.LogLevel">
       <default>'debug'</default>

@@ -81,7 +81,7 @@ classDiagram
   acquire the process scan for as long as they're shown.
 - `ProcessOptionsDialog` sets the priority (names, or niceness with *Show
   Niceness Values*) and CPU affinity through `ProcessActions`.
-- `PreferencesDialog` is built from `ui/preferences_layout.py` (M88):
+- `PreferencesDialog` is built from `ui/preferences_layout.py` (Feature 20):
   six pages (Appearance, **Sidebar** ([§9.5](09.5-sidebar-preferences.md)), Tables, Recording,
   Devices, System), each a tuple of groups, each group's rows in order.
   A row is a settings key or a `SPECIAL` item (rows built from a service,
@@ -105,7 +105,7 @@ flowchart LR
 - `about_dialog()` and `shortcuts_dialog()` come from the `SHORTCUTS` table,
   which tests check against the real accelerators.
 
-**Page lifecycle (added in Milestone 1):** pages connect to longer-lived
+**Page lifecycle:** pages connect to longer-lived
 objects (monitors, settings, GPU controllers). Every such connection is
 registered with `ResourcePage.track()`. `MainWindow` calls
 `page.shutdown()` when a page is removed (unplugged device), replaced or

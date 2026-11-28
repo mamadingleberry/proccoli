@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-14-restart-now-renamed-the-window-python3.md](../../design/bugs/bug-14-restart-now-renamed-the-window-python3.md)
 
-*Fixed in Milestone 84.*
+*Fixed in v0.5.0.*
 
 **Seen:** "i see a process named `python3` with a Proccoli logo icon in
 Overview pane's Processes table".

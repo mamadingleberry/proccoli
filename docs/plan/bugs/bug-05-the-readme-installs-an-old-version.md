@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-05-the-readme-installed-an-old-version.md](../../design/bugs/bug-05-the-readme-installed-an-old-version.md)
 
-*Fixed in Milestone 69.*
+*Fixed in v0.5.0.*
 
 **Seen:** after Release 0.4.0 the README's install command was `sudo
 apt install ./dist/proccoli_0.3.0_all.deb`, a file `build-deb.sh` no

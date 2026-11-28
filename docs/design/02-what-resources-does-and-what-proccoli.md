@@ -15,7 +15,7 @@ MainWindow (AdwApplicationWindow, min 360×240)
     └── content: GtkStack #content_stack (one page per sidebar entry)
         └── each page: AdwToolbarView
             ├── AdwHeaderBar (flat; sidebar toggle shown when collapsed —
-            │                 Proccoli: the logo (its main menu) instead, M52, M61;
+            │                 Proccoli: the logo (its main menu) instead, v0.1.0, v0.3.0;
             │                 search toggle on Apps/Processes)
             └── page widget (ResApplications, ResProcesses, ResCPU, ResMemory,
                              ResGPU, ResDrive, ResNetwork, ResBattery, ResNPU)

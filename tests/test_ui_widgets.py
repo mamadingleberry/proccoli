@@ -156,17 +156,17 @@ class GraphDrawTest(unittest.TestCase):
         g.set_time_span(10)
         self.assertIsNone(g.hover_lines(100))                    # pointer elsewhere
         before = render(g, 100, 60)
-        g._on_motion(None, 79, 0)
+        g.readout._on_motion(None, 79, 0)
         point, rows, heading = g.hover_lines(100)
         self.assertEqual((point.index, heading), (8, "2 s ago"))
         self.assertEqual(rows, [(0, "Usage   80 %")])           # core.units.format_percent()
         after = render(g, 100, 60)
         self.assertNotEqual([after(80, y) for y in range(60)],    # the crosshair
                             [before(80, y) for y in range(60)])
-        g._on_leave(None)
+        g.readout._on_leave(None)
         self.assertIsNone(g.hover_lines(100))
         g.set_hover(False)
-        g._on_motion(None, 79, 0)
+        g.readout._on_motion(None, 79, 0)
         self.assertIsNone(g.hover_lines(100))
 
     def offline_graph(self):
@@ -195,12 +195,12 @@ class GraphDrawTest(unittest.TestCase):
 
     def test_hover_over_it_says_so(self):
         g = self.offline_graph()
-        g._on_motion(None, 95, 0)
+        g.readout._on_motion(None, 95, 0)
         point, rows, heading = g.hover_lines(190)
         self.assertEqual(rows, [])
         self.assertEqual(heading, "Proccoli wasn't running (10 s)")
         render(g, 190, 60)                                # draws without values
-        g._on_motion(None, 185, 0)
+        g.readout._on_motion(None, 185, 0)
         self.assertEqual(g.hover_lines(190)[1], [(0, "u   50 %")])
 
     def test_hover_skips_hidden_lines_and_uses_the_formatter(self):
@@ -211,7 +211,7 @@ class GraphDrawTest(unittest.TestCase):
         g.set_series([h.series("a"), h.series("b")])
         g.set_hover(True, lambda i, v: f"{v:g} W")
         g.set_series_shown(0, False)
-        g._on_motion(None, 100, 0)
+        g.readout._on_motion(None, 100, 0)
         _point, rows, heading = g.hover_lines(100)
         self.assertEqual(heading, "now")
         self.assertEqual(rows, [(1, "b   2 W")])

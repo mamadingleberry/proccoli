@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-01-graphs-stretch-old-points-after-a.md](../../design/bugs/bug-01-graphs-stretch-old-points-after-a.md)
 
-*Fixed in Milestone 68.* As built: a shorter step empties the history
+*Fixed in v0.4.0.* As built: a shorter step empties the history
 instead of regrouping it (what lay between the old points is gone), and
 the store refills it from the database.
 

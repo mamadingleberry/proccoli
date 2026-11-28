@@ -82,5 +82,17 @@ class SpinnerTest(unittest.TestCase):
         self.assertEqual(made, [{"visible": False}])
 
 
+class ToplevelSuspendedTest(unittest.TestCase):
+    def test_a_suspended_window(self):
+        from gi.repository import Gdk
+        self.assertTrue(compat.toplevel_suspended(
+            Gdk.ToplevelState.SUSPENDED | Gdk.ToplevelState.FOCUSED))
+        self.assertFalse(compat.toplevel_suspended(Gdk.ToplevelState.FOCUSED))
+
+    def test_gtk_without_the_state_never_says_suspended(self):
+        old_gdk = type("Gdk", (), {"ToplevelState": type("S", (), {"FOCUSED": 2})})
+        self.assertFalse(compat.toplevel_suspended(2, gdk=old_gdk))
+
+
 if __name__ == "__main__":
     unittest.main()

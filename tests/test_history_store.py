@@ -22,7 +22,7 @@ from proccoli.core.history_export import (export_session, file_stem,  # noqa: E4
                                           folder_name, format_value)
 from proccoli.core import history_store  # noqa: E402
 from proccoli.core.history_store import (HistoryStore, history_path, import_csv,  # noqa: E402
-                                         offline_slots, old_stats_dir)
+                                         offline_slots, old_stats_dir, open_run)
 from proccoli.core.settings import Settings  # noqa: E402
 from proccoli.core.sysroot import SysRoot  # noqa: E402
 from proccoli.core.units import iso_utc, parse_iso_utc  # noqa: E402
@@ -747,6 +747,81 @@ class SnapshotStatsTest(unittest.TestCase):
         self.assertEqual(snap.stats_values()["vram-used"], 1)
         self.assertEqual(snap.stats_units()["vram-total"], "B")
         self.assertEqual(set(snap.stats_values()), set(snap.stats_units()))
+
+
+class OpenRunTest(unittest.TestCase):
+    """The newest run, still being recorded, runs until now."""
+
+    def test_a_run_committed_seconds_ago_runs_until_now(self):
+        self.assertEqual(open_run([(0, 100), (200, 5_000)], 12_000, 1000),
+                         [(0, 100), (200, 12_000)])
+
+    def test_a_run_that_ended_long_ago_stays_ended(self):
+        sessions = [(0, 100), (200, 5_000)]
+        self.assertEqual(open_run(sessions, 60_000, 1000), sessions)
+
+    def test_a_session_in_the_future_is_left_alone(self):
+        sessions = [(200, 50_000)]                  # the clock was set back
+        self.assertEqual(open_run(sessions, 10_000, 1000), sessions)
+
+    def test_no_sessions(self):
+        self.assertEqual(open_run([], 10_000, 1000), [])
+
+
+class RangeChangeWhileRecordingTest(StoreCase):
+    """A window that reads the history another process records: changing
+    the time range refills its graphs, and the seconds the recorder holds
+    in memory (up to its commit interval) aren't time it wasn't running."""
+
+    def make_recorder(self):
+        """The recorder: it writes the history but draws no graphs, so a
+        range change doesn't make it write."""
+        self.make(Device())
+        self.store.shutdown()
+        self.store = HistoryStore(self.devices, self.settings, self.path, "9.9",
+                                  lambda: self.clock[0], graphs=False)
+        self.addCleanup(self.store.shutdown)
+
+    def make_window(self):
+        devices = DeviceManager(SysRoot("/nonexistent"), self.settings)
+        devices.register(Device(values=lambda now, n: 99.0))     # its live points: 99
+        window = HistoryStore(devices, self.settings, self.path, "9.9",
+                              lambda: self.clock[0], read_only=True)
+        self.addCleanup(window.shutdown)
+        devices.start()
+        return devices, window
+
+    def tick_both(self, window_devices, n):
+        for _ in range(n):
+            now = MONO + self.clock[0] - T0
+            self.devices.refresh(now)
+            window_devices.refresh(now)
+            self.clock[0] += 1.0
+
+    def test_the_last_seconds_are_not_shaded_after_a_range_change(self):
+        self.make_recorder()
+        window_devices, _window = self.make_window()
+        self.tick_both(window_devices, 26)                      # last commit at 20 s
+        self.assertGreater(len(self.store._buffer), 0)          # 5 s not written yet
+        self.settings.set("graph-time-range", "30-seconds")
+        history = next(m for m in window_devices.monitors() if m.info.id == "cpu").history
+        self.assertGreater(len(history), 0)
+        self.assertNotIn(True, list(history.offline)[-10:])
+
+    def test_the_refill_waits_for_the_recorder_to_write_out(self):
+        self.make_recorder()
+        window_devices, window = self.make_window()
+        asked = []
+        window_devices.flush = lambda then: asked.append(then)  # answers later
+        self.tick_both(window_devices, 26)
+        history = next(m for m in window_devices.monitors() if m.info.id == "cpu").history
+        self.settings.set("graph-time-range", "30-seconds")
+        self.assertEqual(len(asked), 1)
+        self.assertEqual(set(history.series("usage").values), {99.0})   # not refilled yet
+        self.store.commit()                                     # the recorder flushes
+        asked[0]()
+        values = list(history.series("usage").values)
+        self.assertEqual(set(values[-5:]), {25.0})              # the flushed seconds, from the file
 
 
 class OfflineSlotsTest(unittest.TestCase):

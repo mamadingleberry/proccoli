@@ -13,7 +13,9 @@ On the session bus as the app ID plus ``.Metrics`` (``BUS_NAME``):
   ``devices/snapshot_codec``; a GPU adds its Details state, sample and
   per-process use;
 - ``DeviceAdded(s device)``, ``DeviceRemoved(s id)`` (signals);
-- ``Status() → s``: version, update interval, history state.
+- ``Status() → s``: version, update interval, history state;
+- ``Flush()``: write out the buffered readings now, so a window that is
+  about to refill its graphs from the history finds the last seconds.
 
 Payloads are JSON strings: one exact round trip for ``None``, nested
 dataclasses and lists, which plain ``a{sv}`` can't carry (it has no
@@ -45,6 +47,7 @@ INTROSPECTION = f"""
     <method name="Devices"><arg type="s" direction="out" name="devices"/></method>
     <method name="Subscribe"/>
     <method name="Unsubscribe"/>
+    <method name="Flush"/>
     <method name="Status"><arg type="s" direction="out" name="status"/></method>
     <method name="Retry"><arg type="s" direction="in" name="id"/>
       <arg type="b" direction="out" name="retried"/></method>
@@ -173,6 +176,10 @@ class MetricsService:
                     connection, sender, Gio.BusNameWatcherFlags.NONE, None,
                     lambda _c, name: self._unsubscribe(name))
                 log.info("readings for %s", sender)
+            invocation.return_value(None)
+        elif method == "Flush":
+            if self.store is not None:
+                self.store.commit()
             invocation.return_value(None)
         elif method == "Unsubscribe":
             self._unsubscribe(sender)

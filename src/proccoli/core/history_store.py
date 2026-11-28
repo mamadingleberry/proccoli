@@ -102,6 +102,21 @@ def offline_slots(starts_ms: list[int], width_ms: int,
     return out
 
 
+def open_run(sessions: list[tuple[int, int]], now_ms: int,
+             width_ms: int) -> list[tuple[int, int]]:
+    """``sessions`` with the newest one running until ``now_ms`` when it's
+    still being recorded: its end, moved forward at each commit, is at most
+    ``COMMIT_EVERY_S`` (and a slot) old. Those seconds were recorded, just
+    not written yet, so they're never shown as time Proccoli wasn't
+    running."""
+    if not sessions:
+        return sessions
+    start, end = sessions[-1]
+    if 0 <= now_ms - end <= COMMIT_EVERY_S * 1000 + 2 * width_ms:
+        return sessions[:-1] + [(start, now_ms)]
+    return sessions
+
+
 class HistoryStore:
     """Records every device's readings while ``history`` is on."""
 
@@ -416,7 +431,12 @@ class HistoryStore:
 
     def backfill_all(self) -> None:
         """After the range or speed changed: every device, one at a time,
-        emptied and filled again at the new step."""
+        emptied and filled again at the new step, once whoever records the
+        history has written out its last seconds (``devices.flush``)."""
+        self.commit()                       # when this process records
+        self.devices.flush(self._backfill_all_now)
+
+    def _backfill_all_now(self) -> None:
         self._detail_filled.clear()
         for monitor in self.devices.monitors():
             if monitor.info.id in self._offsets:
@@ -488,7 +508,7 @@ class HistoryStore:
             origin = ms(slots[0] + offset - step / 2)
             width = max(1, ms(step))
             points = self.db.buckets(tbl, [cols[k] for k in wanted], origin, room, width)
-            sessions = self.db.sessions()
+            sessions = open_run(self.db.sessions(), ms(self.wall_clock()), width)
         except ERRORS as exc:
             log.warning("can't read the history of %s: %s", tbl, exc)
             return 0

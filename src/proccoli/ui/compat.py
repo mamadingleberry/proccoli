@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, Gdk, Gtk
 
 _ROOT_RULE = re.compile(r":root\s*\{[^}]*\}\s*")
 
@@ -52,3 +52,12 @@ def spinner(adw=Adw, **props) -> Gtk.Widget:
     if hasattr(adw, "Spinner"):
         return adw.Spinner(**props)
     return Gtk.Spinner(spinning=True, **props)
+
+
+def toplevel_suspended(state, gdk=Gdk) -> bool:
+    """Whether a window's surface ``state`` (``Gdk.ToplevelState``) says
+    nothing of it is on screen: the screen locked, the window minimized or
+    hidden. ``SUSPENDED`` is GTK >= 4.12; older GTK never says, so the
+    window counts as shown."""
+    flag = getattr(gdk.ToplevelState, "SUSPENDED", None)
+    return flag is not None and bool(state & flag)

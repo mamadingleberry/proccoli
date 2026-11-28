@@ -413,6 +413,8 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(icons["net-wlp43s0"], "network-wireless-symbolic")
         self.assertEqual(icons["apps"], "view-app-grid-symbolic")
         self.assertEqual(icons["processes"], "view-list-bullet-symbolic")
+        self.assertEqual(icons["group-gpu"], "video-display-symbolic")      # the groups'
+        self.assertEqual(icons["group-network"], "network-workgroup-symbolic")
         self.assertEqual(len(set(icons.values())), len(icons))       # all different
         theme = Gtk.IconTheme.get_for_display(win.get_display())
         for pid, name in icons.items():
@@ -432,9 +434,18 @@ class WindowTest(unittest.TestCase):
         ctx.start()
         win = MainWindow(self.app, ctx)
         self.addCleanup(win.destroy)
-        charted = [i for i in win.sidebar.order() if i not in ("overview", "apps", "processes")]
+        # devices, not their groups, number the colors; a group takes its
+        # first device's
+        groups = [i for i in win.sidebar.order() if win.sidebar.items[i].page.is_group]
+        charted = [i for i in win.sidebar.order()
+                   if i not in ("overview", "apps", "processes") and i not in groups]
         indexes = [win.sidebar.items[i].meter.graph.entry_index for i in charted]
         self.assertEqual(indexes, list(range(len(charted))))           # display order
+        group_of = win.sidebar.group_of()
+        for group in groups:
+            first = next(i for i in charted if group_of.get(i) == group)
+            self.assertEqual(win.sidebar.items[group].entry_color,
+                             win.sidebar.items[first].entry_color)
         self.assertIsNone(win.sidebar.items["apps"].meter.graph.entry_index)
         colors = [win.sidebar.items[i].meter.graph.color_for(0) for i in charted]
         self.assertEqual(len(set(colors)), len(colors))                 # all distinct
@@ -464,8 +475,8 @@ class WindowTest(unittest.TestCase):
     def test_sidebar_order_and_default_page(self):
         win = self.make()
         self.assertEqual(win.sidebar.order(),
-                         ["overview", "apps", "processes", "cpu", "memory", "gpu-demo",
-                          "gpu-demo-amd", "demo"])
+                         ["overview", "apps", "processes", "cpu", "memory", "group-gpu",
+                          "gpu-demo", "gpu-demo-amd", "demo"])
         self.assertEqual(win.visible_page_id(), "overview")
         self.assertEqual(win.sidebar.selected_id(), "overview")
 

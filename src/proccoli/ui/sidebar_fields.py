@@ -6,6 +6,11 @@ live in ``sidebar-hidden-fields``: page ID → hidden field names. The global
 *Show Usage Details* and *Show Device Descriptions* preferences still apply
 to every entry, and a minimised entry shows only its icon and name.
 
+Each entry can also have its own *Graph Type* (graph or progress bar),
+in ``sidebar-graph-types``: page ID → type, only for the entries that
+differ from the default (``sidebar-meter-type``), so changing the default
+still changes every other entry.
+
 Pure functions, unit-tested without a display.
 """
 
@@ -67,3 +72,25 @@ def visible(field: Field, hidden_fields: set[Field], *, show_details: bool = Tru
     if field == Field.DESCRIPTION:
         return show_description
     return show_details
+
+
+GRAPH_TYPES_SETTING = "sidebar-graph-types"
+DEFAULT_TYPE = "default"                       # follow the default Graph Type
+GRAPH_TYPES = ("graph", "progress-bar")
+
+
+def graph_type_for(page_id: str, overrides: Mapping[str, str], default: str) -> str:
+    """The graph type ``page_id`` shows: its own choice, else the default."""
+    chosen = overrides.get(page_id)
+    return chosen if chosen in GRAPH_TYPES else default
+
+
+def set_graph_type(overrides: Mapping[str, str], page_id: str, choice: str) -> dict[str, str]:
+    """``overrides`` with ``page_id`` set to ``choice`` (``DEFAULT_TYPE``
+    removes its own choice)."""
+    out = dict(overrides)
+    if choice in GRAPH_TYPES:
+        out[page_id] = choice
+    else:
+        out.pop(page_id, None)
+    return out

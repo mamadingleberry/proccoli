@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-17-graphs-from-the-history-miss-a.md](../../design/bugs/bug-17-graphs-from-the-history-miss-a.md)
 
-*Fixed in Milestone 87.* As proposed. The detail query also returns each
+*Fixed in v0.6.0.* As proposed. The detail query also returns each
 slot's first and last reading time (`min(time)`, `max(time)`) so
 `mend_drift` can tell drift from a gap.
 

@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-07-the-collector-s-process-name-was.md](../../design/bugs/bug-07-the-collector-s-process-name-was.md)
 
-*Fixed in Milestone 77.*
+*Fixed in v0.5.0.*
 
 **Seen:** with `proccoli-metrics` running, the Processes page listed it
 as `proccoli-metric`.

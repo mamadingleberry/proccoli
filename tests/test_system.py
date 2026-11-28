@@ -93,3 +93,38 @@ class SystemTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SystemPartsTest(unittest.TestCase):
+    """``System`` is its parts; ``FakeSystem`` stands in for all of them."""
+
+    def public(self, cls):
+        return {n for n in dir(cls) if not n.startswith("_") and callable(getattr(cls, n))}
+
+    def own(self, cls):
+        return {n for n, v in vars(cls).items() if not n.startswith("_") and callable(v)}
+
+    def test_system_is_made_of_its_parts(self):
+        from proccoli.core import system
+        parts = (system.Programs, system.Locks, system.ProcessControl,
+                 system.ChildProcesses, system.AppLauncher, system.ShellIntegration)
+        self.assertEqual(system.System.__bases__, parts)
+        every = set().union(*(self.public(p) for p in parts))
+        self.assertEqual(self.public(system.System), every)
+        for a in parts:                       # no method written in two parts
+            for b in parts:
+                if a is not b:
+                    self.assertEqual(self.own(a) & self.own(b), set(), (a, b))
+
+    def test_a_part_stands_on_its_own(self):
+        from proccoli.core import system
+        launcher = system.AppLauncher()       # needs only the session bus part
+        self.assertTrue(callable(launcher.bus_name_owned))
+
+    def test_the_fake_has_every_method_tests_can_reach(self):
+        from helpers import FakeSystem
+        from proccoli.core.system import System
+        # bus_name_owned is how the real AppLauncher decides; the fake
+        # answers app_switch_method directly.
+        missing = self.public(System) - self.public(FakeSystem) - {"bus_name_owned"}
+        self.assertEqual(missing, set())

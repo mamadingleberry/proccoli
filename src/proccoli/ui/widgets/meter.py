@@ -1,5 +1,5 @@
 """The usage meter shown in sidebar items: a small area chart (the default,
-as in Resources) or a slim progress bar, chosen by the *Sidebar Meter Type*
+as in Resources) or a slim progress bar, chosen by the *Graph Type*
 preference."""
 
 from __future__ import annotations

@@ -304,6 +304,15 @@ class DebTest(unittest.TestCase):
         return subprocess.run(["dpkg-deb", "-f", self.debs[name], key], capture_output=True,
                               text=True).stdout.strip()
 
+    def control_script(self, name, script):
+        """A maintainer script (``postinst``, ``prerm``) of the ``name`` deb."""
+        import io
+        import tarfile
+        ctrl = subprocess.run(["dpkg-deb", "--ctrl-tarfile", self.debs[name]],
+                              capture_output=True).stdout
+        with tarfile.open(fileobj=io.BytesIO(ctrl)) as tar:
+            return tar.extractfile(f"./{script}").read().decode()
+
     def contents(self, name):
         out = subprocess.run(["dpkg-deb", "-c", self.debs[name]], capture_output=True,
                              text=True).stdout
@@ -358,22 +367,12 @@ class DebTest(unittest.TestCase):
         self.assertNotIn("./usr/bin/proccoli", self.contents("proccoli-gui"))
 
     def test_the_old_unit_is_turned_off_on_upgrade(self):
-        import io
-        import tarfile
-        ctrl = subprocess.run(["dpkg-deb", "--ctrl-tarfile", self.debs["proccoli"]],
-                              capture_output=True).stdout
-        with tarfile.open(fileobj=io.BytesIO(ctrl)) as tar:
-            postinst = tar.extractfile("./postinst").read().decode()
+        postinst = self.control_script("proccoli", "postinst")
         self.assertIn("systemctl --global disable proccoli-metrics.service", postinst)
 
     def test_metrics_is_on_for_everyone_after_installing(self):
-        import io
-        import tarfile
-        ctrl = subprocess.run(["dpkg-deb", "--ctrl-tarfile", self.debs["proccoli"]],
-                              capture_output=True).stdout
-        with tarfile.open(fileobj=io.BytesIO(ctrl)) as tar:
-            postinst = tar.extractfile("./postinst").read().decode()
-            prerm = tar.extractfile("./prerm").read().decode()
+        postinst = self.control_script("proccoli", "postinst")
+        prerm = self.control_script("proccoli", "prerm")
         self.assertIn("systemctl --global enable proccoli.service", postinst)
         self.assertIn("systemctl --global disable proccoli.service", prerm)
         files = self.contents("proccoli")
@@ -381,12 +380,7 @@ class DebTest(unittest.TestCase):
         self.assertIn("./usr/lib/systemd/user-preset/90-proccoli.preset", files)
 
     def test_metrics_stops_collectors_before_removal(self):
-        script = subprocess.run(["dpkg-deb", "--ctrl-tarfile", self.debs["proccoli"]],
-                                capture_output=True).stdout
-        import io
-        import tarfile
-        with tarfile.open(fileobj=io.BytesIO(script)) as tar:
-            prerm = tar.extractfile("./prerm").read().decode()
+        prerm = self.control_script("proccoli", "prerm")
         self.assertIn("systemctl --user -M", prerm)
         self.assertIn("stop proccoli.service", prerm)
         self.assertIn('"$1" = remove', prerm)

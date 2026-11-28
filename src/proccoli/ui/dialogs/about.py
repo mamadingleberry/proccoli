@@ -9,19 +9,7 @@ from ... import APP_ID, APP_NAME, __version__
 LICENSE = ("Permission to use, copy, modify, and/or distribute this software for any "
            "purpose with or without fee is hereby granted. (Zero-Clause BSD)")
 
-# (section, [(title, accelerator)]): the same list feeds the dialog and tests.
-SHORTCUTS = [
-    ("General", [("Show or Hide the Sidebar", "F9"),
-                 ("Back to the Previous Pane", "<Alt>Left"),
-                 ("Forward to the Next Pane", "<Alt>Right"),
-                 ("Preferences", "<Control>comma"),
-                 ("Keyboard Shortcuts", "<Control>question"),
-                 ("Quit", "<Control>q")]),
-    ("Apps and Processes", [("Search", "<Control>f"),
-                            ("Information", "<Control>i"),
-                            ("End", "Delete"),
-                            ("Kill", "<Control>Delete")]),
-]
+from ..shortcuts import SHORTCUTS  # noqa: F401  (the dialog's list; tests read it here too)
 
 
 def about_dialog() -> Adw.AboutDialog:

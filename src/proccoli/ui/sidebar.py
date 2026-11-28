@@ -2,7 +2,7 @@
 description and (for devices) its usage and a meter.
 
 Follows the sidebar preferences: *Show Usage Details*, *Show Device
-Descriptions* and *Sidebar Meter Type*. Overview, Apps and Processes stay
+Descriptions* and *Graph Type* (each entry may have its own). Overview, Apps and Processes stay
 at the top;
 the user can reorder the rest (row menu or drag and drop) and minimise
 them to icon and name (``sidebar-order``, ``sidebar-minimized``; the order
@@ -15,22 +15,20 @@ from __future__ import annotations
 
 from typing import Optional
 
-from gi.repository import Gdk, Gio, GLib, GObject, Gtk, Pango
+from gi.repository import GObject, Gtk, Pango
 
-from . import reorder
-from .widgets.reorderable import make_reorderable
-from .sidebar_fields import FIELD_LABELS, Field, hidden, set_shown, visible
+from .sidebar_fields import (GRAPH_TYPES_SETTING, Field, graph_type_for, hidden,
+                             set_graph_type, visible)
 from .sidebar_style import compact_tooltip
 from .chart_settings import ChartKind, ChartSettings
-from .page import PageKind, ResourcePage, SidebarSummary
+from .page import ResourcePage, SidebarSummary
 from .widgets.meter import Meter, MeterType
+from .sidebar_arrangement import PINNED, UNCHARTED, SidebarArrangement
+from .sidebar_groups import group_for
+from .sidebar_row_menu import SidebarRowMenu
 
 
-# Pages without a sidebar chart (so without an entry color), pinned at the
-# top: they can't be moved or minimised.
-UNCHARTED = (PageKind.OVERVIEW, PageKind.APPS, PageKind.PROCESSES)
-PINNED = UNCHARTED
-
+NEST_INDENT = 16          # a device beneath its group
 ICON_SIZE = 16
 ICON_SPACING = 10
 
@@ -58,8 +56,16 @@ class StackSidebarItem(Gtk.ListBoxRow):
         self.label = Gtk.Label(xalign=0, hexpand=True,
                                ellipsize=Pango.EllipsizeMode.END)
         self.label.add_css_class("heading")
+        # A group's entry: show or hide its devices.
+        self.expander = Gtk.Button(icon_name="pan-down-symbolic", valign=Gtk.Align.CENTER,
+                                   visible=False, tooltip_text="Hide Devices")
+        self.expander.add_css_class("flat")
+        self.expander.add_css_class("circular")
+        self.expanded = True
+        self.nested = False                  # a device beneath its group
         top.append(self.image)
         top.append(self.label)
+        top.append(self.expander)
         # Minimise / expand (movable entries only; set_page shows it).
         self.minimize_button = Gtk.Button(icon_name="pan-down-symbolic",
                                           valign=Gtk.Align.CENTER, visible=False)
@@ -126,7 +132,9 @@ class StackSidebarItem(Gtk.ListBoxRow):
         if self.page is not None and self._summary_handler:
             self.page.disconnect(self._summary_handler)
         self.page = page
-        self.minimize_button.set_visible(self.movable and not self.compact)
+        # a group's arrow shows or hides its devices instead
+        self.minimize_button.set_visible(self.movable and not self.compact and not page.is_group)
+        self.expander.set_visible(page.is_group and not self.compact)
         self.label.set_label(page.title)
         self.image.set_from_icon_name(page.icon_name)
         self.detail_label.set_label(page.description)
@@ -166,8 +174,24 @@ class StackSidebarItem(Gtk.ListBoxRow):
         """Icons only: the icon, centred, with the rest as hover text."""
         self.compact = compact
         self.top.set_halign(Gtk.Align.CENTER if compact else Gtk.Align.FILL)
-        self.minimize_button.set_visible(self.movable and not compact)
+        self.minimize_button.set_visible(self.movable and not compact and not self.page.is_group)
+        self.expander.set_visible(self.page.is_group and not compact)
+        self._indent()
         self.update()
+
+    def set_nested(self, nested: bool) -> None:
+        """A device beneath its group: indented (not in icons-only)."""
+        self.nested = nested
+        self._indent()
+
+    def _indent(self) -> None:
+        self.get_child().set_margin_start(NEST_INDENT if self.nested and not self.compact else 0)
+
+    def set_expanded(self, expanded: bool) -> None:
+        """A group's arrow: down while its devices show, right while hidden."""
+        self.expanded = expanded
+        self.expander.set_icon_name("pan-down-symbolic" if expanded else "pan-end-symbolic")
+        self.expander.set_tooltip_text("Hide Devices" if expanded else "Show Devices")
 
     def set_style(self, show_details: bool, show_description: bool,
                   meter_type: str) -> None:
@@ -180,11 +204,14 @@ class StackSidebarItem(Gtk.ListBoxRow):
 
     def update(self) -> None:
         summary: Optional[SidebarSummary] = self.page.sidebar_summary()
+        if self.detail_label.get_label() != self.page.description:
+            self.detail_label.set_label(self.page.description)   # a group's count changes
         self.label.set_visible(self.shows(Field.NAME))
         self.detail_label.set_visible(self.shows(Field.DESCRIPTION)
                                       and bool(self.page.description))
         has_summary = summary is not None
-        self.usage_label.set_visible(has_summary and self.shows(Field.USAGE))
+        self.usage_label.set_visible(has_summary and self.shows(Field.USAGE)
+                                     and bool(summary.text()))
         # Without a percentage there's nothing for a progress bar to show;
         # the graph meter still works, scaled to the data.
         graph_mode = self.meter_type == MeterType.GRAPH
@@ -214,7 +241,7 @@ class StackSidebarItem(Gtk.ListBoxRow):
         meter.refresh()
 
 
-class StackSidebar(Gtk.ScrolledWindow):
+class StackSidebar(Gtk.ScrolledWindow, SidebarArrangement, SidebarRowMenu):
     """Rows sorted by ``ResourcePage.sort_key()``; selecting one shows that
     page in the bound ``Gtk.Stack`` and emits ``page-selected``."""
 
@@ -236,6 +263,7 @@ class StackSidebar(Gtk.ScrolledWindow):
         self._saved_order: list[str] = []
         self._minimized: set[str] = set()
         self._hidden_fields: dict[str, list[str]] = {}
+        self._collapsed: set[str] = set()
         self.colors: dict[str, int] = {}      # page ID -> entry color index
         self.compact = False                  # icons only (sidebar_style.py)
         self._install_actions()
@@ -249,10 +277,13 @@ class StackSidebar(Gtk.ScrolledWindow):
         # The meters' axes and time span.
         self.charts = ChartSettings(settings) if settings is not None else None
         if settings is not None:
-            for key in ("sidebar-details", "sidebar-description", "sidebar-meter-type"):
+            for key in ("sidebar-details", "sidebar-description", "sidebar-meter-type",
+                        GRAPH_TYPES_SETTING):
                 settings.connect_changed(key, lambda *_: self._apply_style())
             settings.connect_changed("sidebar-order", lambda *_: self._rearrange())
             settings.connect_changed("sidebar-minimized", lambda *_: self._apply_minimized())
+            settings.connect_changed("sidebar-collapsed-groups",
+                                     lambda *_: self._apply_groups(self.group_of()))
             settings.connect_changed("sidebar-hidden-fields", lambda *_: self._apply_fields())
 
     # -- items ------------------------------------------------------------------
@@ -261,6 +292,7 @@ class StackSidebar(Gtk.ScrolledWindow):
         if page.page_id in self.items:
             raise ValueError(f"duplicate page {page.page_id!r}")
         item = StackSidebarItem(page, self.charts, self.compact)
+        item.expander.connect("clicked", lambda *_: self.toggle_group(item.page_id))
         self.items[page.page_id] = item
         item.set_compact(self.compact)
         self._style(item)
@@ -294,6 +326,32 @@ class StackSidebar(Gtk.ScrolledWindow):
         """The built-in order (by kind, then name), ignoring the user's."""
         return [i for i, _ in sorted(self.items.items(), key=lambda kv: kv[1].page.sort_key())]
 
+    # -- each entry's Graph Type ------------------------------------------------------
+
+    def graph_type_overrides(self) -> dict[str, str]:
+        return dict(self.settings.get("sidebar-graph-types")) if self.settings is not None else {}
+
+    def graph_type_choice(self, page_id: str) -> str:
+        """``page_id``'s own Graph Type, or ``"default"``."""
+        return self.graph_type_overrides().get(page_id, "default")
+
+    def set_graph_type(self, page_id: str, choice: str) -> None:
+        """Give ``page_id`` its own Graph Type, or ``"default"`` to follow
+        the default again."""
+        if self.settings is not None:
+            self.settings.set("sidebar-graph-types",
+                              set_graph_type(self.graph_type_overrides(), page_id, choice))
+
+    def group_of(self) -> dict[str, str]:
+        """``{device page ID: its group's page ID}`` for devices whose group
+        entry is in the sidebar."""
+        out = {}
+        for page_id, item in self.items.items():
+            spec = None if item.page.is_group else group_for(item.page.kind)
+            if spec is not None and spec.page_id in self.items:
+                out[page_id] = spec.page_id
+        return out
+
     def assign_colors(self) -> None:
         """Give every entry with a chart its own palette color, numbered
         in the built-in order, so moving an entry keeps its color (Apps
@@ -302,6 +360,8 @@ class StackSidebar(Gtk.ScrolledWindow):
         self.colors = {}
         for page_id in self.default_order():
             item = self.items[page_id]
+            if item.page.is_group:
+                continue                      # takes its first device's, below
             if item.page.kind in UNCHARTED:
                 item.set_entry_color(None)
             else:
@@ -309,6 +369,13 @@ class StackSidebar(Gtk.ScrolledWindow):
                 item.page.set_entry_color(index)
                 self.colors[page_id] = index
                 index += 1
+        group_of = self.group_of()
+        for page_id, item in self.items.items():
+            if item.page.is_group:
+                first = next((c for c in self.display_order() if group_of.get(c) == page_id), None)
+                color = self.colors.get(first)
+                item.set_entry_color(color)
+                item.page.set_entry_color(color)
         self.emit("entries-changed")
 
     def entries(self) -> list[tuple[ResourcePage, int]]:
@@ -368,188 +435,7 @@ class StackSidebar(Gtk.ScrolledWindow):
 
     # -- the user's order and minimised entries ------------------------
 
-    def saved_order(self) -> list[str]:
-        return list(self.settings.get("sidebar-order")) if self.settings else self._saved_order
-
-    def minimized_ids(self) -> set[str]:
-        return set(self.settings.get("sidebar-minimized")) if self.settings else self._minimized
-
-    def pinned_ids(self) -> list[str]:
-        return [i for i in self.default_order() if self.items[i].page.kind in PINNED]
-
-    def _rearrange(self, sort: bool = True) -> None:
-        order = reorder.arrange(self.default_order(), self.saved_order(),
-                                      self.pinned_ids())
-        self._rank = {page_id: i for i, page_id in enumerate(order)}
-        if sort:
-            self.list_box.invalidate_sort()
-            self.assign_colors()
-
-    def _save_order(self, order: list[str]) -> None:
-        rest = [i for i in order if i not in self.pinned_ids()]
-        if self.settings is not None:
-            self.settings.set("sidebar-order", rest)
-        else:
-            self._saved_order = rest
-            self._rearrange()
-
-    def move(self, page_id: str, delta: int) -> None:
-        """Move an entry ``delta`` places (negative: up)."""
-        self._save_order(reorder.move(self.order(), page_id, delta, self.pinned_ids()))
-
-    def move_before(self, page_id: str, target: str) -> None:
-        """Drop ``page_id`` where ``target`` is."""
-        self._save_order(reorder.move_before(self.order(), page_id, target,
-                                                   self.pinned_ids()))
-
-    def set_minimized(self, page_id: str, minimized: bool) -> None:
-        ids = self.minimized_ids()
-        if minimized and self.items[page_id].movable:
-            ids.add(page_id)
-        else:
-            ids.discard(page_id)
-        if self.settings is not None:
-            self.settings.set("sidebar-minimized", sorted(ids))
-        else:
-            self._minimized = ids
-            self._apply_minimized()
-
-    def hidden_fields_map(self) -> dict[str, list[str]]:
-        return dict(self.settings.get("sidebar-hidden-fields")) if self.settings \
-            else self._hidden_fields
-
-    def field_shown(self, page_id: str, field: Field) -> bool:
-        """The entry's own choice (not the global preferences)."""
-        return field not in hidden(self.hidden_fields_map(), page_id)
-
-    def set_field_shown(self, page_id: str, field: Field, shown: bool) -> None:
-        mapping = set_shown(self.hidden_fields_map(), page_id, Field(field), shown)
-        if self.settings is not None:
-            self.settings.set("sidebar-hidden-fields", mapping)
-        else:
-            self._hidden_fields = mapping
-            self._apply_fields()
-
-    def _apply_fields(self) -> None:
-        mapping = self.hidden_fields_map()
-        for page_id, item in self.items.items():
-            item.set_hidden_fields(hidden(mapping, page_id))
-
-    def reset_order(self) -> None:
-        """Back to the built-in order, nothing minimised."""
-        if self.settings is not None:
-            self.settings.set("sidebar-order", [])
-            self.settings.set("sidebar-minimized", [])
-            self.settings.set("sidebar-hidden-fields", {})
-        else:
-            self._saved_order, self._minimized, self._hidden_fields = [], set(), {}
-            self._rearrange()
-            self._apply_minimized()
-            self._apply_fields()
-
-    def _apply_minimized(self) -> None:
-        ids = self.minimized_ids()
-        for page_id, item in self.items.items():
-            item.set_minimized(page_id in ids)
-
     # -- row menu and drag and drop -------------------------------------------------------
-
-    def _install_actions(self) -> None:
-        group = Gio.SimpleActionGroup()
-        s = GLib.VariantType.new("s")
-        for name, callback in (
-                ("move-up", lambda pid: self.move(pid, -1)),
-                ("move-down", lambda pid: self.move(pid, 1)),
-                ("toggle-minimized", lambda pid: self.set_minimized(
-                    pid, pid not in self.minimized_ids()))):
-            action = Gio.SimpleAction.new(name, s)
-            action.connect("activate", lambda _a, v, cb=callback: cb(v.get_string()))
-            group.add_action(action)
-        reset = Gio.SimpleAction.new("reset", None)
-        reset.connect("activate", lambda *_: self.reset_order())
-        group.add_action(reset)
-        self.actions = group
-        self.insert_action_group("sidebar", group)
-
-    def row_menu(self, page_id: str) -> Gio.Menu:
-        """Move Up, Move Down, Minimize/Expand, Reset Order."""
-        order, pinned = self.order(), self.pinned_ids()
-        target = GLib.Variant.new_string(page_id)
-        menu, entries = Gio.Menu(), Gio.Menu()
-        for label, action, enabled in (
-                ("Move Up", "move-up", reorder.can_move(order, page_id, -1, pinned)),
-                ("Move Down", "move-down", reorder.can_move(order, page_id, 1, pinned)),
-                ("Expand" if page_id in self.minimized_ids() else "Minimize",
-                 "toggle-minimized", True)):
-            if enabled:
-                item = Gio.MenuItem.new(label, None)
-                item.set_action_and_target_value(f"sidebar.{action}", target)
-                entries.append_item(item)
-        menu.append_section(None, entries)
-        fields = Gio.Menu()
-        for field in Field:
-            fields.append(f"Show {FIELD_LABELS[field]}", f"row.show-{field.value}")
-        menu.append_section(None, fields)
-        reset = Gio.Menu()
-        reset.append("Reset Order", "sidebar.reset")
-        menu.append_section(None, reset)
-        return menu
-
-    def row_actions(self, page_id: str) -> Gio.SimpleActionGroup:
-        """The menu's *Show …* check items for one entry (``row.show-<field>``)."""
-        group = Gio.SimpleActionGroup()
-        for field in Field:
-            action = Gio.SimpleAction.new_stateful(
-                f"show-{field.value}", None,
-                GLib.Variant.new_boolean(self.field_shown(page_id, field)))
-            action.connect("change-state", lambda a, v, f=field: (
-                a.set_state(v), self.set_field_shown(page_id, f, v.get_boolean())))
-            group.add_action(action)
-        return group
-
-    def popup_menu(self, item: StackSidebarItem, x: float = -1, y: float = -1):
-        if not item.movable:
-            return None
-        popover = Gtk.PopoverMenu.new_from_model(self.row_menu(item.page_id))
-        popover.insert_action_group("row", self.row_actions(item.page_id))
-        popover.set_parent(item)
-        popover.set_has_arrow(False)
-        if x >= 0:
-            rect = Gdk.Rectangle()
-            rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
-            popover.set_pointing_to(rect)
-        popover.connect("closed", lambda p: GLib.idle_add(p.unparent))
-        if item.get_native() is not None:      # only a row on screen can pop up
-            popover.popup()
-        return popover
-
-    def _wire_row(self, item: StackSidebarItem) -> None:
-        item.minimize_button.connect("clicked", lambda _b: self.set_minimized(
-            item.page_id, not item.minimized))
-        click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
-        click.connect("pressed", lambda _g, _n, x, y: self.popup_menu(item, x, y))
-        item.add_controller(click)
-        press = Gtk.GestureLongPress(touch_only=True)
-        press.connect("pressed", lambda _g, x, y: self.popup_menu(item, x, y))
-        item.add_controller(press)
-        keys = Gtk.EventControllerKey()
-        keys.connect("key-pressed", lambda _c, key, _code, state: self._on_key(item, key, state))
-        item.add_controller(keys)
-        # Drag and drop, Alt+Up / Alt+Down (shared with the graph toolbar).
-        make_reorderable(item, item.page_id, self._on_drop, self.move,
-                         can_drag=lambda: item.movable)
-
-    def _on_key(self, item: StackSidebarItem, key: int, state) -> bool:
-        if key == Gdk.KEY_Menu or (key == Gdk.KEY_F10 and state & Gdk.ModifierType.SHIFT_MASK):
-            return self.popup_menu(item) is not None
-        return False
-
-    def _on_drop(self, page_id, target: str) -> bool:
-        if page_id not in self.items or page_id == target \
-                or not self.items[page_id].movable:
-            return False
-        self.move_before(page_id, target)
-        return True
 
     # -- style --------------------------------------------------------------------------
 
@@ -558,7 +444,8 @@ class StackSidebar(Gtk.ScrolledWindow):
             return
         item.set_style(self.settings.get("sidebar-details"),
                        self.settings.get("sidebar-description"),
-                       self.settings.get("sidebar-meter-type"))
+                       graph_type_for(item.page_id, self.graph_type_overrides(),
+                                      self.settings.get("sidebar-meter-type")))
 
     def _apply_style(self) -> None:
         for item in self.items.values():

@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-import dataclasses
+import logging
+import time
 
-from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 import gi
 
@@ -14,9 +14,17 @@ gi.require_version("Graphene", "1.0")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Graphene, Gtk, Pango  # noqa: E402
 
 from ...processes.actions import Action
-from ...core.profile import profile_of
 from ..widgets.app_icon import set_app_icon  # noqa: F401 (re-exported)
 from ..page import PageKind, ResourcePage
+from ..compat import toplevel_suspended
+from ..columns import Column, ColumnSet, compare, shown_column  # noqa: F401 (Column re-exported)
+from ..table_diff import plan_splice
+
+
+log = logging.getLogger(__name__)
+
+# A refresh slower than this is noted in the debug log, with its sizes.
+SLOW_REFRESH_S = 0.1
 
 
 class Row(GObject.Object):
@@ -36,40 +44,12 @@ class Row(GObject.Object):
         self.revision += 1
 
 
-def shown_column(spec: "Column", settings) -> "Column":
-    """``spec`` as the running profile shows it: no icon in Lightweight
-    Mode (no icon lookups or textures)."""
-    if spec.icon is not None and not profile_of(settings).app_icons:
-        return dataclasses.replace(spec, icon=None)
-    return spec
-
-
-@dataclass
-class Column:
-    id: str
-    title: str
-    value: Callable[[Any], Any]                 # data -> sortable value
-    text: Callable[[Any], str]                  # data -> cell text
-    setting: Optional[str] = None               # visibility key, None = always
-    numeric: bool = True
-    expand: bool = False
-    width: int = 110
-    icon: Optional[Callable[[Any], Any]] = None  # data -> Gio.Icon (name column)
-
-
-def _cmp(a, b) -> int:
-    if a is None:
-        return 0 if b is None else -1
-    if b is None:
-        return 1
-    return (a > b) - (a < b)
-
-
 class TablePage(ResourcePage):
     COLUMNS: list[Column] = []
     SORT_KEY = ""          # settings key prefix: "processes" or "apps"
     NOUN = "Process"       # for labels: "End Process"
     HAS_OPTIONS = False    # a Process Options button
+    clock = staticmethod(time.perf_counter)   # times a refresh (tests replace it)
 
     def __init__(self, page_id: str, kind: PageKind, title: str, icon_name: str,
                  settings, monitor, actions) -> None:
@@ -78,6 +58,8 @@ class TablePage(ResourcePage):
         self.monitor = monitor
         self.actions = actions          # processes.actions.ProcessActions
         self._acquired = False
+        self._surface = None            # the window's Gdk surface, while mapped
+        self._surface_handler = 0
         self.rows: dict[Any, Row] = {}
         self.store = Gio.ListStore(item_type=Row)
 
@@ -91,6 +73,7 @@ class TablePage(ResourcePage):
 
         self.view = Gtk.ColumnView(reorderable=True, show_column_separators=False)
         self.view.add_css_class("data-table")
+        self.column_set = ColumnSet(self.COLUMNS, self.SORT_KEY)
         self.columns: dict[str, Gtk.ColumnViewColumn] = {}
         for spec in self.COLUMNS:
             self.columns[spec.id] = self._add_column(spec)
@@ -131,10 +114,9 @@ class TablePage(ResourcePage):
         self.set_child(box)
 
         self._apply_column_settings()
-        for spec in self.COLUMNS:
-            if spec.setting:
-                self.track(settings, settings.connect_changed(
-                    spec.setting, lambda *_: self._apply_column_settings()))
+        for key in self.column_set.setting_keys():
+            self.track(settings, settings.connect_changed(
+                key, lambda *_: self._apply_column_settings()))
         self._restore_sort()
         self.view.get_sorter().connect("changed", lambda *_: self._save_sort())
         self.track(monitor, monitor.connect("updated", lambda *_: self.refresh()))
@@ -189,22 +171,17 @@ class TablePage(ResourcePage):
         # so many visible columns scroll sideways instead of squeezing names.
         col.set_fixed_width(spec.width)
         col.set_sorter(Gtk.CustomSorter.new(
-            lambda a, b, _d: _cmp(spec.value(a.data), spec.value(b.data)), None))
+            lambda a, b, _d: compare(spec.value(a.data), spec.value(b.data)), None))
         self.view.append_column(col)
         return col
 
     def _apply_column_settings(self) -> None:
-        for spec in self.COLUMNS:
-            if spec.setting:
-                self.columns[spec.id].set_visible(self.settings.get(spec.setting))
+        for column_id, shown in self.column_set.visibility(self.settings).items():
+            self.columns[column_id].set_visible(shown)
 
     def _restore_sort(self) -> None:
-        index = self.settings.get(f"{self.SORT_KEY}-sort-by")
-        ascending = self.settings.get(f"{self.SORT_KEY}-sort-by-ascending")
-        specs = self.COLUMNS
-        default = next((i for i, s in enumerate(specs) if s.id == "cpu"), 0)
-        spec = specs[index] if 0 < index < len(specs) else specs[default]
-        self.view.sort_by_column(self.columns[spec.id], Gtk.SortType.ASCENDING if ascending
+        column_id, ascending = self.column_set.sort_choice(self.settings)
+        self.view.sort_by_column(self.columns[column_id], Gtk.SortType.ASCENDING if ascending
                                  else Gtk.SortType.DESCENDING)
 
     def _save_sort(self) -> None:
@@ -212,10 +189,10 @@ class TablePage(ResourcePage):
         column = sorter.get_primary_sort_column()
         if column is None:
             return
-        index = next(i for i, s in enumerate(self.COLUMNS) if self.columns[s.id] is column)
-        self.settings.set(f"{self.SORT_KEY}-sort-by", index)
-        self.settings.set(f"{self.SORT_KEY}-sort-by-ascending",
-                          sorter.get_primary_sort_order() == Gtk.SortType.ASCENDING)
+        column_id = next(i for i, c in self.columns.items() if c is column)
+        ascending = sorter.get_primary_sort_order() == Gtk.SortType.ASCENDING
+        for key, value in self.column_set.sort_settings(column_id, ascending).items():
+            self.settings.set(key, value)
 
     # -- data -----------------------------------------------------------------------
 
@@ -226,17 +203,40 @@ class TablePage(ResourcePage):
     def refresh(self) -> None:
         self.update_rows(self.items())
 
-    # The process monitor only scans /proc while a table is on screen.
+    # The process monitor only scans /proc while a table is on screen: the
+    # page mapped, and its window not suspended (the screen locked, the
+    # window minimized or hidden), since then nothing is drawn while
+    # processes keep coming and going. Shown again, the next scan refreshes
+    # the table once.
 
     def do_map(self) -> None:
         ResourcePage.do_map(self)
-        if not self._acquired:
-            self.monitor.acquire()
-            self._acquired = True
+        native = self.get_native()
+        surface = native.get_surface() if native is not None else None
+        if surface is not None and self._surface is None:
+            self._surface = surface
+            self._surface_handler = surface.connect(
+                "notify::state", lambda s, _p: self.set_window_suspended(
+                    toplevel_suspended(s.get_state())))
+        suspended = surface is not None and hasattr(surface, "get_state") \
+            and toplevel_suspended(surface.get_state())
+        self.set_window_suspended(suspended)
 
     def do_unmap(self) -> None:
+        if self._surface is not None:
+            self._surface.disconnect(self._surface_handler)
+            self._surface = None
         self._release()
         ResourcePage.do_unmap(self)
+
+    def set_window_suspended(self, suspended: bool) -> None:
+        """Stop scanning while the window can't be seen; start again when
+        it can (only while the page is mapped)."""
+        if suspended:
+            self._release()
+        elif self.get_mapped() and not self._acquired:
+            self.monitor.acquire()
+            self._acquired = True
 
     def shutdown(self) -> None:
         self._release()
@@ -260,25 +260,51 @@ class TablePage(ResourcePage):
 
     def update_rows(self, items: dict) -> None:
         """Diff ``{key: data}`` into the store: existing rows are updated in
-        place (so selection and scrolling survive), new ones appended, gone
-        ones removed."""
+        place, and the rows that went and came are one splice
+        (``table_diff.plan_splice``), so the list and the view react once
+        per refresh rather than once per row. ``self.rows`` keeps the
+        store's order (new rows at the end). Selected rows the splice puts
+        back stay selected."""
+        started = self.clock()
+        new = []
         for key, data in items.items():
             row = self.rows.get(key)
             if row is None:
-                row = Row(key, data)
-                self.rows[key] = row
-                self.store.append(row)
+                new.append(Row(key, data))
             else:
                 row.update(data)
-        for key in [k for k in self.rows if k not in items]:
-            row = self.rows.pop(key)
-            found, pos = self.store.find(row)
-            if found:
-                self.store.remove(pos)
+        gone = {k for k in self.rows if k not in items}
+        splice = plan_splice(list(self.rows), gone, [r.key for r in new])
+        if not splice.empty:
+            selected = self._selected_rows() if splice.removed else []
+            for key in gone:
+                del self.rows[key]
+            for row in new:
+                self.rows[row.key] = row
+            self.store.splice(splice.position, splice.removed,
+                              [self.rows[k] for k in splice.added])
+            if selected:
+                self._reselect([r for r in selected if r.key not in gone])
         sorter = self.view.get_sorter()
         if sorter is not None:
             sorter.changed(Gtk.SorterChange.DIFFERENT)
         self._update_actions()
+        took = self.clock() - started
+        if took > SLOW_REFRESH_S:
+            log.debug("%s: refresh took %.0f ms (%d rows, %d gone, %d new)",
+                      self.SORT_KEY, took * 1000, len(self.rows), len(gone), len(new))
+
+    def _selected_rows(self) -> list:
+        bitset = self.selection.get_selection()
+        return [r for r in (self.sorted.get_item(bitset.get_nth(i))
+                            for i in range(bitset.get_size())) if r is not None]
+
+    def _reselect(self, rows: list) -> None:
+        """Select ``rows`` again (by their place in the sorted view)."""
+        wanted = {id(r) for r in rows}
+        for i in range(self.sorted.get_n_items()):
+            if id(self.sorted.get_item(i)) in wanted:
+                self.selection.select_item(i, False)
 
     def selected(self) -> list:
         out = []

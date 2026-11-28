@@ -15,7 +15,7 @@ and ``device-removed`` (its id) as devices come and go, and
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Callable, Optional
 
 from gi.repository import GObject
 
@@ -70,6 +70,12 @@ class DeviceSource(GObject.Object):
     def retry(self, device_id: str) -> bool:
         """Try a failed device again (its page's *Try Again*); True if tried."""
         raise NotImplementedError
+
+    def flush(self, then: Callable[[], None]) -> None:
+        """Make sure readings taken so far are in the history, then call
+        ``then``. Locally the history store is in this process and writes
+        them itself, so there's nothing to wait for."""
+        then()
 
     def reconnect(self) -> None:
         """Connect again after losing the source; nothing to do locally."""

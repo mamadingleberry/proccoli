@@ -73,7 +73,7 @@ class DependencyInjectionTest(unittest.TestCase):
 class LayeringTest(unittest.TestCase):
     DOMAIN = ("core/", "devices/", "gpu/", "processes/", "context.py")
     # Views shipped with the vendor backends (imported lazily by create_views).
-    UI_IN_DOMAIN = SPLIT.GUI_IN_DOMAIN       # packaging/split.py: one list (Idea 15)
+    UI_IN_DOMAIN = SPLIT.GUI_IN_DOMAIN       # packaging/split.py: one list
 
     def test_domain_modules_import_no_gtk_at_module_level(self):
         offenders = []
@@ -91,7 +91,7 @@ class LayeringTest(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_graphs_are_drawn_only_by_the_shared_chart_code(self):
-        """One chart family (Idea 3): no module outside ui/ draws its own
+        """One chart family: no module outside ui/ draws its own
         graph (a Gtk.DrawingArea subclass or a draw function)."""
         offenders = []
         for rel, text in modules():
@@ -104,7 +104,7 @@ class LayeringTest(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_graph_preferences_come_through_chart_settings(self):
-        """One chart family (Idea 4): only ui/chart_settings.py applies the
+        """One chart family: only ui/chart_settings.py applies the
         graph preferences to graphs (Preferences and the graph toolbar's
         items set them; domain code may read the time range to size
         histories)."""
@@ -124,8 +124,8 @@ class LayeringTest(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_vendor_views_build_only_chart_cards(self):
-        """GPU detail tabs build charts from ChartCard and ChartGrid only
-        (Idea 4), so every tab looks and behaves the same."""
+        """GPU detail tabs build charts from ChartCard and ChartGrid only,
+        so every tab looks and behaves the same."""
         widgets = re.compile(r"\b(Graph|GraphBox|GraphPane|LegendChart|DoubleGraphBox)\(")
         offenders = []
         for rel, text in modules():
@@ -310,7 +310,7 @@ class UserTextTest(unittest.TestCase):
 
 
 class InstallSplitTest(unittest.TestCase):
-    """Idea 15: proccoli installs without the GUI, so nothing on
+    """proccoli installs without the GUI, so nothing on
     its side imports the GUI side, Gtk, Gdk or Adw, at any level. The one
     way across is a GPU backend's ``create_views``, which only the window
     calls."""
@@ -374,7 +374,10 @@ class NoPlanningReferencesTest(unittest.TestCase):
     that history lives in docs/PLAN.md and docs/DESIGN.md (CLAUDE.md)."""
 
     PATTERN = re.compile(r"\bM\d{1,3}(\.\d+)?\b|\bMilestones? \d+|\bIdeas? \d+[a-z]?\b"
+                         r"|\bFeatures? \d+[a-z]?\b|\bReleases? v?\d+"
                          r"|\bBugs? \d+\b|DESIGN\.md|PLAN\.md|§ ?\d+")
+    # The same words split over a line break ("(Idea\n    5)").
+    WRAPPED = re.compile(r"\b(Milestones?|Ideas?|Features?|Bugs?)[ \t]*\n[\s#*\"']*\d+\b")
     # SVG path data ("M-2 -2 C…") isn't a milestone.
     EXEMPT = {("packaging/make-logo.py", "<path d=")}
     SUFFIXES = (".py", ".sh", ".service", ".in", ".xml", ".preset", ".desktop")
@@ -388,13 +391,28 @@ class NoPlanningReferencesTest(unittest.TestCase):
                 for name in files:
                     path = os.path.join(dirpath, name)
                     rel = os.path.relpath(path, ROOT)
-                    if not name.endswith(self.SUFFIXES) or rel == "tests/test_static.py":
+                    if not name.endswith(self.SUFFIXES):
                         continue
-                    for n, line in enumerate(read_file(path).splitlines(), 1):
+                    text = read_file(path)
+                    for match in self.WRAPPED.finditer(text):
+                        n = text.count("\n", 0, match.start()) + 1
+                        offenders.append(f"{rel}:{n}: {match.group()!r}")
+                    if rel == "tests/test_static.py":
+                        continue   # the patterns themselves name the words
+                    for n, line in enumerate(text.splitlines(), 1):
                         if self.PATTERN.search(line) and not any(
                                 rel == f and mark in line for f, mark in self.EXEMPT):
                             offenders.append(f"{rel}:{n}: {line.strip()[:90]}")
         self.assertEqual(offenders, [])
+
+    def test_the_patterns_catch_each_form(self):
+        for text in ("(Feature 26)", "Release v0.5", "Idea 19c", "Bug 8", "(M52)"):
+            self.assertRegex(text, self.PATTERN)
+        for text in ("(Idea\n        5)", "(Milestone\n51)", "Features\n# 3"):
+            self.assertRegex(text, self.WRAPPED)
+        for text in ("a feature flag", "release notes", "IdeaPad 5", "Bugs fixed:\n\n- the"):
+            self.assertNotRegex(text, self.PATTERN)
+            self.assertNotRegex(text, self.WRAPPED)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-03-an-apu-s-graphics-memory-shown.md](../../design/bugs/bug-03-an-apu-s-graphics-memory-shown.md)
 
-*Fixed in Milestone 69.*
+*Fixed in v0.5.0.*
 
 **Seen:** the Vega 6's *Video Memory* read 85 % used at idle: 0.9 of
 1 GiB. The GPU had 7.3 GiB of GTT besides, 2 % used.

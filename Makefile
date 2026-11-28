@@ -6,7 +6,7 @@ PYTHON ?= python3
 PREFIX ?= /usr/local
 DESTDIR ?=
 
-.PHONY: all run demo test ui-test install uninstall deb icons clean
+.PHONY: all run demo test ui-test screenshots install uninstall deb icons clean
 
 all:
 	@true
@@ -25,6 +25,16 @@ test:
 ui-test:
 	tests/run-headless.sh $(PYTHON) -m unittest discover -s tests -v
 	tests/run-headless.sh $(PYTHON) tests/ui/shoot.py tests/ui/out
+
+# The README's screenshots, from the made-up demo devices only (never this
+# machine's own hardware or processes): shoot every scene, keep six.
+README_SHOTS = wide-overview demo-gpu-details offline-dark demo-gpu-processes \
+	wide-sidebar-icons palette-solarized-dark
+
+screenshots:
+	tests/run-headless.sh $(PYTHON) tests/ui/shoot.py tests/ui/out
+	mkdir -p docs/screenshots
+	for shot in $(README_SHOTS); do cp tests/ui/out/$$shot.png docs/screenshots/; done
 
 install:
 	PREFIX="$(PREFIX)" DESTDIR="$(DESTDIR)" packaging/install.sh

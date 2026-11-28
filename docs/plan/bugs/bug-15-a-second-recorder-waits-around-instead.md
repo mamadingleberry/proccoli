@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-15-a-second-recorder-waits-instead-of.md](../../design/bugs/bug-15-a-second-recorder-waits-instead-of.md)
 
-*Fixed in Milestone 86.* As built: a recorder that finds the name taken
+*Fixed in v0.6.0.* As built: a recorder that finds the name taken
 logs the owner's PID and exits with status 3 (`EXIT_SUPERSEDED`), not
 0 as proposed: the unit counts 3 as success and doesn't restart on it,
 which `Restart=always` (Bug 16) needs, or a unit started beside a stray
@@ -17,7 +17,7 @@ recorder. That copy found the history and the D-Bus name taken, logged
 another collector", and stayed: reading every device a second time, for
 nothing. Bug 12's stray was the same kind.
 
-**Cause:** the recorder still behaves as in the time before Idea 19,
+**Cause:** the recorder still behaves as in the time before Feature 19,
 when the window could be the writer and a recorder had reason to stand
 by. Now systemd runs exactly one per user and restarts it; a second has
 no job.

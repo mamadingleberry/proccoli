@@ -358,6 +358,83 @@ class ProcessesPageTest(unittest.TestCase):
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
+class RowChurnTest(unittest.TestCase):
+    """Many processes coming and going: one change to the list per
+    refresh, not one per row (each one made the view rebind every visible
+    cell, seconds per refresh with a container restarting all night)."""
+
+    def setUp(self):
+        from test_top import proc
+        self.proc = proc
+        _root, settings, monitor = setup_procs(self)
+        self.page = ProcessesPage(monitor, settings, ProcessActions(FakeSystem()),
+                                  FakeSystem(), cpu_count=4)
+        self.live = {pid: proc(pid, f"p{pid}", cpu=pid % 97) for pid in range(1000, 3000)}
+        self.page.update_rows(dict(self.live))
+        self.changes = []
+        self.page.store.connect("items-changed", lambda *a: self.changes.append(a[1:]))
+
+    def churn(self, gone, new):
+        for pid in gone:
+            del self.live[pid]
+        for pid in new:
+            self.live[pid] = self.proc(pid, f"p{pid}", cpu=pid % 97)
+        self.page.update_rows(dict(self.live))
+
+    def test_hundreds_of_rows_replaced_are_one_change(self):
+        self.churn(range(1000, 3000, 4), range(5000, 5500))     # 500 scattered, 500 new
+        self.assertEqual(len(self.changes), 1)
+        self.assertEqual(self.page.store.get_n_items(), 2000)
+        self.assertEqual(len(self.page.rows), 2000)
+        keys = [self.page.store.get_item(i).key for i in range(2000)]
+        self.assertEqual(keys, list(self.page.rows))             # the dict mirrors the store
+
+    def test_only_new_rows_is_one_append(self):
+        self.churn([], [9000, 9001])
+        self.assertEqual(self.changes, [(2000, 0, 2)])
+
+    def test_nothing_changed_is_no_change(self):
+        self.churn([], [])
+        self.assertEqual(self.changes, [])
+
+    def test_a_suspended_window_stops_the_scans_and_showing_it_starts_them(self):
+        page = self.page
+        win = Gtk.Window(child=page)
+        self.addCleanup(win.destroy)
+        win.present()
+        self.assertTrue(pump(lambda: page.get_mapped()))
+        users = page.monitor.users
+        self.assertTrue(page._acquired)
+        page.set_window_suspended(True)                  # the screen locked
+        self.assertEqual(page.monitor.users, users - 1)
+        page.set_window_suspended(True)
+        self.assertEqual(page.monitor.users, users - 1)  # once
+        page.set_window_suspended(False)                 # unlocked
+        self.assertEqual(page.monitor.users, users)
+
+    def test_a_slow_refresh_is_noted_in_the_debug_log(self):
+        ticks = iter([0.0, 0.25])
+        self.page.clock = lambda: next(ticks)
+        with self.assertLogs("proccoli.ui.pages.table", "DEBUG") as logs:
+            self.churn([1000], [7000])
+        self.assertIn("refresh took 250 ms (2000 rows, 1 gone, 1 new)", logs.output[0])
+
+    def test_an_unmapped_page_isnt_started_by_its_window_showing(self):
+        users = self.page.monitor.users
+        self.page.set_window_suspended(False)
+        self.assertEqual(self.page.monitor.users, users)
+
+    def test_a_selected_row_stays_selected_when_rows_before_it_go(self):
+        page = self.page
+        target = page.rows[2500]
+        position = next(i for i in range(page.sorted.get_n_items())
+                        if page.sorted.get_item(i) is target)
+        page.selection.select_item(position, True)
+        self.churn(range(1000, 1100), range(6000, 6050))
+        self.assertEqual([r.pid for r in page.selected()], [2500])
+
+
+@unittest.skipUnless(HAVE_DISPLAY, "no display")
 class AppsPageTest(unittest.TestCase):
     def test_grouped_rows_and_actions(self):
         _, settings, monitor = setup_procs(self)

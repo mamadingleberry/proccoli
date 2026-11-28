@@ -3,7 +3,7 @@
 Plan: [plan/bugs/bug-14-after-restart-now-the-window-is.md](../../plan/bugs/bug-14-after-restart-now-the-window-is.md)
 
 
-*[PLAN.md, Bug 14](../../plan/bugs/bug-14-after-restart-now-the-window-is.md). Fixed in M84.* *Restart Now* replaced the process with
+*[PLAN.md, Bug 14](../../plan/bugs/bug-14-after-restart-now-the-window-is.md). Fixed in v0.5.0.* *Restart Now* replaced the process with
 `execv(python3, [python3, /usr/bin/proccoli, …])`; the kernel names a
 process after the program it runs, so the window showed as `python3`
 in process lists (with Proccoli's icon, from its app group). It now runs

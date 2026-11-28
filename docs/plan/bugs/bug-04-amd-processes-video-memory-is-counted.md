@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-04-amd-processes-video-memory-counted-twice.md](../../design/bugs/bug-04-amd-processes-video-memory-counted-twice.md)
 
-*Fixed in Milestone 69.*
+*Fixed in v0.5.0.*
 
 **Seen:** a process with `drm-total-vram: 415160 KiB` showed about
 802 MB of video memory.

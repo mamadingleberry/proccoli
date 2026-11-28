@@ -2,17 +2,17 @@
 
 Design note: [design/bugs/bug-11-lightweight-mode-s-processor-and-memory.md](../../design/bugs/bug-11-lightweight-mode-s-processor-and-memory.md)
 
-*Fixed in Milestone 81.*
+*Fixed in v0.5.0.*
 
 **Seen:** "why are the Processor and Memory tabs blank in lightweight
 mode?"
 
-**Cause:** since Idea 19 the window opens before the collector's devices
+**Cause:** since Feature 19 the window opens before the collector's devices
 arrive, so the Processor and Memory start as placeholder pages. When a
 device arrived, the window registered its lazy page and then removed the
 placeholder, and removing a page forgets its lazy entry: a visit never
 built the real page, and the empty stand-in stayed. Only devices with
-placeholders were affected; before Idea 19 they existed when the window
+placeholders were affected; before Feature 19 they existed when the window
 opened.
 
 **Fix:** remove the placeholder (or error page) first, then register the

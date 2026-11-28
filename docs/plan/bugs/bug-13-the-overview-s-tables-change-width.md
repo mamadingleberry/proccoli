@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-13-the-overview-s-tables-changed-width.md](../../design/bugs/bug-13-the-overview-s-tables-changed-width.md)
 
-*Fixed in Milestone 82.*
+*Fixed in v0.5.0.*
 
 **Seen:** "why do the table widths shift back and forth in size on the
 Overview page? Those should be static … likely something to do with

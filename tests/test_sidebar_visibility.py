@@ -1,7 +1,6 @@
 """Hiding the sidebar at any width; the main menu (the logo)
 stays top left;
-the sidebar's Full / Icons Only / Hidden modes in the main menu (Milestones
-52 and 54)."""
+the sidebar's Full / Icons Only / Hidden modes in the main menu."""
 
 import os
 import sys

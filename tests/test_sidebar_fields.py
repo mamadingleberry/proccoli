@@ -35,5 +35,23 @@ class FieldsTest(unittest.TestCase):
         self.assertFalse(visible(Field.NAME, {Field.NAME}))
 
 
+class GraphTypeTest(unittest.TestCase):
+    def test_an_entrys_own_choice_wins(self):
+        from proccoli.ui.sidebar_fields import graph_type_for
+        overrides = {"sda": "progress-bar"}
+        self.assertEqual(graph_type_for("sda", overrides, "graph"), "progress-bar")
+        self.assertEqual(graph_type_for("sdb", overrides, "graph"), "graph")
+
+    def test_an_unknown_choice_follows_the_default(self):
+        from proccoli.ui.sidebar_fields import graph_type_for
+        self.assertEqual(graph_type_for("sda", {"sda": "pie"}, "graph"), "graph")
+
+    def test_only_entries_that_differ_are_kept(self):
+        from proccoli.ui.sidebar_fields import set_graph_type
+        self.assertEqual(set_graph_type({}, "sda", "graph"), {"sda": "graph"})
+        self.assertEqual(set_graph_type({"sda": "graph"}, "sda", "default"), {})
+        self.assertEqual(set_graph_type({"sdb": "graph"}, "sda", "default"), {"sdb": "graph"})
+
+
 if __name__ == "__main__":
     unittest.main()

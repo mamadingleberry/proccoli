@@ -295,6 +295,24 @@ class RemoteDeviceManager(DeviceSource):
                              TIMEOUT_MS, None, None)
         return True
 
+    def flush(self, then: Callable[[], None]) -> None:
+        """Ask the collector to write out its buffered readings, and call
+        ``then`` when it has (or at once, when it's away or doesn't know
+        how), so the window's history refill includes the last seconds."""
+        if not self.connected or self.connection is None or self.connection.is_closed():
+            then()
+            return
+
+        def done(conn, result) -> None:
+            try:
+                conn.call_finish(result)
+            except GLib.Error as exc:            # an older collector: refill anyway
+                log.debug("collector Flush: %s", exc.message)
+            then()
+
+        self.connection.call(BUS_NAME, OBJECT_PATH, INTERFACE, "Flush", None, None,
+                             NO_START, TIMEOUT_MS, None, done)
+
     # -- lifecycle ---------------------------------------------------------------------
 
     def start(self, ticker=None) -> None:

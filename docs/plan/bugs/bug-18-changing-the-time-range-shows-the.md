@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-18-a-time-range-change-shows-the.md](../../design/bugs/bug-18-a-time-range-change-shows-the.md)
 
-*Open.*
+*Fixed in v0.6.0.* Also the *Bugs that Require Human Input* item "Graphs include a small area of 'Proccoli wasn't running' whenever the Time Range is adjusted": the same symptom.
 
 **Seen:** "whenever I adjust the time range to 30s, it restarts new blank
 section where it's 'Proccoli wasn't running'. Seems to only happens
@@ -19,7 +19,7 @@ after it, so it looks like a restart. Every range does it; on long ones
 10 s is too thin to see. Opening a window doesn't, since Bug 9's fix
 (the recorder commits on `Subscribe`).
 
-**Fix (proposed):**
+**Fix:**
 
 1. **Ask the recorder to commit before refilling:** a `Flush` method on
    the D-Bus interface (what `Subscribe` already does first); the
@@ -28,11 +28,16 @@ after it, so it looks like a restart. Every range does it; on long ones
 2. **The open run isn't "not running":** while the window receives
    readings, slots after the newest run's recorded end are gaps at most,
    never offline.
-3. **Keep what's already on screen:** points the window received live
-   since the last commit are put back after the refill when the file
-   doesn't have them yet.
+3. *(Superseded by 1.)* Keeping the window's live points through the
+   refill isn't needed once the recorder writes them out first.
 
 | Step | Create / change | Test |
 |---|---|---|
-| B18.1 | `metrics_service.py`: `Flush()` (commits, returns the newest time written); `devices/remote.py`: `RemoteDeviceManager.flush(callback)` with `NO_AUTO_START` | Unit, on a private bus: rows buffered before `Flush` are readable after it |
-| B18.2 | `core/history_store.py`: a range change flushes, then refills; `offline_slots` takes "running since" for the open run | Unit: after a range change with uncommitted readings, no slot in the last 10 s is offline; UI: *30 Seconds* after *1 Minute* has no shaded strip |
+| B18.1 | `metrics_service.py`: `Flush()` (commits); `devices/source.py`: `DeviceSource.flush(then)` (local: at once); `devices/remote.py`: `RemoteDeviceManager.flush(then)` calls `Flush` with `NO_AUTO_START`, then `then` (also on an error or when away) | `test_metrics_service`: rows buffered before `Flush` are readable after it; `test_remote`: `flush` waits for the answer, and calls back at once without a collector |
+| B18.2 | `core/history_store.py`: `backfill_all` asks `devices.flush`, then refills; `open_run()` extends the newest session to now while its end is within the commit interval | `OpenRunTest`; `RangeChangeWhileRecordingTest`: a separate recorder with 5 s unwritten, *30 Seconds*: no offline slot (fails without `open_run`), and the refill waits for the flush and shows the flushed seconds (fails without the flush) |
+
+**Found while doing it:** the first regression test passed without the
+fix: its "recorder" store also drew graphs, so it wrote out its own
+buffer when the range changed. The real recorder draws none
+(`graphs=False`); with that, the test fails without the fix and passes
+with it.

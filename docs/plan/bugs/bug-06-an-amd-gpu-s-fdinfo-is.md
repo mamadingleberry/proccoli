@@ -2,14 +2,14 @@
 
 Design note: [design/bugs/bug-06-an-amd-gpu-s-fdinfo-was.md](../../design/bugs/bug-06-an-amd-gpu-s-fdinfo-was.md)
 
-*Fixed in Milestone 75.*
+*Fixed in v0.5.0.*
 
 **Seen:** profiling `proccoli-metrics` showed `FdinfoReader.read` called
 twice per update for the Ryzen's Vega 6, about half of each update's
 time. The window did the same.
 
 **Cause:** the GPU's summary backend (`GenericDrmBackend`) and its AMD
-Details backend (`AmdgpuBackend`, M70) each built their own
+Details backend (`AmdgpuBackend`, v0.5.0) each built their own
 `FdinfoReader` for the same GPU, so every process's DRM `fdinfo` files
 were read and parsed twice.
 

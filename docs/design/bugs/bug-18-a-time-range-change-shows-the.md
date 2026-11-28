@@ -3,7 +3,7 @@
 Plan: [plan/bugs/bug-18-changing-the-time-range-shows-the.md](../../plan/bugs/bug-18-changing-the-time-range-shows-the.md)
 
 
-*[PLAN.md, Bug 18](../../plan/bugs/bug-18-changing-the-time-range-shows-the.md). Open.*
+*[PLAN.md, Bug 18](../../plan/bugs/bug-18-changing-the-time-range-shows-the.md). Fixed.*
 
 ```mermaid
 sequenceDiagram
@@ -16,9 +16,16 @@ sequenceDiagram
     W->>H: refill through now
     H-->>W: rows up to the last commit; the run "ends" there
     Note over W: last 0–10 s: no data, shaded "not running"
-    W->>R: (proposed) Flush, then refill
+    W->>R: Flush()
+    R->>H: commit
+    R-->>W: done
+    W->>H: refill through now
 ```
 
-Proposed: the window asks the recorder to commit (`Flush`) before it
-refills; slots after the open run's last commit count as running; live
-points not yet in the file are kept.
+The fix: on a range change the window's `HistoryStore.backfill_all` calls
+`devices.flush(then)`. A `RemoteDeviceManager` asks the recorder's
+`Flush()` (which commits) and refills when it answers; a local
+`DeviceManager` refills at once, since its own store just committed. As a
+second guard, `open_run()` treats the newest session as running until now
+while its recorded end is within the commit interval, so seconds not yet
+written are a gap at most, never "not running".

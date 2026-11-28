@@ -227,7 +227,7 @@ class ContextTest(unittest.TestCase):
         self.assertIsInstance(ctx.pci, pciids.OnDemandPciIds)
 
     def test_tables_show_no_icons(self):
-        from proccoli.ui.pages.table import Column, shown_column
+        from proccoli.ui.columns import Column, shown_column
         spec = Column("name", "Name", value=str, text=str, icon=lambda d: None)
         light = profile_settings(Settings.for_tests(), Profile.lightweight())
         self.assertIsNone(shown_column(spec, light).icon)

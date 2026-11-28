@@ -72,5 +72,39 @@ class WhichGraphsTest(unittest.TestCase):
         self.assertFalse(is_percent_graph([], 100.0))
 
 
+class AxesPolicyTest(unittest.TestCase):
+    """What pane and sidebar charts do with *Show Graph Axes* and grids."""
+
+    def test_pane_charts_need_a_scale_for_axes(self):
+        from proccoli.ui.axes import PaneAxes
+        axes = PaneAxes()
+        self.assertTrue(axes.has_axes(True, percent=True, formatted=False))
+        self.assertTrue(axes.has_axes(True, percent=False, formatted=True))
+        self.assertFalse(axes.has_axes(True, percent=False, formatted=False))
+        self.assertFalse(axes.has_axes(False, percent=True, formatted=True))
+        self.assertTrue(axes.grid)
+
+    def test_sidebar_charts_show_the_time_axis_on_every_graph(self):
+        from proccoli.ui.axes import SidebarAxes
+        axes = SidebarAxes()
+        self.assertTrue(axes.has_axes(True, percent=False, formatted=False))   # network
+        self.assertFalse(axes.has_axes(False, percent=True, formatted=False))
+        self.assertFalse(axes.grid)
+
+    def test_sidebar_value_axis_is_just_its_ends(self):
+        from proccoli.ui.axes import SidebarAxes
+        axes = SidebarAxes()
+        self.assertEqual(axes.ticks(True, None, 100.0, 40, 8), [(0.0, "0 %"), (1.0, "100 %")])
+        self.assertEqual(axes.ticks(False, lambda v: f"{v:g} W", 30.0, 40, 8),
+                         [(0.0, "0 W"), (1.0, "30 W")])
+        self.assertEqual(axes.ticks(False, None, 30.0, 40, 8), [])
+
+    def test_pane_value_axis_has_as_many_ticks_as_fit(self):
+        from proccoli.ui.axes import PaneAxes
+        ticks = PaneAxes().ticks(False, lambda v: f"{v:g}", 40.0, 200, 10)
+        self.assertGreater(len(ticks), 2)
+        self.assertEqual(ticks[0][0], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

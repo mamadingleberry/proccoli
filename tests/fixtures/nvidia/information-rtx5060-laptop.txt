@@ -1,0 +1,11 @@
+Model: 		 NVIDIA GeForce RTX 5060 Laptop GPU
+IRQ:   		 16
+GPU UUID: 	 GPU-00000000-0000-0000-0000-000000000000
+Video BIOS: 	 98.06.34.00.e0
+Bus Type: 	 PCIe
+DMA Size: 	 52 bits
+DMA Mask: 	 0xfffffffffffff
+Bus Location: 	 0000:02:00.0
+Device Minor: 	 0
+GPU Firmware: 	 580.178.04
+GPU Excluded:	 No

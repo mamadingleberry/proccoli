@@ -72,8 +72,8 @@ class AppsPage(TablePage):
         return [("switch-to", self.switch_to)]
 
     def switchable(self, selected: list) -> bool:
-        """One app, a real one. *Switch To* is offered for every app (Idea
-        5); one Proccoli can't reach says how to set up window switching."""
+        """One app, a real one. *Switch To* is offered for every app;
+        one Proccoli can't reach says how to set up window switching."""
         return len(selected) == 1 and selected[0].id != SYSTEM_ID
 
     def update_extra_actions(self, selected: list) -> None:

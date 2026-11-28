@@ -9,7 +9,7 @@ APP_NAME = "Proccoli"
 # The two programs: the recorder (no display) and the window.
 COLLECTOR = "proccoli"
 WINDOW = "proccoli-gui"
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 # Our own symbolic icons (data/icons): Adwaita has none for these.
 PROCESSOR_ICON = f"{APP_ID}-processor-symbolic"

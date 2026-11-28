@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-10-the-lightweight-switch-showed-the-setting.md](../../design/bugs/bug-10-the-lightweight-switch-showed-the-setting.md)
 
-*Fixed in Milestone 81.*
+*Fixed in v0.5.0.*
 
 **Seen:** "the Preferences menu's slidebar for lightweight mode should be
 set to the current state (i.e. turned on if currently in lightweight

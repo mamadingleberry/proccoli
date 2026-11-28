@@ -149,7 +149,7 @@ tested with fixtures):
 | Battery | `/sys/class/power_supply/*` with `type=Battery` | `capacity`, `power_now` or `current_now × voltage_now` | `energy_full_design`, `cycle_count`, `technology`, `manufacturer`, `model_name` |
 | GPU | see [§7](07-the-gpu-carve-out.md) | see [§7](07-the-gpu-carve-out.md) | see [§7](07-the-gpu-carve-out.md) |
 
-**A device that can't be set up (M55)** still appears. If its
+**A device that can't be set up (v0.2.0)** still appears. If its
 `Discoverer.create_monitor()` or the monitor's `start()` raises,
 `DeviceManager._build` logs it and keeps a `FailedMonitor` in its place:
 a monitor that records nothing and carries `message` (in words) and

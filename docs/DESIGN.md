@@ -7,9 +7,15 @@ order in which to build it.
 
 **How these docs are kept:** this page is an index. Each section is its
 own file under `design/` (a long section is split by subsection:
-`design/09.2-*.md`), and each idea's and bug's design note is
-`design/ideas/idea-19-*.md` or `design/bugs/bug-22-*.md`, numbered like
+`design/09.2-*.md`), and each feature's and bug's design note is
+`design/features/feature-19-*.md` or `design/bugs/bug-22-*.md`, numbered like
 the plan. Read this page, then only the sections a change touches.
+
+**Start here:** [DESIGN_UML.md](design/DESIGN_UML.md) (the programs,
+packages and main classes) and [DESIGN_DB.md](design/DESIGN_DB.md) (the
+history database). Both are always kept current: a change that alters a
+program, package, main class, table or retention rule updates them in the
+same change.
 
 Diagrams use [Mermaid](https://mermaid.js.org/), which GitHub renders.
 
@@ -28,7 +34,7 @@ Diagrams use [Mermaid](https://mermaid.js.org/), which GitHub renders.
   - [7.2 The controller](design/07.2-the-controller.md)
   - [7.3 The page](design/07.3-the-page.md)
   - [7.4 Backend selection](design/07.4-backend-selection.md)
-  - [7.5 AMD (M70)](design/07.5-amd.md)
+  - [7.5 AMD (v0.5.0)](design/07.5-amd.md)
 - [8. Processes and Apps](design/08-processes-and-apps.md)
 - [9. UI layer](design/09-ui-layer.md)
   - [9.1 Widgets](design/09.1-widgets.md)
@@ -36,58 +42,59 @@ Diagrams use [Mermaid](https://mermaid.js.org/), which GitHub renders.
   - [9.3 Appearance](design/09.3-appearance.md)
   - [9.4 Optional authentication at launch](design/09.4-optional-authentication-at-launch.md)
   - [9.5 Sidebar preferences](design/09.5-sidebar-preferences.md)
-  - [9.6 Overview page (M39, M41, M50, M51; Lightweight Mode M71)](design/09.6-overview-page.md)
-  - [9.7 Error pages (M55)](design/09.7-error-pages.md)
+  - [9.6 Overview page (v0.1.0; Lightweight Mode Feature 8)](design/09.6-overview-page.md)
+  - [9.7 Error pages (v0.2.0)](design/09.7-error-pages.md)
 - [10. Runtime flow](design/10-runtime-flow.md)
 - [11. Cross-cutting concerns](design/11-cross-cutting-concerns.md)
 - [12. Open decisions](design/12-open-decisions.md)
+- [13. Features, Bugs and Releases](design/13-features-bugs-and-releases.md)
 
-## Ideas' design notes
+## Features' design notes
 
-Designed but not built, or the design record of an idea that was; the plan side (steps, status) is linked from each.
+Designed but not built, or the design record of a feature that was; the plan side (steps, status) is linked from each.
 
-- [Idea 1: Lightweight mode (minimal memory)](design/ideas/idea-01-lightweight-mode.md)
-- [Idea 2: Metrics history in a SQLite database](design/ideas/idea-02-metrics-history-in-a-sqlite-database.md)
-- [Idea 3: Intel Details graphs on the shared chart code](design/ideas/idea-03-intel-details-graphs-on-the-shared.md)
-- [Idea 4: One chart family everywhere](design/ideas/idea-04-one-chart-family-everywhere.md)
-- [Idea 5: Switch To any running app](design/ideas/idea-05-switch-to-any-running-app.md)
-- [Idea 7: Export any part of the history](design/ideas/idea-07-export-any-part-of-the-history.md)
-- [Idea 8: Lightweight Mode: small charts on the Overview, a minimal sidebar](design/ideas/idea-08-lightweight-mode-small-charts-on-the.md)
-- [Idea 9: Custom graph time range](design/ideas/idea-09-custom-graph-time-range.md)
-- [Idea 10: Shade the time Proccoli wasn't running](design/ideas/idea-10-shade-the-time-proccoli-wasn-t.md)
-- [Idea 11: A shorter, friendlier README](design/ideas/idea-11-a-shorter-friendlier-readme.md)
-- [Idea 12: A graph toolbar](design/ideas/idea-12-a-graph-toolbar.md)
-- [Idea 13: Record the history in the background](design/ideas/idea-13-record-the-history-in-the-background.md)
-- [Idea 14: Exported statistics describe their devices](design/ideas/idea-14-exported-statistics-describe-their-devices.md)
-- [Idea 15: Separate installs: `proccoli` and `proccoli-gui`](design/ideas/idea-15-separate-installs-proccoli-and-proccoli-gui.md)
-- [Idea 16: A Web GUI, hosted locally (brainstorm)](design/ideas/idea-16-a-web-gui-hosted-locally.md)
-- [Idea 17: The Web GUI for machines on the local network (brainstorm)](design/ideas/idea-17-the-web-gui-for-machines-on.md)
-- [Idea 18: Overview pages for groups of devices](design/ideas/idea-18-overview-pages-for-groups-of-devices.md)
-- [Idea 19: The window reads nothing: `proccoli` serves every reading](design/ideas/idea-19-the-window-reads-nothing-proccoli-serves.md)
-- [Idea 20: Preferences in named sections](design/ideas/idea-20-preferences-in-named-sections.md)
-- [Idea 21: Refactoring candidates](design/ideas/idea-21-refactoring-candidates.md)
-- [Idea 22: Recording from boot (lingering)](design/ideas/idea-22-recording-from-boot.md)
-- [Idea 23: Icons Only on narrow windows](design/ideas/idea-23-icons-only-on-narrow-windows.md)
-- [Idea 25: A recorder for the whole machine](design/ideas/idea-25-a-recorder-for-the-whole-machine.md)
+- [Feature 1: Lightweight mode (minimal memory)](design/features/feature-01-lightweight-mode.md)
+- [Feature 2: Metrics history in a SQLite database](design/features/feature-02-metrics-history-in-a-sqlite-database.md)
+- [Feature 3: Intel Details graphs on the shared chart code](design/features/feature-03-intel-details-graphs-on-the-shared.md)
+- [Feature 4: One chart family everywhere](design/features/feature-04-one-chart-family-everywhere.md)
+- [Feature 5: Switch To any running app](design/features/feature-05-switch-to-any-running-app.md)
+- [Feature 7: Export any part of the history](design/features/feature-07-export-any-part-of-the-history.md)
+- [Feature 8: Lightweight Mode: small charts on the Overview, a minimal sidebar](design/features/feature-08-lightweight-mode-small-charts-on-the.md)
+- [Feature 9: Custom graph time range](design/features/feature-09-custom-graph-time-range.md)
+- [Feature 10: Shade the time Proccoli wasn't running](design/features/feature-10-shade-the-time-proccoli-wasn-t.md)
+- [Feature 11: A shorter, friendlier README](design/features/feature-11-a-shorter-friendlier-readme.md)
+- [Feature 12: A graph toolbar](design/features/feature-12-a-graph-toolbar.md)
+- [Feature 13: Record the history in the background](design/features/feature-13-record-the-history-in-the-background.md)
+- [Feature 14: Exported statistics describe their devices](design/features/feature-14-exported-statistics-describe-their-devices.md)
+- [Feature 15: Separate installs: `proccoli` and `proccoli-gui`](design/features/feature-15-separate-installs-proccoli-and-proccoli-gui.md)
+- [Feature 16: A Web GUI, hosted locally (brainstorm)](design/features/feature-16-a-web-gui-hosted-locally.md)
+- [Feature 17: The Web GUI for machines on the local network (brainstorm)](design/features/feature-17-the-web-gui-for-machines-on.md)
+- [Feature 18: Overview pages for groups of devices](design/features/feature-18-overview-pages-for-groups-of-devices.md)
+- [Feature 19: The window reads nothing: `proccoli` serves every reading](design/features/feature-19-the-window-reads-nothing-proccoli-serves.md)
+- [Feature 20: Preferences in named sections](design/features/feature-20-preferences-in-named-sections.md)
+- [Feature 21: Refactoring candidates](design/features/feature-21-refactoring-candidates.md)
+- [Feature 22: Recording from boot (lingering)](design/features/feature-22-recording-from-boot.md)
+- [Feature 23: Icons Only on narrow windows](design/features/feature-23-icons-only-on-narrow-windows.md)
+- [Feature 25: A recorder for the whole machine](design/features/feature-25-a-recorder-for-the-whole-machine.md)
+- [Feature 26: Releases and Features instead of Milestones and Ideas](design/features/feature-26-releases-and-features.md)
+- [Feature 27: Always-current UML and database design docs](design/features/feature-27-uml-and-database-design-docs.md)
+- [Feature 28: VOICE.md and AUDIENCE.md](design/features/feature-28-voice-and-audience.md)
+- [Feature 29: General engineering skills under a Proccoli skill](design/features/feature-29-engineering-skills.md)
+- [Feature 30: Network sidebar graphs scaled to the link speed](design/features/feature-30-network-graphs-scaled-to-link-speed.md)
+- [Feature 31: Preferences' Sidebar Style lists every mode](design/features/feature-31-sidebar-style-in-preferences-lists-every-mode.md)
+- [Feature 32: Graph Type, per sidebar entry](design/features/feature-32-graph-type-per-sidebar-entry.md)
+- [Feature 33: A page's graphs sized as a group](design/features/feature-33-pane-graphs-sized-as-a-group.md)
+- [Feature 34: F2 for Preferences, F1 for Keyboard Shortcuts](design/features/feature-34-f1-and-f2-shortcuts.md)
+- [Feature 35: Optional sidebar groups](design/features/feature-35-optional-sidebar-groups.md)
+- [Feature 36: Meters on collapsed groups](design/features/feature-36-meters-on-collapsed-groups.md)
+- [Feature 37: The `software-prototype` skill](design/features/feature-37-software-prototype-skill.md)
+- [Feature 38: Cheaper test runs](design/features/feature-38-cheaper-test-runs.md)
 
-### Ideas that Require Human Input
+### Features that Require Human Input
 
-NOTE: Keep this subsection but move Ideas to a proper index after human input has been given to clarify the idea.
+NOTE: Keep this subsection but move Features to a proper index after human input has been given to clarify the feature.
 
-- We no longer really need Milestones at the grain they're currently at; we'll stick with Ideas/Features and rename Milestones to Releases. We need to update DESIGN.md to call out a Release is a set of Ideas and that the LLM must collect the list of Ideas/Bugs addressed for each Release when the human asks for a new release. Tags, Releases, etc must be updated to include a general description and a list of implemented Ideas (name them Features instead and rename all Ideas to Fixtures in this entire repo). I need the tags and release notes for v0.1.0, v0.2.0, and v0.3.0
-- There should always be high-level UML and Database design documents that are referenced and kept updated in `design/` named `DESIGN_UML.md` and `DESIGN_DB.md`. We need to update the DESIGN.md to call this out.
-- I need to create a Claude VOICE.md or whatever it is, along with AUDIENCE.md
-- I need to breakdown the `.claude/skills/proccoli-change` skill to fundamental software engineering skills. That skill needs to remain (rename it to `proccoli-engineer`) but it should be specific to the Proccoli project while referencing the newly created skills. The new skills:
-  - `software-project` skill that has high-level software engineering basic standards and references the following, noting that each must be considered whenever coding is changed. This must include a section on standards and steps for committing, cutting, and releasing a new release/tag to Github (including path links to where to upgrade versions (in code as well as documentation)). How the README should be structured with basic information about the application, disclaimer about Claude usage, SECURITY.md, LICENSE.md, user install guide, basic usage and nothing related to how the project is structured. Must also indicate that both `CLAUDE.md` and `./claude/skills/` must be setup. Minimun requirements (OS, Compute, Memory, etc). `CLAUDE.md` must include `VOICE.md` and `AUDIENCE.md`
-    - `software-design` skill that encapsulates the fundamentals of how we're structuring our project documentation (refer to `docs/`), UML standards, database standards (OLAP vs. OLTP standard, file types such as CSV Avro Parquet etc, DuckDB and other dbs, schema structure for different situations, security and permissions, system storage), etc and it must be straight to the point and not verbose. When a service or class should be decoupled/more cohesive, when to do a light refactor (each code change, if useful and not too heavy a lift to refactor) vs when to do a heavy refactor (e.g., numerous different graphs that don't use a shared parent class/library/design/etc, decoupling the backend monitoring service from the user-friendly GUI (a decoupling of responsibilities)). How we're tracking Features (formerly known as 'Ideas'), Releases (formerly known as 'Milestones'), and Bugs (still good ol' bugs). A standard for Claude to (1) Summarize the changes/fixes/etc along with paths to where documentation was output for the prompt (2) A simple test report and (3) Ask the user if they'd like to (a) do a bug fix/feature and a list of each that the user can choose from and/or (b) create/update any documentation (no need to provide a list) or Claude skills. Include a section on logging standards, UTC standards for all datetime/timestamp/etc data, timezone considerations if applicable, other data standards. Memory and compute considerations. 
-    - `software-testing` skill that goes over testing standards, unit and intergration test needs
-    - `application-design` skill that encapsulates the needs of designing the high-level structure of the software (e.g., systemd monitoring process (running in the background collecting data) vs. user frontend (no need to collect most data and isn't as useful of having historic data as well as current data - can open up more possibilities for how the data is used)). Includes considerations for color blindness and other usability considerations. Consider i18n and other standards, though the user must explicitly ask for i18n and other non-essential standards to be applied. Consider how the application flows with the user in mind while maintaining an efficient application.
-- Graph axes for Eth/Wifi to keep sidebar view consistent
-- Preferences Sidebar Style menu MUST show all applicable options (ie. the same set as those found in the burger main menu)
-- Preferences Sidebar option 'Meter Type' must be renamed to 'Graph Type'
-- Sidebar 'Graph Type' must be configurable at the individual Entry grain (ie. one graph type config per sidebar entry)
-- Pane graph groups to maintain/help with sizing/auto-resizing
-- Make the Preferences and 'Keyboard Shortcuts' menu entries' shortcuts simpler, such as 'F2' or other single or at most double-key shortcuts for these menus 
+*None waiting.* The last ones were settled as Features 26–34.
 
 ## Bugs' design notes
 
@@ -110,16 +117,15 @@ The cause and the fix design of each bug; the plan side is linked from each.
 - [Bug 15: A second recorder waits instead of leaving](design/bugs/bug-15-a-second-recorder-waits-instead-of.md) (fixed)
 - [Bug 16: A recorder stopped by a signal isn't started again](design/bugs/bug-16-a-recorder-stopped-by-a-signal.md) (fixed)
 - [Bug 17: Graphs from the history miss a point every few minutes](design/bugs/bug-17-graphs-from-the-history-miss-a.md) (fixed)
-- [Bug 18: A Time Range change shows the last seconds as "not running"](design/bugs/bug-18-a-time-range-change-shows-the.md) (open)
+- [Bug 18: A Time Range change shows the last seconds as "not running"](design/bugs/bug-18-a-time-range-change-shows-the.md) (fixed)
 - [Bug 19: An idle Intel GPU's Overview card is a blank chart](design/bugs/bug-19-an-idle-intel-gpu-s-overview.md) (fixed)
 - [Bug 20: A chart with no readings is drawn blank](design/bugs/bug-20-a-chart-with-no-readings-is.md) (fixed)
-- [Bug 21: An NVIDIA GPU too new for pci.ids is named "NVIDIA GPU"](design/bugs/bug-21-an-nvidia-gpu-too-new-for.md) (open)
-- [Bug 22: The window freezes after unlocking or waking from suspend](design/bugs/bug-22-the-window-freezes-after-unlocking-or.md) (open)
+- [Bug 21: An NVIDIA GPU too new for pci.ids is named "NVIDIA GPU"](design/bugs/bug-21-an-nvidia-gpu-too-new-for.md) (fixed)
+- [Bug 22: The window freezes after unlocking or waking from suspend](design/bugs/bug-22-the-window-freezes-after-unlocking-or.md) (fixed)
 
 
 ### Bugs that Require Human Input
 
 NOTE: Keep this subsection but move Bugs to a proper index after human input has been given to clarify the bug.
 
-- Graphs include a small area of 'Proccoli wasn't running (#s)' whenever the 'Time Range' is adjusted
 - There still appears to be a memory leak with some of the Preferences menus

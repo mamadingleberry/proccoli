@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-22-the-window-freezes-after-unlocking-or.md](../../design/bugs/bug-22-the-window-freezes-after-unlocking-or.md)
 
-*Open.*
+*Fixed in v0.6.0.* The *Done when* check (a locked night on the reporting machine) is still to be done.
 
 **Seen:** "the app freezes when unlocking or waking up from suspend
 mode".
@@ -62,11 +62,29 @@ shows:
 
 | Step | Create / change | Test |
 |---|---|---|
-| B22.1 | A churn reproduction (a script, not shipped) and timing in the debug log for `update_rows` | Manual: the counts and times over a locked night, before and after |
-| B22.2 | `ui/pages/table.py`: `update_rows` as one `splice` with a key → row index | Unit/UI: 2 000 rows with 500 replaced per refresh stay under a set time; selection and scrolling survive as now |
-| B22.3 | Pause table refreshes while the window isn't shown, one refresh on return | UI smoke: a hidden window's table doesn't refresh; shown again, it does, once |
+| B22.1 | A churn benchmark (a script, not shipped) and a debug-log line for a refresh over 100 ms (rows, gone, new) | `RowChurnTest`: the log line; the benchmark below; a locked night still to run |
+| B22.2 | `ui/table_diff.py` (`plan_splice`, pure); `ui/pages/table.py`: `update_rows` as one `splice` (from the first gone row: the kept rows, then the new); `self.rows` mirrors the store's order, so no `find` | `test_table_diff` (random cases); `RowChurnTest`: 500 scattered gone + 500 new is one `items-changed` (fails on the old code), only new rows is one append, a selected row stays selected |
+| B22.3 | `ui/compat.py`: `toplevel_suspended(state)` (`Gdk.ToplevelState.SUSPENDED`, GTK ≥ 4.12, feature-checked); `TablePage.set_window_suspended()` on the surface's `notify::state`: releases the process monitor while suspended, acquires it again when shown | `ToplevelSuspendedTest`; `RowChurnTest`: suspended stops the scans once, shown starts them; an unmapped page isn't started |
 | B22.4 | [Bug 22's design](../../design/bugs/bug-22-the-window-freezes-after-unlocking-or.md) | — |
 
 **Done when:** a window left on Processes overnight while processes come
 and go answers at once after unlocking or waking, and its memory stays
 near where it started.
+
+**Found while doing it:**
+
+- Measured on the headless display (`ProcessesPage`, 10 refreshes each):
+
+  | Rows, replaced per refresh | Before | After |
+  |---|---|---|
+  | 2 000, 500 | 335 ms | 30 ms |
+  | 2 000, 50 | 53 ms | 22 ms |
+  | 500, 20 | 46 ms | 16 ms |
+
+  The same whether or not the window draws. The profile of one refresh
+  before the fix: about 54 000 cell `bind`/`unbind` calls, since the
+  column view rebinds every visible cell on each `items-changed`, which
+  confirms suspect 1. After: about 113 000 function calls in all, 44 ms.
+- Suspects 2 and 3 weren't seen in the benchmark: the store and `rows`
+  stayed the same length. Whether memory still grows over a locked night
+  is part of the check still to do.

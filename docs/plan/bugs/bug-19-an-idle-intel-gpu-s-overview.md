@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-19-an-idle-intel-gpu-s-overview.md](../../design/bugs/bug-19-an-idle-intel-gpu-s-overview.md)
 
-*Fixed in Milestone 87.* As proposed, with two differences: the tests
+*Fixed in v0.6.0.* As proposed, with two differences: the tests
 use the i915 and xe file layouts on a fake root, since the reporter's
 machine (and a capture of it) isn't available here; and the video figure
 from the media GT goes to `decode`, which a GPU with `combined_video`

@@ -44,7 +44,8 @@ PROCESS_COLUMNS = [("id", "Process ID"), ("user", "User")] + APP_COLUMNS + [
 # Rows that aren't one settings key, and the keys each one sets.
 SPECIAL: dict[str, tuple[str, ...]] = {
     "custom-range": ("graph-time-range-custom",),        # shown with Custom…
-    "sidebar-entries": ("sidebar-order", "sidebar-minimized", "sidebar-hidden-fields"),
+    "sidebar-entries": ("sidebar-order", "sidebar-minimized", "sidebar-hidden-fields",
+                        "sidebar-graph-types"),
     "apps-columns": tuple(f"apps-show-{k}" for k, _ in APP_COLUMNS),
     "processes-columns": tuple(f"processes-show-{k}" for k, _ in PROCESS_COLUMNS),
     "background": (),            # Record in the Background, Start at Boot (systemd)
@@ -65,6 +66,7 @@ ELSEWHERE: dict[str, str] = {
     "show-toolbar": "the main menu",
     "toolbar-items": "the graph toolbar's ⋮ menu",
     "sidebar-shown": "the main menu",
+    "sidebar-collapsed-groups": "a sidebar group's arrow",
     "overview-top-by": "the Overview's busiest apps and processes",
     "show-logical-cpus": "the Processor page's toolbar",
     "apps-sort-by": "the Apps table's column headers",

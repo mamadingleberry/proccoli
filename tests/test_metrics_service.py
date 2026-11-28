@@ -241,6 +241,34 @@ class ServiceTest(unittest.TestCase):
         self.addCleanup(db.close)
         self.assertEqual(db.count("d_gpu_0000_03_00_0"), 3)
 
+    def test_flush_writes_out_the_buffered_readings(self):
+        # a window about to refill its graphs (a new time range) asks first.
+        import tempfile
+        from pathlib import Path
+        from proccoli.core.history_db import HistoryDb
+        from proccoli.core.history_store import HistoryStore
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "history.sqlite3"
+        clock = [1_795_600_000.0]
+        store = HistoryStore(self.ctx.devices, self.ctx.settings, path, "9.9",
+                             lambda: clock[0])
+        self.addCleanup(store.shutdown)
+        self.service.store = store
+        self.call("Subscribe")
+        for _ in range(4):
+            self.ctx.ticker.tick_now()
+            clock[0] += 1
+        self.assertGreater(len(store._buffer), 0)
+        self.assertIsNone(self.call("Flush"))
+        self.assertEqual(store._buffer, [])
+        db = HistoryDb(path, readonly=True)
+        self.addCleanup(db.close)
+        self.assertEqual(db.count("d_gpu_0000_03_00_0"), 4)
+
+    def test_flush_without_a_history_answers(self):
+        self.assertIsNone(self.call("Flush"))
+
     def test_status(self):
         status = json.loads(self.call("Status"))
         self.assertEqual(status["update_interval_ms"], 1000)

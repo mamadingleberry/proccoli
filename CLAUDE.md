@@ -3,45 +3,74 @@
 A GTK 4 / libadwaita system monitor for the Linux desktop, in Python
 (PyGObject, system packages only, no build step).
 
-- `README.md`: the user guide (users only, no design details).
+@VOICE.md
+@AUDIENCE.md
+
+## Every response ends the same way: no exceptions
+
+Code change, docs-only change, a question answered, or a turn cut short
+by a new message: **every** response ends with the three parts in the
+`software-design` skill's *The end of every response* (its template is
+the only copy): **Summary**, **Test report**, **Next**. A Stop hook
+(`.claude/hooks/response_ending.py`) sends a response back once when a
+part is missing.
+
+- `README.md`: the short page for someone deciding to try Proccoli;
+  `docs/USER-GUIDE.md`: the full user guide (both for users only, no
+  design details).
 - `docs/DESIGN.md`: how it's built: an index of `docs/design/` (one file
-  per section; ideas' and bugs' design notes in `ideas/` and `bugs/`).
-- `docs/PLAN.md`: the plan: current state, open bugs, ideas and the
-  milestones by phase, an index of `docs/plan/` (one file per milestone,
-  idea and bug).
+  per section; features' and bugs' design notes in `features/` and
+  `bugs/`), starting with `design/DESIGN_UML.md` and `design/DESIGN_DB.md`.
+- `docs/PLAN.md`: the plan: current state, open bugs, features and the
+  releases, an index of `docs/plan/` (one file per feature, bug and
+  release; the old milestones in `plan/archive/`).
 
 ## Every change
 
-**Before making any code change, load the `proccoli-change` skill**
-(`.claude/skills/proccoli-change/SKILL.md`) and follow it. In short, with
-each change:
+**Before making any change, load the `proccoli-engineer` skill**
+(`.claude/skills/proccoli-engineer/SKILL.md`), which loads
+`software-project` and through it `software-design`, `software-testing`
+and `application-design`. Follow them.
+
+**The `engineering-skills` plugin is required** (alirezarezvani/claude-skills,
+marketplace `claude-code-skills`): it supplies the generic engineering
+standards. Use its `engineering-skills` router and the one skill a task
+needs (`senior-architect`, `tdd-guide`, `red-green-proof`,
+`code-reviewer`, `senior-security`...). Our skills replace only what it
+doesn't cover, and win where they differ. If it isn't installed, ask the
+user to run `/plugin marketplace add alirezarezvani/claude-skills` and
+`/plugin install engineering-skills@claude-code-skills`.
+
+In short, with each change:
 
 1. **Design for testing:** dependency injection through
    `context.build_context()`; OS access only through `SysRoot` and
    `System`; logic in display-free modules.
 2. **Add tests:** unit tests without a display, smoke tests for UI;
    `make test` and `make ui-test` must pass.
-3. **Update `docs/PLAN.md`, `docs/DESIGN.md` and `README.md`** as needed. Create/Modify mermaid diagrams and UML as needed.
+3. **Update `docs/PLAN.md`, `docs/DESIGN.md`, `docs/USER-GUIDE.md` and `README.md`** as needed,
+   with `DESIGN_UML.md` and `DESIGN_DB.md` and other Mermaid diagrams.
+   **With every request, check the standing design sections** (goals and
+   non-goals, technology decisions, architecture, runtime flow, open
+   decisions) against what the request changes, and say in the summary
+   which were updated (`software-design`, *Documentation layout*).
 4. **Do light refactoring** where the change touches code that needs it.
-5. **Repeat the documented Ideas and Bugs** that the user wants to revisit at the end of each response and ask if they'd like to tackle any of them.
-6. **No planning references in code:** never put milestone, idea, bug or
-   step numbers, `DESIGN.md` / `PLAN.md` section references, or other
-   planning metadata in code, comments, docstrings, tests, scripts or
-   data files ("(M72)", "Idea 19", "Bug 8", "DESIGN.md §9.2"). Say what
-   the code does and why in plain words; the history belongs in
-   `docs/PLAN.md` and `docs/DESIGN.md`. `tests/test_static.py` checks it.
+5. **End each response** as the section above says.
+6. **No planning references in code:** never put feature, bug, release,
+   milestone or step numbers, `DESIGN.md` / `PLAN.md` section references,
+   or other planning metadata in code, comments, docstrings, tests,
+   scripts or data files ("(M72)", "Feature 19", "Bug 8",
+   "DESIGN.md §9.2"). Say what the code does and why in plain words; the
+   history belongs in `docs/`. `tests/test_static.py` checks it.
 7. **Read and write the docs as indexes:** read `docs/PLAN.md` and
    `docs/DESIGN.md` (both short), then open only the files the change
-   needs; never read the whole `docs/` tree. File names follow the
-   numbers, so a reference can be opened without the index:
-   `docs/plan/milestones/M53-*.md`, `docs/plan/ideas/idea-19-*.md`,
-   `docs/plan/bugs/bug-22-*.md`, `docs/design/07.2-*.md`,
-   `docs/design/ideas/idea-19-*.md`, `docs/design/bugs/bug-22-*.md`.
-   New work gets its own file and one line in its index (a milestone's
-   first line is its status and a one-sentence summary); the indexes hold
-   no detail. Link between files with relative links. `tests/test_docs.py`
-   checks that links resolve, every file is in its index, and each index
-   stays under 32 KB.
+   needs; never read the whole `docs/` tree. Features, bugs and releases
+   are documented and indexed as `software-design`'s *Tracking work*
+   section says, and nowhere else. `tests/test_docs.py` checks that links
+   resolve, every file is reachable from its index, and each index stays
+   under 32 KB.
+8. **Releases** (only when asked): as `software-project` says; publish on
+   GitHub only when the user says so.
 
 ## Commands
 

@@ -3,7 +3,7 @@
 Plan: [plan/bugs/bug-03-an-amd-apu-s-graphics-memory.md](../../plan/bugs/bug-03-an-amd-apu-s-graphics-memory.md)
 
 
-*[PLAN.md, Bug 3](../../plan/bugs/bug-03-an-amd-apu-s-graphics-memory.md). Fixed in Milestone 69.* An APU's `mem_info_vram_*` is
+*[PLAN.md, Bug 3](../../plan/bugs/bug-03-an-amd-apu-s-graphics-memory.md). Fixed in v0.5.0.* An APU's `mem_info_vram_*` is
 the small carve-out the firmware reserves (1 GiB here, 85 % used at
 idle); the GPU uses GTT (system memory it maps, 7.3 GiB here) as much.
 The Overview tab, the sidebar's facts and each process's *Video Memory*

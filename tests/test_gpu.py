@@ -23,7 +23,8 @@ from proccoli.gpu.controller import (DetailState, GpuController, GpuDiscoverer, 
                                     merge_summaries)
 from proccoli.gpu.fdinfo import FdinfoReader, parse_fdinfo  # noqa: E402
 from proccoli.gpu.generic_drm import GenericDrmBackend, Residency, active_dpm_hz  # noqa: E402
-from proccoli.gpu.info import GpuInfo, GpuVendor, discover_gpus, pretty_name  # noqa: E402
+from proccoli.gpu.info import (GpuInfo, GpuVendor, discover_gpus, nvidia_model,  # noqa: E402
+                               pretty_name)
 from proccoli.gpu.intel_gpu_top import backend as igt  # noqa: E402
 from proccoli.gpu.registry import GpuBackendRegistry, standard_registry  # noqa: E402
 
@@ -697,6 +698,44 @@ class StreamTest(unittest.TestCase):
         r.connect("record", lambda _r, rec: records.append(rec))
         r.start_generator(lambda: iter([{"n": 1}, {"n": 2}]), 0.01)
         self.assertTrue(pump(lambda: len(records) == 2))
+
+
+class NvidiaNameTest(unittest.TestCase):
+    """What an NVIDIA GPU is called."""
+
+    def nvidia_root(self, information=None, driver="nvidia"):
+        dev = "/sys/class/drm/card1/device"
+        files = {f"{dev}/vendor": "0x10de\n", f"{dev}/device": "0x2d59\n",
+                 f"{dev}/uevent": f"DRIVER={driver}\nPCI_SLOT_NAME=0000:02:00.0\n"}
+        if information is not None:
+            files["/proc/driver/nvidia/gpus/0000:02:00.0/information"] = information
+        return FakeRoot(self, files)
+
+    def test_an_nvidia_gpu_newer_than_pci_ids_is_named_by_its_driver(self):
+        """the RTX 5060 Laptop GPU (10de:2d59) isn't in pci.ids yet; the
+        driver's information file (captured on that machine) names it."""
+        with open(os.path.join(FIXTURES, "nvidia", "information-rtx5060-laptop.txt")) as f:
+            root = self.nvidia_root(f.read())
+        [gpu] = discover_gpus(root.sysroot, PCI)
+        self.assertEqual(gpu.name, "NVIDIA GeForce RTX 5060 Laptop GPU")
+
+    def test_without_the_driver_file_the_name_falls_back(self):
+        [gpu] = discover_gpus(self.nvidia_root().sysroot, PCI)
+        self.assertEqual(gpu.name, "NVIDIA GPU")
+
+    def test_only_nvidias_driver_is_asked(self):
+        root = self.nvidia_root("Model: Something Else\n", driver="nouveau")
+        [gpu] = discover_gpus(root.sysroot, PCI)
+        self.assertEqual(gpu.name, "NVIDIA GPU")
+
+    def test_the_model_line(self):
+        for text, model in (("Model: \t\t NVIDIA GeForce RTX 4090\nIRQ: 16\n",
+                             "NVIDIA GeForce RTX 4090"),
+                            ("IRQ: 16\n", None), ("Model:   \n", None)):
+            root = FakeRoot(self, {"/proc/driver/nvidia/gpus/0000:01:00.0/information": text})
+            with self.subTest(text=text):
+                self.assertEqual(nvidia_model(root.sysroot, "0000:01:00.0"), model)
+        self.assertIsNone(nvidia_model(FakeRoot(self).sysroot, "0000:01:00.0"))
 
 
 if __name__ == "__main__":

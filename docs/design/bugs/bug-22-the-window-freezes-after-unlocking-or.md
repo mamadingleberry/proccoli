@@ -3,7 +3,7 @@
 Plan: [plan/bugs/bug-22-the-window-freezes-after-unlocking-or.md](../../plan/bugs/bug-22-the-window-freezes-after-unlocking-or.md)
 
 
-*[PLAN.md, Bug 22](../../plan/bugs/bug-22-the-window-freezes-after-unlocking-or.md). Open.* The window that froze had been stalling for
+*[PLAN.md, Bug 22](../../plan/bugs/bug-22-the-window-freezes-after-unlocking-or.md). Fixed (to confirm over a locked night).* The window that froze had been stalling for
 18 hours before the unlock: 9–24 s at a time, every stack in a table
 page's `update_rows` (`store.append` and `store.remove`), while a
 container restarted every 15 s, with 1.1 GiB and 94 % of a core at the
@@ -21,6 +21,22 @@ flowchart LR
     U --> S["sorter.changed(DIFFERENT)"]
 ```
 
-Proposed, once a reproduction confirms where the time goes: one
-`splice` per refresh with a key → row index, and no table refreshes
-while the window isn't shown.
+The fix, after a benchmark showed the column view rebinding every visible
+cell on each of hundreds of changes per refresh:
+
+```mermaid
+flowchart LR
+    T["tick"] --> M["ProcessMonitor.refresh"]
+    M -->|updated| U["TablePage.update_rows"]
+    U --> P["table_diff.plan_splice<br/>(pure: first gone row → kept + new)"]
+    P --> S1["one store.splice → one items-changed"]
+    W["window surface: notify::state"] -->|"SUSPENDED (locked, minimized)"| R["release the monitor: no scans"]
+    W -->|"shown again"| A["acquire: the next scan refreshes once"]
+```
+
+- `self.rows` (a dict) keeps the store's order, so positions come from
+  it, not from `store.find`.
+- Selected rows that the splice puts back are selected again.
+- `compat.toplevel_suspended()` reads `Gdk.ToplevelState.SUSPENDED`
+  (GTK ≥ 4.12); older GTK never reports it, and the table keeps scanning
+  as before.

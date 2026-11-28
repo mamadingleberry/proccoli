@@ -1,0 +1,26 @@
+{
+  "extraKnownMarketplaces": {
+    "claude-code-skills": {
+      "source": {
+        "source": "github",
+        "repo": "alirezarezvani/claude-skills"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "engineering-skills@claude-code-skills": true
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/response_ending.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

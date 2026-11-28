@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-02-an-apu-s-package-power-shown.md](../../design/bugs/bug-02-an-apu-s-package-power-shown.md)
 
-*Fixed in Milestone 69.*
+*Fixed in v0.5.0.*
 
 **Seen:** on a Ryzen 3 4300U (Radeon Vega 6), the GPU page's *Power
 Usage* read 34 W under an all-core processor load with the GPU at 3 %.
@@ -12,7 +12,7 @@ Usage* read 34 W under an all-core processor load with the GPU at 3 %.
 reports `power1` as the GPU's power for every GPU.
 
 **Fix:** `GpuSummary.power_is_package` for an AMD APU, and the Overview
-tab names the row *Processor Package Power*. The AMD Details tab (M70)
+tab names the row *Processor Package Power*. The AMD Details tab (v0.5.0)
 splits the package into cores and SoC from `gpu_metrics`.
 
 | Step | Create / change | Test |

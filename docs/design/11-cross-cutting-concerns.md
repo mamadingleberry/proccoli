@@ -2,21 +2,21 @@
 
 - **Settings schema** (`io.github.mamadingleberry.Proccoli`) mirrors
   Resources' keys: window size and maximised state, temperature unit, unit
-  base, refresh speed (replaced by `update-interval`, M65), virtual drives
+  base, refresh speed (replaced by `update-interval`, Feature 6), virtual drives
   and network interfaces, sidebar
   details, description and meter type, network bits, every `apps-show-*` and
   `processes-show-*` column, logical CPUs, graph grids, sort column and
   order, normalize CPU usage, detailed priority. Proccoli adds:
-  - `graph-time-range` (M58, replacing Resources' *graph data points*):
+  - `graph-time-range` (v0.2.0, replacing Resources' *graph data points*):
     how much time graphs show (30 s; 1, 2, 5, 10 or 30 minutes; 1 or 6
     hours; 1 day; default 1 minute). `core.ticker.graph_plan(settings)`
     turns it into a number of points at the current update interval (at
-    most 1200, averaging samples for long ranges, M64), so changing the
+    most 1200, averaging samples for long ranges, v0.3.0), so changing the
     speed no longer changes the time a graph covers; `DeviceManager`
     resizes every history when either changes
-  - `lightweight` (M66, Idea 1): Lightweight Mode at the next start
-    ([Idea 1's design](ideas/idea-01-lightweight-mode.md)); `--lightweight` turns it on for one run
-  - `update-interval` (M65, Idea 6): how often Proccoli takes readings,
+  - `lightweight` (Feature 1): Lightweight Mode at the next start
+    ([Feature 1's design](features/feature-01-lightweight-mode.md)); `--lightweight` turns it on for one run
+  - `update-interval` (Feature 6): how often Proccoli takes readings,
     `1-second` (default), `2-seconds`, `3-seconds`, `5-seconds` or
     `10-seconds` (`core.ticker.UPDATE_INTERVALS_MS`). It replaced
     `refresh-speed`, which stays in the schema only so `settings.migrate`
@@ -26,31 +26,36 @@
     `ticker.interval_for` reads either kind
   - `history` (on), `history-max-size` (MiB, default 512, 16–4096) and
     `history-detail-hours` (default 24, 1–168): the history database
-    ([Idea 2's design](ideas/idea-02-metrics-history-in-a-sqlite-database.md), M62). They replaced M58's `stats-log` and `stats-log-max-size`
+    ([Feature 2's design](features/feature-02-metrics-history-in-a-sqlite-database.md)). They replaced v0.2.0's `stats-log` and `stats-log-max-size`
   - `color-scheme`: the style: `system` (follow the desktop), `light`,
     `dark`, `sand`, `sky`, `twilight` or `midnight`
   - `palette`: one of the eight color palettes ([§9.3](09.3-appearance.md)), `system` by default
   - `auth-at-launch`: offer to authenticate at start-up ([§9.4](09.4-optional-authentication-at-launch.md)), on by default
-  - `linger-offered` (M89): the window has asked once whether to record
-    from boot ([Idea 22's design](ideas/idea-22-recording-from-boot.md)); off by default
+  - `linger-offered` (Feature 22): the window has asked once whether to record
+    from boot ([Feature 22's design](features/feature-22-recording-from-boot.md)); off by default
   - Where each setting appears in Preferences, or why it's set elsewhere:
-    `ui/preferences_layout.py` (M88; a test holds every key to it)
+    `ui/preferences_layout.py` (Feature 20; a test holds every key to it)
   - `sidebar-shown`: whether the sidebar shows on wide windows ([§9.2](09.2-window-behaviour.md)), on
     by default
-  - `sidebar-style`: `full` (default) or `icons` (icons only, M54); with
+  - `sidebar-style`: `full` (default) or `icons` (icons only, v0.2.0); with
     `sidebar-shown` it gives the menu's three modes ([§9.2](09.2-window-behaviour.md))
   - `overview-top-by`: what ranks the Overview's busiest apps and
     processes, `cpu` (default) or `memory` ([§9.6](09.6-overview-page.md))
   - `sidebar-order`, `sidebar-minimized` and `sidebar-hidden-fields`: the
     user's sidebar ([§9.2](09.2-window-behaviour.md))
+  - `sidebar-graph-types`: page ID → `graph` or `progress-bar`, for the
+    entries whose Graph Type differs from `sidebar-meter-type` (the
+    default; [Feature 32's design](features/feature-32-graph-type-per-sidebar-entry.md))
+  - `sidebar-collapsed-groups`: the sidebar groups with their devices
+    hidden ([Feature 18's design](features/feature-18-overview-pages-for-groups-of-devices.md))
   - `graph-time-range-custom` (seconds, 10–2592000, default 7200): the
-    range when `graph-time-range` is `custom` (M74, [Idea 9's design](ideas/idea-09-custom-graph-time-range.md))
+    range when `graph-time-range` is `custom` (Feature 9, [Feature 9's design](features/feature-09-custom-graph-time-range.md))
   - `show-toolbar` (on) and `toolbar-items` (default `['time-range',
-    'axes', 'grids']`): the graph toolbar and its buttons in order (M72,
-    [Idea 12's design](ideas/idea-12-a-graph-toolbar.md))
+    'axes', 'grids']`): the graph toolbar and its buttons in order (Feature 12,
+    [Feature 12's design](features/feature-12-a-graph-toolbar.md))
   - `export-hardware-addresses` (off): whether exports include network
-    cards' hardware addresses (M73, [Idea 14's design](ideas/idea-14-exported-statistics-describe-their-devices.md))
-  - `show-graph-axes`: axes on graphs ([§9.1](09.1-widgets.md); percentages, and since M63
+    cards' hardware addresses (Feature 14, [Feature 14's design](features/feature-14-exported-statistics-describe-their-devices.md))
+  - `show-graph-axes`: axes on graphs ([§9.1](09.1-widgets.md); percentages, and since Feature 4
     every page graph with a unit), on by default
   - `log-level`, `log-max-size`, `log-performance-interval`: the
     diagnostics log (below)
@@ -60,12 +65,12 @@
     instead of waiting for the user to ask
   - `intel-gpu-top-interval`: the Details tab's own update interval
     (an `update-interval` nick; empty = the app's). Its history length was
-    `intel-gpu-top-history` until M60; it now follows `graph-time-range`
+    `intel-gpu-top-history` until Feature 3; it now follows `graph-time-range`
 - **Diagnostics log** (`core/applog.py`): standard practice on Linux, a
   rotating file at `$XDG_STATE_HOME/proccoli/proccoli.log`
   (`~/.local/state/proccoli/`). `FileLog` attaches a `RotatingFileHandler`
   to the `proccoli` logger: `log-level` (off, error, warning, info, debug;
-  **debug, i.e. everything, by default** since M55) and `log-max-size`
+  **debug, i.e. everything, by default** since v0.2.0) and `log-max-size`
   (KiB, default 1024, 64–65536); one older file is kept, so it never takes
   more than twice the size on disk (tested). Times are **UTC**, ISO 8601
   to the millisecond (`UtcFormatter`: `2026-11-23T21:41:25.154Z`), so logs
@@ -79,17 +84,19 @@
   and `PreferencesDialog(launcher=...)` are injectable, so tests never
   write to the real home. Log files are private (0600, folder 0700).
 - **History database** (`core/history_db.py`, `core/history_store.py`,
-  M62): every reading Proccoli shows, kept in
+  Feature 2): every reading Proccoli shows, kept in
   `$XDG_STATE_HOME/proccoli/history.sqlite3` and summarised as it ages;
-  [Idea 2's design](ideas/idea-02-metrics-history-in-a-sqlite-database.md) has the design. It replaced M58's statistics files (one CSV per
+  [Feature 2's design](features/feature-02-metrics-history-in-a-sqlite-database.md) has the design. It replaced v0.2.0's statistics files (one CSV per
   device in `stats/`), which are imported once and removed. Their format
   lives on as the export format. `Snapshot.stats_values()` /
   `stats_units()` say what's recorded: by default the graphed readings
   (`history_values`); Memory adds used/total bytes of memory and swap,
   GPUs their memory bytes and memory clock.
-- **Stall watchdog** (`core/watchdog.py`, M44): a frozen window logs
+- **Stall watchdog** (`core/watchdog.py`, v0.1.0): a frozen window logs
   nothing, because the main loop that would write is the thing that's
-  stuck. `Application` starts a `StallWatchdog`: the main loop beats every
+  stuck. Both programs start a `StallWatchdog` through `core/runtime.py`'s
+  `Runtime` (with the log file and an uncaught-exception hook; the
+  recorder too since Feature 21): the main loop beats every
   250 ms (`GLib.timeout_add`), and a daemon thread checks the beat. After 3
   s without one, it logs an error with three samples, 0.3 s apart, of every
   thread's Python stack (`format_stacks`, main thread first), so a loop
@@ -134,12 +141,12 @@ sequenceDiagram
   - intel_gpu_top_gui code is ours, so it can be reused under 0BSD.
   - Third-party code with attribution or copyleft terms can't be vendored in.
     Depend on it as a system package instead.
-- **Naming:** "Proccoli" is a prototype name. The display name, app ID and
-  version live only in `src/proccoli/__init__.py`. Everything else reads
+- **Naming:** the display name, app ID, version and both program names
+  (`proccoli`, `proccoli-gui`) live only in `src/proccoli/__init__.py`. Everything else reads
   those constants, so a rename means editing that file, renaming the
   `src/proccoli/` package directory, and renaming the `data/` files.
 
-## 11.1 Security: what runs as administrator (M40)
+## 11.1 Security: what runs as administrator (v0.1.0)
 
 **What runs as root,** always through `pkexec` after the user types an
 administrator password:
@@ -171,7 +178,7 @@ the user didn't choose.
 | 6 | A hung `dmidecode` crashed the helper with a traceback. | Low | Timeout → JSON error, exit 1. |
 | 7 | The diagnostics log could be read by other local users when the home folder allows it. It can name processes and devices. | Low | `PrivateRotatingFileHandler`: files 0600 (every rollover too), folder 0700. |
 | 8 | An installed helper from before these changes would refuse `PID@STARTTIME`. | Compatibility | The helper declares its `PROTOCOL` (2: identities; 3: `gpu-top`). The app reads it from the file (no root needed, `helper_protocol`) and sends an older helper only what it understands, logging a reinstall hint. |
-| 9 | *Found in M41, fixed in M42:* the root `intel_gpu_top` outlived Proccoli. M40 had judged that it dies of SIGPIPE when Proccoli stops reading. It doesn't: it ignores SIGPIPE (`SigIgn` bit 13 in `/proc/PID/status`), and Proccoli can't signal a root process. Four orphans were found on the development machine, the oldest over 12 hours old, each polling the GPU. Each stop, restart (interval change) or quit after Show Detailed Statistics left one behind. | Medium | `proccoli-helper gpu-top MS cardN` runs `intel_gpu_top` with fixed arguments (interval 100–10000 ms, `card\d+`, no `-o`) and relays its output (`relay`). When a write fails (Proccoli stopped reading or exited), it terminates the child, kills it after 2 s if needed, and exits. The helper is root, so it may. `IntelGpuTopBackend` uses it whenever `GpuDeps.helper` speaks protocol 3, falling back (with a warning) to running `intel_gpu_top` directly. Since the arguments are fixed and no files can be written, the action may keep its authorization (`auth_admin_keep`). |
+| 9 | *Found and fixed before v0.1.0:* the root `intel_gpu_top` outlived Proccoli. The first review had judged that it dies of SIGPIPE when Proccoli stops reading. It doesn't: it ignores SIGPIPE (`SigIgn` bit 13 in `/proc/PID/status`), and Proccoli can't signal a root process. Four orphans were found on the development machine, the oldest over 12 hours old, each polling the GPU. Each stop, restart (interval change) or quit after Show Detailed Statistics left one behind. | Medium | `proccoli-helper gpu-top MS cardN` runs `intel_gpu_top` with fixed arguments (interval 100–10000 ms, `card\d+`, no `-o`) and relays its output (`relay`). When a write fails (Proccoli stopped reading or exited), it terminates the child, kills it after 2 s if needed, and exits. The helper is root, so it may. `IntelGpuTopBackend` uses it whenever `GpuDeps.helper` speaks protocol 3, falling back (with a warning) to running `intel_gpu_top` directly. Since the arguments are fixed and no files can be written, the action may keep its authorization (`auth_admin_keep`). |
 
 **Reviewed and acceptable as they are:**
 

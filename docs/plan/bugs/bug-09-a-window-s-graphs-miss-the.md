@@ -2,10 +2,10 @@
 
 Design note: [design/bugs/bug-09-a-window-s-graphs-missed-the.md](../../design/bugs/bug-09-a-window-s-graphs-missed-the.md)
 
-*Fixed in Milestone 81.*
+*Fixed in v0.5.0.*
 
 **Seen:** "why are there gaps in data when I reinstall Proccoli? Shouldn't
-it be reading from the running service?" Before Idea 19 each window
+it be reading from the running service?" Before Feature 19 each window
 restart (Lightweight Mode's *Restart Now* included) ended the recording
 for 3–22 s. With the collector, restarts no longer stop the recording
 (reinstalling restarts the collector: 0.3 s), but every window still

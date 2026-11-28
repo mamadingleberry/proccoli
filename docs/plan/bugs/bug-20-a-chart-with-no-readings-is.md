@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-20-a-chart-with-no-readings-is.md](../../design/bugs/bug-20-a-chart-with-no-readings-is.md)
 
-*Fixed in Milestone 87.* Not with a running count as proposed:
+*Fixed in v0.6.0.* Not with a running count as proposed:
 `Series.values` is a deque its `History` replaces and changes in place in
 six places, so a count would have to follow all of them. `has_values()`
 looks from the newest point and stops at the first reading: at once for

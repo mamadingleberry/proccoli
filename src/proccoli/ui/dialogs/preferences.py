@@ -6,18 +6,19 @@ from typing import Sequence
 
 from gi.repository import Adw, Gtk
 
-from ... import GPU_ICON
 from ...core.connections import Connections
-from ...core.palette import PALETTES, hex_to_rgb
-from ...core.profile import is_pinned, profile_of
-from ...core.styles import STYLES
-from .. import reorder
+from ...core.profile import is_pinned
+from .. import sidebar_groups as groups
 from ..sidebar_fields import FIELD_LABELS, Field
 from ...core.ticker import CUSTOM, CUSTOM_KEY, clamp_range_s, update_interval_ms
 from ..time_range import CUSTOM_LABEL, limit_note
 from ..toolbar_items import GRAPH_TIME_RANGES
 from ..widgets.range_editor import RangeEditor
 from ..preferences_layout import APP_COLUMNS, PAGES, PROCESS_COLUMNS  # noqa: F401
+from .preferences_rows import FIXED_ICON, FIXED_TIP, RowBuilders, fixed_icon, fixed_notice  # noqa: F401
+from .preferences_appearance import AppearanceRows
+from .preferences_history import HistoryRows
+from .preferences_system import SystemRows
 
 UPDATE_INTERVALS = (("1-second", "1 Second"), ("2-seconds", "2 Seconds"),
                     ("3-seconds", "3 Seconds"), ("5-seconds", "5 Seconds"),
@@ -26,36 +27,14 @@ BASES = [("decimal", "Decimal (kB, MB, GB)"), ("binary", "Binary (KiB, MiB, GiB)
 TEMPERATURE_UNITS = [("celsius", "Celsius"), ("fahrenheit", "Fahrenheit"), ("kelvin", "Kelvin")]
 LOG_LEVELS = [("off", "Off"), ("error", "Errors"), ("warning", "Warnings"),
               ("info", "Information and Performance"), ("debug", "Everything (Debug)")]
-METER_TYPES = [("progress-bar", "Progress Bar"), ("graph", "Graph")]
+GRAPH_TYPES = [("progress-bar", "Progress Bar"), ("graph", "Graph")]
+# An entry's own: the default first ("Default (Graph)", named when shown).
+ENTRY_GRAPH_TYPES = [("default", "Default"), ("graph", "Graph"), ("progress-bar", "Progress Bar")]
 SIDEBAR_STYLES = [("full", "Full"), ("icons", "Icons Only")]
 
 # (The column lists live with the layout; imported here for the dialog's users.)
 
-FIXED_ICON = "changes-prevent-symbolic"     # a padlock: GNOME's "locked for now"
-FIXED_TIP = "Fixed while Lightweight Mode is on. Your own choice comes back when it's off."
-
-
-def fixed_icon() -> Gtk.Image:
-    """The padlock before a setting Lightweight Mode fixes, explaining why."""
-    icon = Gtk.Image(icon_name=FIXED_ICON, tooltip_text=FIXED_TIP)
-    icon.update_property([Gtk.AccessibleProperty.LABEL], ["Fixed by Lightweight Mode"])
-    return icon
-
-
-def fixed_notice() -> Adw.PreferencesGroup:
-    """The top of a page with settings Lightweight Mode fixes (hidden
-    until one turns up on the page)."""
-    group = Adw.PreferencesGroup(visible=False)
-    row = Adw.ActionRow(title="Some settings are fixed in Lightweight Mode",
-                        subtitle="They're greyed out with a padlock, and your own choices "
-                                 "come back when it's off (System → Memory Use)")
-    row.add_prefix(Gtk.Image(icon_name=FIXED_ICON))
-    group.add(row)
-    group.row = row
-    return group
-
-
-class PreferencesDialog(Adw.PreferencesDialog):
+class PreferencesDialog(Adw.PreferencesDialog, RowBuilders, AppearanceRows, HistoryRows, SystemRows):
     def __init__(self, settings, gpu_controllers: Sequence = (), theme=None,
                  log_file=None, launcher=None, sidebar=None, history=None,
                  export=None, restart=None, windows=None, extension_source=None,
@@ -167,8 +146,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
                                                 "Show Device Descriptions",
                                                 "If enabled, a device identifier like its "
                                                 "name or device type will be displayed"),
-            "sidebar-meter-type": lambda g: combo(g, "sidebar-meter-type", "Meter Type",
-                                                  METER_TYPES),
+            "sidebar-meter-type": lambda g: combo(g, "sidebar-meter-type", "Graph Type",
+                                                  GRAPH_TYPES, "Each entry can have its own"),
             "sidebar-entries": self._entry_rows,
             # Tables
             "normalize-cpu-usage": lambda g: sw(
@@ -232,20 +211,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
             "log-file": when(self.log_file is not None, self._log_file_row),
         }
 
-    def _log_file_row(self, group) -> None:
-        row = Adw.ActionRow(title="Log File", subtitle=str(self.log_file))
-        button = Gtk.Button(label="Open Folder", valign=Gtk.Align.CENTER)
-        button.connect("clicked", lambda *_: self.open_log_folder())
-        row.add_suffix(button)
-        self._add(group, row)
-        self.log_button = button
-
-    def _gpu_rows(self, group) -> None:
-        for controller in self.gpu_controllers:
-            self.gpu_rows[controller.gpu.pci_slot] = self._gpu_row(group, controller)
-        if not self.gpu_controllers:
-            self._add(group, Adw.ActionRow(title="No GPUs found"))
-
     def _custom_range_row(self, group) -> None:
         """*Custom…*'s number and unit, shown only while it's chosen."""
         row = Adw.ActionRow(title="Custom Time Range",
@@ -277,172 +242,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
     # -- building blocks ----------------------------------------------------------
 
-    def _page(self, title: str, icon: str) -> Adw.PreferencesPage:
-        page = Adw.PreferencesPage(title=title, icon_name=icon)
-        self.add(page)
-        if profile_of(self.settings).is_lightweight:
-            # First on the page; shown once a fixed setting turns up on it.
-            notice = fixed_notice()
-            page.add(notice)
-            self._notices[page] = notice
-        return page
-
-    def _add(self, container, row) -> None:
-        """A row into a group, or into an expander row (the column lists)."""
-        if isinstance(container, Adw.ExpanderRow):
-            container.add_row(row)
-        else:
-            container.add(row)
-            self._row_counts[container] = self._row_counts.get(container, 0) + 1
-
-    def _group(self, page, title: str, description: str = "") -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title=title, description=description)
-        page.add(group)
-        return group
-
-    def _watch(self, key: str, callback) -> None:
-        self.connections.watch(self.settings, key, callback)
-
-    def _switch(self, group, key: str, title: str, subtitle: str = "") -> Adw.SwitchRow:
-        row = Adw.SwitchRow(title=title, subtitle=subtitle,
-                            active=self.settings.get(key))
-        row.connect("notify::active", lambda r, _p: self._set(key, r.get_active()))
-        self._watch(key, lambda _k, v: row.get_active() != v and row.set_active(v))
-        self._add(group, row)
-        self.rows[key] = row
-        return row
-
-    def _combo(self, group, key: str, title: str, choices, subtitle: str = "") -> Adw.ComboRow:
-        nicks = [n for n, _ in choices]
-        row = Adw.ComboRow(title=title, subtitle=subtitle,
-                           model=Gtk.StringList.new([label for _, label in choices]))
-        current = self.settings.get(key)
-        row.set_selected(nicks.index(current) if current in nicks else 0)
-        row.connect("notify::selected", lambda r, _p: self._set(key, nicks[r.get_selected()]))
-        self._watch(key, lambda _k, v: v in nicks and row.get_selected() != nicks.index(v)
-                    and row.set_selected(nicks.index(v)))
-        self._add(group, row)
-        self.rows[key] = row
-        return row
-
-    def _style_row(self, group) -> Adw.ComboRow:
-        """The *Style* combo: each entry shows its window and text colors."""
-        row = self._combo(group, "color-scheme", "Style", [(s.id, s.name) for s in STYLES],
-                          "Follow System uses the desktop's light or dark style")
-        factory = Gtk.SignalListItemFactory()
-
-        def setup(_f, item):
-            box = Gtk.Box(spacing=12)
-            box.append(Gtk.Label(xalign=0, hexpand=True))
-            box.append(Gtk.DrawingArea(content_width=28, content_height=16,
-                                       valign=Gtk.Align.CENTER))
-            item.set_child(box)
-
-        def bind(_f, item):
-            box = item.get_child()
-            name = item.get_item().get_string()
-            style = next(s for s in STYLES if s.name == name)
-            box.get_first_child().set_label(style.name)
-            box.get_last_child().set_draw_func(self._draw_style_swatch, style)
-        factory.connect("setup", setup)
-        factory.connect("bind", bind)
-        row.set_factory(factory)
-        return row
-
-    @staticmethod
-    def style_swatch_colors(style) -> tuple[str, str]:
-        """(background, text) for a style's swatch."""
-        if style.tinted:
-            return style.colors["window-bg-color"], style.colors["window-fg-color"]
-        return {"light": ("#fafafb", "#323232"), "dark": ("#222226", "#ffffff"),
-                "system": ("#fafafb", "#222226")}[style.base]
-
-    def _draw_style_swatch(self, _area, cr, width, height, style) -> None:
-        bg, fg = self.style_swatch_colors(style)
-        cr.set_source_rgb(*hex_to_rgb(bg))
-        cr.rectangle(0, 0, width, height)
-        cr.fill()
-        if style.base == "system":           # half light, half dark
-            cr.set_source_rgb(*hex_to_rgb(fg))
-            cr.rectangle(width / 2, 0, width / 2, height)
-            cr.fill()
-            return
-        cr.set_source_rgb(*hex_to_rgb(fg))
-        cr.arc(width / 2, height / 2, height / 4, 0, 6.2832)
-        cr.fill()
-
-    def _palette_row(self, group) -> Adw.ComboRow:
-        """The *Color Palette* combo: each entry shows its colors."""
-        row = self._combo(group, "palette", "Color Palette",
-                          [(p.id, p.name) for p in PALETTES],
-                          "Colors of graphs, meters and the accent")
-        factory = Gtk.SignalListItemFactory()
-
-        def setup(_f, item):
-            box = Gtk.Box(spacing=12)
-            box.append(Gtk.Label(xalign=0, hexpand=True))
-            swatch = Gtk.DrawingArea(content_width=6 * 14, content_height=12,
-                                     valign=Gtk.Align.CENTER)
-            box.append(swatch)
-            item.set_child(box)
-
-        def bind(_f, item):
-            box = item.get_child()
-            label, swatch = box.get_first_child(), box.get_last_child()
-            # Look the palette up by name: the row's own button binds the
-            # selected item without a list position.
-            name = item.get_item().get_string()
-            palette = next(p for p in PALETTES if p.name == name)
-            label.set_label(palette.name)
-            swatch.set_draw_func(self._draw_swatch, palette)
-            swatch.update_property([Gtk.AccessibleProperty.LABEL],
-                                   [f"{palette.name} colors"])
-        factory.connect("setup", setup)
-        factory.connect("bind", bind)
-        row.set_factory(factory)
-        return row
-
-    def _draw_swatch(self, _area, cr, width, height, palette) -> None:
-        dark = self.theme.dark if self.theme is not None else False
-        colors = palette.colors(dark)[:6]
-        if palette.follows_accent and self.theme is not None:
-            colors = [None] + list(colors[:5])        # the desktop's accent first
-        r = height / 2
-        for i, color in enumerate(colors):
-            rgb = self.theme.system_accent() if color is None else hex_to_rgb(color)
-            cr.set_source_rgb(*rgb)
-            cr.arc(r + i * 14, height / 2, r, 0, 6.2832)
-            cr.fill()
-
-    def _spin(self, group, key: str, title: str, low: int, high: int) -> Adw.SpinRow:
-        row = Adw.SpinRow.new_with_range(low, high, 10)
-        row.set_title(title)
-        row.set_value(self.settings.get(key))
-        row.connect("notify::value", lambda r, _p: self._set(key, int(r.get_value())))
-        self._watch(key, lambda _k, v: int(row.get_value()) != v and row.set_value(v))
-        self._add(group, row)
-        self.rows[key] = row
-        return row
-
-    def _gpu_row(self, group, controller) -> Adw.ActionRow:
-        """A GPU's detailed-statistics switch, or a note that it has none."""
-        title = controller.info.description or controller.gpu.name
-        if controller.detail_class is None:
-            row = Adw.ActionRow(title=title, subtitle=f"{controller.gpu.pci_slot} · "
-                                "No detailed data source available")
-            self._add(group, row)
-            return row
-        name = controller.detail_class.display_name
-        if controller.needs_elevation:
-            name += ", needs administrator rights"
-        row = Adw.SwitchRow(title=title, subtitle=f"{controller.gpu.pci_slot} · {name}",
-                            active=controller.details_enabled)
-        row.connect("notify::active",
-                    lambda r, _p: r.get_active() != controller.details_enabled
-                    and controller.set_details_enabled(r.get_active()))
-        self._add(group, row)
-        return row
-
     # -- the Sidebar page ------------------------------------------------
 
     def _entry_rows(self, group) -> None:
@@ -473,202 +272,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
     # -- Lightweight Mode --------------------------------------------------
 
-    def _lightweight_rows(self, group) -> None:
-        """The switch shows the mode Proccoli runs in now (also when it was
-        started with ``--lightweight``); flipping it chooses the mode for the
-        next start, which *Restart to Apply* says and offers."""
-        running = profile_of(self.settings).is_lightweight
-        row = Adw.SwitchRow(title="Lightweight Mode", active=running,
-                            subtitle="As little memory as possible: pages are built when you "
-                                     "open them, the Overview is a list, and charts, icons and "
-                                     "GPU details are kept to a minimum")
-        row.connect("notify::active", lambda r, _p: self._choose_lightweight(r.get_active()))
-        self._add(group, row)
-        self.rows["lightweight"] = row
-        row = Adw.ActionRow(title="Restart to Apply",
-                            subtitle="Proccoli starts again with the new mode")
-        button = Gtk.Button(label="Restart Now", valign=Gtk.Align.CENTER)
-        button.add_css_class("suggested-action")
-        button.connect("clicked", lambda *_: self.restart and self.restart())
-        row.add_suffix(button)
-        self._add(group, row)
-        self.restart_row, self.restart_button = row, button
-        self._watch("lightweight", lambda *_: self._show_restart())
-        self._show_restart()
-
-    def _choose_lightweight(self, on: bool) -> None:
-        """The mode for the next start (the setting)."""
-        self._set("lightweight", on)
-        self._show_restart()
-
-    def _show_restart(self) -> None:
-        """While the next start's mode differs from this one's."""
-        running = profile_of(self.settings).is_lightweight
-        pending = bool(self.settings.get("lightweight")) != running
-        self.restart_row.set_visible(self.restart is not None and pending)
-        if pending:
-            self.restart_row.set_subtitle(
-                "Lightweight Mode turns " + ("off" if running else "on") + " at the next start")
-
     # -- Window Switching ---------------------------------------------------
-
-    def _window_switching_row(self, group) -> None:
-        row = Adw.ActionRow(title="Proccoli Window Switching")
-        button = Gtk.Button(valign=Gtk.Align.CENTER)
-        button.add_css_class("suggested-action")
-        button.connect("clicked", lambda *_: self._on_window_switching())
-        row.add_suffix(button)
-        self._add(group, row)
-        self.switching_row, self.switching_button = row, button
-        self.show_window_switching()
-
-    def show_window_switching(self) -> None:
-        from ...core.windows import ExtensionState
-        state = self.windows.extension_state()
-        texts = {
-            ExtensionState.ENABLED: "On: Switch To works for every app with a window",
-            ExtensionState.DISABLED: "Installed, but turned off",
-            ExtensionState.NEEDS_LOGIN: "Installed: log out and back in to start it",
-            ExtensionState.NOT_INSTALLED: "Not installed: Switch To works only for apps "
-                                          "that can be asked to show their window",
-            ExtensionState.UNAVAILABLE: "Needs GNOME Shell (this desktop isn't GNOME)",
-        }
-        self.switching_row.set_subtitle(texts[state])
-        label = {ExtensionState.DISABLED: "Turn On"}.get(state)
-        if state == ExtensionState.NOT_INSTALLED and self.extension_source is not None:
-            label = "Install"
-        self.switching_button.set_visible(label is not None)
-        if label:
-            self.switching_button.set_label(label)
-        self.switching_state = state
-
-    def _on_window_switching(self) -> None:
-        from ...core.windows import ExtensionState
-        if self.switching_state == ExtensionState.DISABLED:
-            ok = self.windows.enable()
-        else:
-            ok = self.windows.install(self.extension_source)
-        if not ok:
-            self.add_toast(Adw.Toast(title="Couldn't set up window switching", timeout=4))
-        self.show_window_switching()
 
     # -- History ---------------------------------------------------------
 
-    def _history_switch(self, group) -> None:
-        self._switch(group, "history", "Keep History")
-        self._watch("history", lambda _k, on: on or self.offer_delete())
-
-    def _size_row(self, group) -> None:
-        row = Adw.ActionRow(title="Size on Disk")
-        button = Gtk.Button(label="Delete History…", valign=Gtk.Align.CENTER)
-        button.add_css_class("destructive-action")
-        button.connect("clicked", lambda *_: self.offer_delete())
-        row.add_suffix(button)
-        self._add(group, row)
-        self.size_row, self.delete_button = row, button
-        self.show_size()
-
-    def _export_row(self, group) -> None:
-        row = Adw.ActionRow(title="Export Statistics",
-                            subtitle="This session's readings as CSV files, with what "
-                                     "each device is")
-        button = Gtk.Button(label="Export…", valign=Gtk.Align.CENTER)
-        button.connect("clicked", lambda *_: self.export())
-        row.add_suffix(button)
-        self._add(group, row)
-        self.export_button = button
-
     # -- recording in the background -------------------------------------------
-
-    def _background_rows(self, group) -> None:
-        self.background_row = Adw.SwitchRow(
-            title="Record in the Background",
-            subtitle="Keeps the history while Proccoli is closed, from when you log in")
-        self.linger_row = Adw.SwitchRow(
-            title="Start at Boot",
-            subtitle="Also records before you log in and after you log out")
-        for row in (self.background_row, self.linger_row):
-            self._add(group, row)
-        self._background_busy = True                 # until the first answer
-        self.background_row.connect("notify::active", lambda r, _p: self._set_background(
-            r.get_active()))
-        self.linger_row.connect("notify::active", lambda r, _p: self._set_linger(
-            r.get_active()))
-        self._watch("history", lambda *_: self._show_background(self.background.state))
-
-    def _recording_row(self, group) -> None:
-        self.recording_row = Adw.ActionRow(title="Recording")
-        self._add(group, self.recording_row)
-
-    def _show_background(self, state) -> None:
-        from ...core.background import status_text
-        self._background_busy = True
-        self.background_row.set_active(state.enabled)
-        self.background_row.set_sensitive(state.available)
-        if not state.available:
-            self.background_row.set_subtitle(state.reason)
-        self.linger_row.set_active(state.linger)
-        self.linger_row.set_sensitive(state.available and state.enabled)
-        self._background_busy = False
-        history = self.history
-        writer = history.writer_info() if history is not None else None
-        here = bool(history is not None and history.writer and history.session is not None)
-        self.recording_row.set_subtitle(status_text(writer, here,
-                                                    bool(self.settings.get("history")), state))
-
-    def _set_background(self, on: bool) -> None:
-        if not self._background_busy and on != self.background.state.enabled:
-            self._background_busy = True
-            self.background.set_enabled(on, self._show_background)
-
-    def _set_linger(self, on: bool) -> None:
-        if not self._background_busy and on != self.background.state.linger:
-            self._background_busy = True
-            self.background.set_linger(on, self._show_background)
-
-    def show_size(self) -> None:
-        from ...core.units import Base, format_bytes
-        if self.history is not None:
-            size = self.history.size_on_disk()
-            self.size_row.set_subtitle(format_bytes(size, Base.BINARY) if size else "Empty")
-
-    def offer_delete(self) -> None:
-        """*Delete History…*, and on turning *Keep History* off."""
-        if self.history is None or not self.history.size_on_disk():
-            return
-        alert = Adw.AlertDialog(heading="Delete History?",
-                                body="Every reading kept so far is removed. "
-                                     "This can't be undone.")
-        alert.add_response("keep", "Keep")
-        alert.add_response("delete", "Delete")
-        alert.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
-        alert.set_default_response("keep")
-        alert.set_close_response("keep")
-        alert.connect("response", self._on_delete_response)
-        self.delete_alert = alert
-        alert.present(self)
-
-    def _on_delete_response(self, alert, response: str) -> None:
-        self.delete_alert = None
-        if response == "delete":
-            self.history.delete()
-            self.show_size()
-
-    def open_log_folder(self) -> None:
-        self.open_folder(self.log_file.parent)
-
-    def open_folder(self, folder) -> None:
-        folder.mkdir(parents=True, exist_ok=True)
-        if self.launcher is not None:
-            self.launcher(folder)
-            return
-        from gi.repository import Gio
-        Gtk.FileLauncher.new(Gio.File.new_for_path(str(folder))).launch(
-            self.get_root(), None, None)
-
-    def _set(self, key: str, value) -> None:
-        if self.settings.get(key) != value:
-            self.settings.set(key, value)
 
     def _on_closed(self, *_a) -> None:
         self.connections.disconnect_all()
@@ -706,6 +314,12 @@ class EntryPage(Adw.NavigationPage):
         self.minimized.connect("notify::active", lambda r, _p: r.get_active() != (
             page_id in sidebar.minimized_ids()) and sidebar.set_minimized(page_id, r.get_active()))
         layout.add(self.minimized)
+        # Its own Graph Type, or the default one (Sidebar → All Entries).
+        self.graph_type = Adw.ComboRow(title="Graph Type",
+                                       model=Gtk.StringList.new([label for _, label in
+                                                                 ENTRY_GRAPH_TYPES]))
+        self.graph_type.connect("notify::selected", lambda r, _p: self._on_graph_type(r))
+        layout.add(self.graph_type)
         self.position = Adw.ActionRow(title="Position")
         self.up = Gtk.Button(icon_name="go-up-symbolic", tooltip_text="Move Up",
                              valign=Gtk.Align.CENTER)
@@ -721,8 +335,14 @@ class EntryPage(Adw.NavigationPage):
         self.get_child().add_top_bar(Adw.HeaderBar())
         self.connections = Connections()
         self.connections.watch(settings, ("sidebar-hidden-fields", "sidebar-minimized",
-                                          "sidebar-order"), lambda *_: self.sync())
+                                          "sidebar-order", "sidebar-graph-types",
+                                          "sidebar-meter-type"), lambda *_: self.sync())
         self.sync()
+
+    def _on_graph_type(self, row) -> None:
+        choice = ENTRY_GRAPH_TYPES[row.get_selected()][0]
+        if choice != self.sidebar.graph_type_choice(self.page_id):
+            self.sidebar.set_graph_type(self.page_id, choice)
 
     def _on_switch(self, field: Field, row) -> None:
         if row.get_active() != self.sidebar.field_shown(self.page_id, field):
@@ -737,9 +357,16 @@ class EntryPage(Adw.NavigationPage):
         minimized = self.page_id in self.sidebar.minimized_ids()
         if self.minimized.get_active() != minimized:
             self.minimized.set_active(minimized)
+        default = dict(GRAPH_TYPES)[self.settings.get("sidebar-meter-type")]
+        self.graph_type.get_model().splice(0, 1, [f"Default ({default})"])
+        index = [c for c, _ in ENTRY_GRAPH_TYPES].index(
+            self.sidebar.graph_type_choice(self.page_id))
+        if self.graph_type.get_selected() != index:
+            self.graph_type.set_selected(index)
         order, pinned = self.sidebar.order(), self.sidebar.pinned_ids()
-        self.up.set_sensitive(reorder.can_move(order, self.page_id, -1, pinned))
-        self.down.set_sensitive(reorder.can_move(order, self.page_id, 1, pinned))
+        group_of = self.sidebar.group_of()
+        self.up.set_sensitive(groups.can_move(order, self.page_id, -1, pinned, group_of))
+        self.down.set_sensitive(groups.can_move(order, self.page_id, 1, pinned, group_of))
         rest = [i for i in order if i not in pinned]
         if self.page_id in rest:
             self.position.set_subtitle(f"{rest.index(self.page_id) + 1} of {len(rest)}")

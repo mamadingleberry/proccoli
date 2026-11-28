@@ -13,13 +13,15 @@ from ..core.connections import Connections
 from .page import (PageContainer, PageKind, PlaceholderPage, ResourcePage,
                    main_menu_button)
 from .compat import ensure_font_dpi
-from .navigation import (GOTO_ACTION, GOTO_LABEL, NavigationHistory, fill_goto_menu,
-                         mouse_direction)
+from .navigation_controller import NavigationController
+from .navigation import GOTO_LABEL
 from ..core.profile import Profile, is_pinned
 from .lazy import LazyPages, StubPage
 from .sidebar import StackSidebar
 from .sidebar_style import (MODE_ACTION, MODE_LABELS, SECTION_LABEL, STYLE_SETTING, Mode,
                             SidebarStyle, menu_modes, rail_width)
+from .shortcuts import accels_for
+from .sidebar_groups import GROUPS, group_for
 from .sidebar_visibility import ACTION as SIDEBAR_ACTION, SidebarVisibility
 from .window_state import restore_window_state, save_window_state
 
@@ -125,17 +127,32 @@ class MainWindow(Adw.ApplicationWindow):
         self.set_size_request(*self.MIN_SIZE)
         restore_window_state(self, settings)
 
-        # Sidebar. The main menu (the logo) always sits at the window's top
-        # left: here while the sidebar is beside the content, otherwise in
-        # every page header.
-        self.goto_menu = Gio.Menu()
+        self.navigation = NavigationController(self, app, self.select_page)
+        self._build_shell(app)
+        self._build_graph_toolbar()
+        self.sidebar.connect("entries-changed", lambda *_: self._sync_goto_menu())
+        self._build_pages()
+        self.show_overview()
+        self._build_authentication()
+        self.stack.connect("notify::visible-child-name", self._on_visible_page)
+        self._on_visible_page()            # the first page: Go To's mark
+        self.connect("close-request", self._on_close_request)
+
+    # -- building the window ------------------------------------------------------
+
+    def _build_shell(self, app) -> None:
+        """The sidebar beside the pages, the collector banner above them, the
+        main menu (the logo) in the top-left corner, and the sidebar's modes.
+        The logo always sits at the window's top left: in the sidebar's
+        header while the sidebar is beside the content, otherwise in every
+        page header."""
+        settings = self.settings
         self.menu_model = primary_menu(
-            self.goto_menu, menu_modes(not is_pinned(settings, STYLE_SETTING)),
+            self.navigation.goto_menu, menu_modes(not is_pinned(settings, STYLE_SETTING)),
             toolbar=self.profile.graph_toolbar)
         self.sidebar = StackSidebar(settings)
         sidebar_view = Adw.ToolbarView(content=self.sidebar)
 
-        # Pages.
         self.stack = Gtk.Stack(vhomogeneous=False, hhomogeneous=False)
         self.sidebar.bind_stack(self.stack)
 
@@ -164,61 +181,40 @@ class MainWindow(Adw.ApplicationWindow):
         self.add_action(self.sidebar_visibility.action)       # F9
         self.add_action(self.sidebar_visibility.mode_action)  # Full / Icons Only / Hidden
         if app is not None:
-            app.set_accels_for_action(f"win.{SIDEBAR_ACTION}", ["F9"])
-
+            app.set_accels_for_action(f"win.{SIDEBAR_ACTION}", accels_for(f"win.{SIDEBAR_ACTION}"))
         self.sidebar.connect("page-selected", self._on_page_selected)
 
-        # The graph toolbar: one, moved under the shown page's header.
+    def _build_graph_toolbar(self) -> None:
+        """One graph toolbar, moved under the shown page's header, and the
+        main menu's *Show Toolbar* (short screens may want the room)."""
         self.graph_toolbar = None
         self._toolbar_host: Optional[PageContainer] = None
-        if self.profile.graph_toolbar:
-            from .widgets.graph_toolbar import GraphToolbar
-            from .toolbar_items import SHOW_SETTING
-            self.graph_toolbar = GraphToolbar(settings)
-            # Main menu → Show Toolbar (short screens may want the room).
-            self.toolbar_action = Gio.SimpleAction.new_stateful(
-                TOOLBAR_ACTION, None, GLib.Variant("b", bool(settings.get(SHOW_SETTING))))
-            self.toolbar_action.connect("activate", lambda a, _t: settings.set(
-                SHOW_SETTING, not a.get_state().get_boolean()))
-            self.connections.watch(settings, SHOW_SETTING, lambda _k, v: self.toolbar_action
-                                   .set_state(GLib.Variant("b", bool(v))))
-            self.add_action(self.toolbar_action)
+        if not self.profile.graph_toolbar:
+            return
+        from .widgets.graph_toolbar import GraphToolbar
+        from .toolbar_items import SHOW_SETTING
+        settings = self.settings
+        self.graph_toolbar = GraphToolbar(settings)
+        self.toolbar_action = Gio.SimpleAction.new_stateful(
+            TOOLBAR_ACTION, None, GLib.Variant("b", bool(settings.get(SHOW_SETTING))))
+        self.toolbar_action.connect("activate", lambda a, _t: settings.set(
+            SHOW_SETTING, not a.get_state().get_boolean()))
+        self.connections.watch(settings, SHOW_SETTING, lambda _k, v: self.toolbar_action
+                               .set_state(GLib.Variant("b", bool(v))))
+        self.add_action(self.toolbar_action)
 
-        # Go To: every pane from the main menu, current one marked.
-        self.goto_action = Gio.SimpleAction.new_stateful(
-            GOTO_ACTION, GLib.VariantType.new("s"), GLib.Variant("s", ""))
-        self.goto_action.connect("activate",
-                                 lambda _a, target: self.select_page(target.get_string()))
-        self.add_action(self.goto_action)
-        self.sidebar.connect("entries-changed", lambda *_: self._sync_goto_menu())
-
-        # Back and forward: mouse side buttons, Alt+Left / Alt+Right.
-        self.history = NavigationHistory()
-        self._navigating = False             # a page change made by back/forward
-        self.nav_actions = {}
-        for name, step in (("back", self.go_back), ("forward", self.go_forward)):
-            action = Gio.SimpleAction.new(name, None)
-            action.connect("activate", lambda *_a, f=step: f())
-            action.set_enabled(False)
-            self.add_action(action)
-            self.nav_actions[name] = action
-        if app is not None:
-            app.set_accels_for_action("win.back", ["<Alt>Left"])
-            app.set_accels_for_action("win.forward", ["<Alt>Right"])
-        # Capture phase: the side buttons work over any widget. Other buttons
-        # are denied at once, so they reach their own widgets untouched.
-        self.mouse_nav = Gtk.GestureClick(button=0)
-        self.mouse_nav.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        self.mouse_nav.connect("pressed", lambda g, *_: self.on_mouse_button(g))
-        self.add_controller(self.mouse_nav)
-
-        # Overview: cards for the sidebar's charted entries.
+    def _build_pages(self) -> None:
+        """The Overview (cards for the sidebar's charted entries), Apps and
+        Processes, a page per device (and those that come later), and
+        placeholders for what's missing."""
         from .pages.overview import OverviewPage
-        self.overview = OverviewPage(settings, self.select_page, processes, ctx.grouper,
+        ctx, devices, processes = self.ctx, self.devices, self.processes
+        self.overview = OverviewPage(self.settings, self.select_page, processes, ctx.grouper,
                                      profile=self.profile)
         self.add_page(self.overview)
         self.sidebar.connect("entries-changed",
                              lambda *_: self.overview.sync(self.sidebar.entries()))
+        self.sidebar.connect("entries-changed", lambda *_: self._fill_groups())
         self.overview.sync(self.sidebar.entries())
 
         if processes is not None:
@@ -230,25 +226,21 @@ class MainWindow(Adw.ApplicationWindow):
                 self._on_device_added(devices, monitor)
             self.connections.connect(devices, "device-added", self._on_device_added)
             self.connections.connect(devices, "device-removed",
-                                     lambda _d, device_id: self.remove_page(device_id))
+                                     lambda _d, device_id: self._on_device_removed(device_id))
         for page_id, kind, title, icon in PLACEHOLDERS:
             if page_id not in self.containers:
                 self.add_page(PlaceholderPage(page_id, kind, title, icon,
                                               placeholder_reason(bool(ctx.demo))))
 
-        self.show_overview()
-
-        # Optional authentication: offered once, after the
-        # window is up; the menu entry brings it back.
+    def _build_authentication(self) -> None:
+        """Optional authentication: offered once, after the window is up;
+        the menu entry brings it back."""
         self.auth_action = Gio.SimpleAction.new("authenticate", None)
         self.auth_action.connect("activate", lambda *_: self.offer_authentication())
         self.add_action(self.auth_action)
         self._update_auth_action()
-        if settings.get("auth-at-launch") and self.elevation_offers():
+        if self.settings.get("auth-at-launch") and self.elevation_offers():
             self._launch_auth_source = GLib.idle_add(self._offer_at_launch)
-        self.stack.connect("notify::visible-child-name", self._on_visible_page)
-        self._on_visible_page()            # the first page: Go To's mark
-        self.connect("close-request", self._on_close_request)
 
     # -- pages ----------------------------------------------------------------
 
@@ -271,8 +263,7 @@ class MainWindow(Adw.ApplicationWindow):
         container = self.containers.pop(page_id)
         if self.lazy is not None:
             self.lazy.remove(page_id)
-        self.history.remove(page_id)
-        self._update_nav_actions()
+        self.navigation.forget(page_id)
         if self._toolbar_host is container:
             container.detach_toolbar(self.graph_toolbar)
             self._toolbar_host = None
@@ -358,8 +349,38 @@ class MainWindow(Adw.ApplicationWindow):
         else:
             page = self.pages.create(monitor)
         self.add_page(page)
+        self._sync_groups()
         if was_visible:
             self.select_page(page.page_id)        # a retried device stays on screen
+
+    def _on_device_removed(self, device_id: str) -> None:
+        if device_id in self.containers:
+            self.remove_page(device_id)
+        self._sync_groups()
+
+    # -- sidebar groups -------------------------------------------------------
+
+    def _sync_groups(self) -> None:
+        """A group page for every kind that groups and has a device (GPUs,
+        Drives, Network, Batteries); none for a kind with none left."""
+        from .pages.group import GroupPage
+        for spec in GROUPS.values():
+            has_members = any(not c.page.is_group and group_for(c.page.kind) is spec
+                              for c in self.containers.values())
+            if has_members and spec.page_id not in self.containers:
+                self.add_page(GroupPage(spec, self.settings, self.select_page, self.profile))
+            elif not has_members and spec.page_id in self.containers:
+                self.remove_page(spec.page_id)
+
+    def _fill_groups(self) -> None:
+        """Each group page shows its devices, in sidebar order and colors."""
+        group_of = self.sidebar.group_of()
+        entries = self.sidebar.entries()
+        for spec in GROUPS.values():
+            container = self.containers.get(spec.page_id)
+            if container is not None:
+                container.page.sync([(p, c) for p, c in entries
+                                     if group_of.get(p.page_id) == spec.page_id])
 
     def _on_retry(self, page) -> None:
         """An error page's *Try Again*: set the device up again, or,
@@ -441,11 +462,7 @@ class MainWindow(Adw.ApplicationWindow):
             if built is not None:
                 self.replace_page(built)
         self._place_toolbar()
-        if page_id:
-            self.goto_action.set_state(GLib.Variant("s", page_id))
-            if not self._navigating:
-                self.history.visit(page_id)
-            self._update_nav_actions()
+        self.navigation.shown(page_id)
 
     # -- the collector ---------------------------------------------------
 
@@ -485,44 +502,13 @@ class MainWindow(Adw.ApplicationWindow):
         page = container.page
         self.graph_toolbar.set_page(page.kind.value, page.has_graphs)
 
-    # -- back and forward ---------------------------------------------------
-
-    def _update_nav_actions(self) -> None:
-        self.nav_actions["back"].set_enabled(self.history.can_go_back())
-        self.nav_actions["forward"].set_enabled(self.history.can_go_forward())
-
-    def _show_from_history(self, page_id) -> bool:
-        if page_id is None:
-            return False
-        self._navigating = True
-        try:
-            self.select_page(page_id)
-        finally:
-            self._navigating = False
-        self._update_nav_actions()
-        return True
-
-    def go_back(self) -> bool:
-        return self._show_from_history(self.history.back())
-
-    def go_forward(self) -> bool:
-        return self._show_from_history(self.history.forward())
-
-    def on_mouse_button(self, gesture) -> bool:
-        """Mouse back/forward buttons; any other button is left alone. Not
-        while a dialog is open over the window."""
-        direction = mouse_direction(gesture.get_current_button())
-        dialog = getattr(self, "get_visible_dialog", lambda: None)()
-        if direction is None or dialog is not None:
-            gesture.set_state(Gtk.EventSequenceState.DENIED)
-            return False
-        gesture.set_state(Gtk.EventSequenceState.CLAIMED)
-        return self.go_back() if direction == "back" else self.go_forward()
-
     def _sync_goto_menu(self) -> None:
         items = self.sidebar.items
-        fill_goto_menu(self.goto_menu, [(i, items[i].page.title, items[i].page.description)
-                                        for i in self.sidebar.display_order()])
+        group_of = self.sidebar.group_of()
+        # a group's devices are indented beneath it
+        self.navigation.set_entries([(i, ("\u2003" if i in group_of else "") + items[i].page.title,
+                                      items[i].page.description)
+                                     for i in self.sidebar.display_order()])
 
     def _on_close_request(self, *_a) -> bool:
         save_window_state(self, self.settings)

@@ -179,6 +179,23 @@ class RemoteDevicesTest(unittest.TestCase):
         self.assertEqual(changes, [False, True])
         self.tick(ctx, devices)                            # readings again
 
+    def test_flush_asks_the_collector_then_calls_back(self):
+        ctx = self.collector(LAPTOP)
+        devices, _ = self.window()
+        commits = []
+        self.service.store = type("Store", (), {"commit": lambda _s: commits.append(1)})()
+        done = []
+        devices.flush(lambda: done.append(1))
+        self.assertEqual(done, [])                           # waits for the answer
+        self.assertTrue(pump_until(lambda: done))
+        self.assertEqual(commits, [1])
+
+    def test_flush_without_a_collector_calls_back_at_once(self):
+        devices = RemoteDeviceManager(Settings.for_tests(), None, auto_start=False)
+        done = []
+        devices.flush(lambda: done.append(1))
+        self.assertEqual(done, [1])
+
     def test_the_time_range_reaches_remote_histories(self):
         ctx = self.collector(LAPTOP)
         devices, _ = self.window()

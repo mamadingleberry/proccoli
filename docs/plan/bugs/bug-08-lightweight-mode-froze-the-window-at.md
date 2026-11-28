@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-08-lightweight-mode-froze-the-window-at.md](../../design/bugs/bug-08-lightweight-mode-froze-the-window-at.md)
 
-*Fixed in Milestone 79 (found after it was first built).*
+*Fixed in v0.5.0 (found after it was first built).*
 
 **Seen:** after reinstalling with 19b, *Restart Now* into Lightweight
 Mode took a long time to show device data and the window froze for about

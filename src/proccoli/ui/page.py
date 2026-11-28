@@ -118,6 +118,11 @@ class ResourcePage(Adw.Bin):
     def sort_key(self) -> tuple[int, str]:
         return sidebar_rank(self.kind, self.sort_name)
 
+    @property
+    def is_group(self) -> bool:
+        """A sidebar group's own page (``pages/group.py``)."""
+        return False
+
     def sidebar_summary(self) -> Optional[SidebarSummary]:
         """None: the sidebar shows only the name (Apps, Processes)."""
         return None

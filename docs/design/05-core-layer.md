@@ -116,9 +116,9 @@ classDiagram
   validation and no shell. Only a root-owned installed helper is used, and
   processes are named by PID *and* start time ([§11](11-cross-cutting-concerns.md), *Security*).
 - **`Ticker`:** one app-wide timer at the *Update Interval* setting
-  (`update-interval`: 1, 2, 3, 5 or 10 s; M65 replaced *Refresh Speed*,
-  whose 0.5 and 0.25 s went too fast), so all graphs line up in time.
-  Since M87 each tick is due at `start + n × interval` on the monotonic
+  (`update-interval`: 1, 2, 3, 5 or 10 s; it replaced *Refresh Speed*,
+  whose 0.5 and 0.25 s went too fast, Feature 6), so all graphs line up
+  in time. Each tick is due at `start + n × interval` on the monotonic
   clock and armed as a one-shot timer for the time left: a repeating
   `GLib.timeout_add` counts from the end of the previous tick's work and
   drifted ~5 ms a tick. A late tick isn't made up; a timer that fires a

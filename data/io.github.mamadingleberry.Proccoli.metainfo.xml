@@ -11,16 +11,40 @@
       interfaces and batteries, with tables of running apps and processes.
     </p>
     <p>
-      The GPU page adapts to the GPU: on Intel GPUs it shows per-engine
-      utilisation, frequency, power, RC6 residency, memory bandwidth and
-      per-process engine usage from intel_gpu_top.
+      A background recorder keeps every reading, so graphs show the last
+      minutes, hours or days, even from before the window opened.
+    </p>
+    <p>
+      The GPU page adapts to the GPU, with detailed statistics for Intel
+      (per-engine utilisation, frequency, power, RC6 residency, memory
+      bandwidth and per-process engine use, from intel_gpu_top), AMD
+      (utilisation, engines, memory, clocks, temperatures, power and fan,
+      from the amdgpu driver) and NVIDIA (from NVIDIA's own tools).
     </p>
   </description>
   <launchable type="desktop-id">io.github.mamadingleberry.Proccoli.desktop</launchable>
   <developer id="io.github.mamadingleberry">
     <name>The Proccoli contributors</name>
   </developer>
-  <url type="homepage">https://github.com/mamadingleberry</url>
+  <url type="homepage">https://github.com/mamadingleberry/proccoli</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>The Overview: a live chart for each device, with the busiest apps</caption>
+      <image>https://raw.githubusercontent.com/mamadingleberry/proccoli/main/docs/screenshots/wide-overview.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A GPU's detailed statistics</caption>
+      <image>https://raw.githubusercontent.com/mamadingleberry/proccoli/main/docs/screenshots/demo-gpu-details.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Graphs filled from the history, with the time Proccoli wasn't running shaded</caption>
+      <image>https://raw.githubusercontent.com/mamadingleberry/proccoli/main/docs/screenshots/offline-dark.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The icons-only sidebar</caption>
+      <image>https://raw.githubusercontent.com/mamadingleberry/proccoli/main/docs/screenshots/wide-sidebar-icons.png</image>
+    </screenshot>
+  </screenshots>
   <content_rating type="oars-1.1"/>
   <requires>
     <display_length compare="ge">360</display_length>
@@ -30,6 +54,21 @@
     <control>keyboard</control>
   </supports>
   <releases>
+    <release version="0.6.0" date="2026-11-28">
+      <description>
+        <p>Sidebar groups, a graph type per entry, and a steadier window.</p>
+        <ul>
+          <li>GPUs, Drives, Network and Batteries each have a sidebar group, with a page comparing their devices</li>
+          <li>Each sidebar entry can have its own Graph Type (an area chart or a progress bar)</li>
+          <li>Preferences in six pages, and recording from boot offered once</li>
+          <li>F2 opens Preferences and F1 the Keyboard Shortcuts</li>
+          <li>The window no longer slows down or freezes when many processes come and go</li>
+          <li>Changing the Time Range no longer shades the last seconds as time Proccoli wasn't running</li>
+          <li>New NVIDIA GPUs are named by their driver</li>
+          <li>Graphs filled from the history no longer miss points, and only one recorder runs per user</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-11-25">
       <description>
         <p>More styles and palettes, and new program names.</p>

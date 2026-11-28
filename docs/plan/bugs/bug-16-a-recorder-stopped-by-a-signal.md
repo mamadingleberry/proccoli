@@ -2,7 +2,7 @@
 
 Design note: [design/bugs/bug-16-a-recorder-stopped-by-a-signal.md](../../design/bugs/bug-16-a-recorder-stopped-by-a-signal.md)
 
-*Fixed in Milestone 86.* As proposed, plus `SuccessExitStatus=3` and
+*Fixed in v0.6.0.* As proposed, plus `SuccessExitStatus=3` and
 `RestartPreventExitStatus=3` for a recorder that leaves because another
 one serves (Bug 15).
 

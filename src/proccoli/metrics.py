@@ -189,7 +189,7 @@ class Collector:
 
 
 def run(context=None, history_path: Optional[Path] = None, loop=None,
-        signals: Optional[Callable] = None, file_log=None, bus=None,
+        signals: Optional[Callable] = None, runtime=None, bus=None,
         interactive: bool = False) -> int:
     """Record until SIGTERM or SIGINT (status 0), or until it turns out
     another recorder already serves the readings (one per user is all
@@ -229,19 +229,15 @@ def run(context=None, history_path: Optional[Path] = None, loop=None,
         loop.run()
     finally:
         collector.stop()
-        if file_log is not None:
-            file_log.shutdown()
+        if runtime is not None:
+            runtime.shutdown()            # the log file, the watchdog, the hook
     return EXIT_SUPERSEDED if left else 0
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    level = logging.DEBUG if args.debug else logging.INFO
-    # stderr goes to the journal under systemd.
-    logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
-    # stderr keeps this level even when the log file records more.
-    for handler in logging.getLogger().handlers:
-        handler.setLevel(level)
+    from .core.runtime import console_logging
+    console_logging(logging.DEBUG if args.debug else logging.INFO)
     from .core.history_store import history_path
     from .core.system import System
     if args.status:
@@ -268,9 +264,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 print(f"  {name}: {value:g} {unit}".rstrip())
         context.stop()
         return 0
-    from .core.applog import FileLog, log_path
-    file_log = FileLog(context.settings, log_path().with_name(LOG_NAME))
-    return run(context, file_log=file_log, interactive=sys.stderr.isatty())
+    from .core.applog import log_path
+    from .core.runtime import Runtime
+    runtime = Runtime(context.settings, log_path().with_name(LOG_NAME)).start()
+    return run(context, runtime=runtime, interactive=sys.stderr.isatty())
 
 
 if __name__ == "__main__":

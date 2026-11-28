@@ -13,8 +13,8 @@ portrait screens alike:
 - the page column is at most ``MAX_CONTENT_WIDTH`` wide.
 
 The Overview's cards instead try to fill the height
-they're given as a grid, each chart shorter than it is wide (Milestone
-51): ``plan_grid`` picks how many columns, and so how tall each chart is.
+they're given as a grid, each chart shorter than it is wide:
+``plan_grid`` picks how many columns, and so how tall each chart is.
 
 Pure arithmetic, so it's unit-tested without a display.
 """

@@ -70,7 +70,7 @@ classDiagram
     *Normalize Processor Usage* is on (the default): each row is then a
     share of the whole processor and the column adds up to the total; off,
     one busy core is 100 %, as in `top`. Both are wanted (on 24 threads a
-    stuck single-threaded process reads 4.2 % or 100 %), so it stays (M58)
+    stuck single-threaded process reads 4.2 % or 100 %), so it stays (v0.2.0)
   - Memory: `/proc/PID/status` (`VmRSS`, `VmSwap`)
   - Disk I/O: `/proc/PID/io` (own processes only)
   - Cgroup: `/proc/PID/cgroup`, read once per process lifetime
@@ -107,7 +107,7 @@ classDiagram
   Shift+F10) on an Apps or Processes row selects it (unless it's already
   part of the selection) and opens: Information, Options (Processes), End,
   Kill, Halt, Continue: the same `table.*` actions as the action bar.
-  - *Freeze fix (M43):* both the cell's right-click gesture and the
+  - *Freeze fix (v0.1.0):* both the cell's right-click gesture and the
     ColumnView row's own click gesture see the press. The menu used to
     pop up without claiming it, so the row gesture stayed mid-click.
     On Wayland the popup took the button release, and the window then
@@ -130,7 +130,7 @@ classDiagram
   `org.freedesktop.Application.Activate`; apps declaring
   `SingleMainWindow=true` are relaunched, which shows their window. Others
   (e.g. Firefox, VS Code) would open a second window if relaunched. Since
-  M67 ([Idea 5's design](ideas/idea-05-switch-to-any-running-app.md)) `core.windows.WindowSwitcher` decides: Proccoli's GNOME
+  Feature 5 ([Feature 5's design](features/feature-05-switch-to-any-running-app.md)) `core.windows.WindowSwitcher` decides: Proccoli's GNOME
   Shell extension first (any app with a window), then asking the app
   (now with an activation token, and also for running GApplications that
   own their app ID on the bus), then `wmctrl` in an X11 session. The item

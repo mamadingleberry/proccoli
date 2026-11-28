@@ -389,6 +389,23 @@ class SidebarPreferencesTest(unittest.TestCase):
         self.assertIn("sidebar-meter-type", self.dialog.rows)
         self.assertEqual(PreferencesDialog(self.settings).entry_rows, {})    # no sidebar given
 
+    def test_one_entry_can_have_its_own_graph_type(self):
+        page = self.dialog.open_entry("sda")
+        self.assertEqual(page.graph_type.get_selected(), 0)                 # Default
+        self.assertEqual(page.graph_type.get_model().get_string(0), "Default (Graph)")
+        page.graph_type.set_selected(2)                                     # Progress Bar
+        self.assertEqual(dict(self.settings.get("sidebar-graph-types")), {"sda": "progress-bar"})
+        self.assertEqual(self.sidebar.items["sda"].meter_type.value, "progress-bar")
+        self.assertEqual(self.sidebar.items["sdb"].meter_type.value, "graph")   # the rest
+        self.settings.set("sidebar-meter-type", "progress-bar")             # the default
+        self.assertEqual(self.sidebar.items["sdb"].meter_type.value, "progress-bar")
+        self.assertEqual(page.graph_type.get_model().get_string(0), "Default (Progress Bar)")
+        page.graph_type.set_selected(0)                                     # back to Default
+        self.assertEqual(dict(self.settings.get("sidebar-graph-types")), {})
+
+    def test_the_default_is_named_graph_type(self):
+        self.assertEqual(self.dialog.rows["sidebar-meter-type"].get_title(), "Graph Type")
+
     def test_style_row_is_bound_both_ways(self):
         row = self.dialog.rows["sidebar-style"]
         self.assertEqual(row.get_selected(), 0)               # Full
@@ -585,9 +602,16 @@ class AboutTest(unittest.TestCase):
     def test_shortcuts_dialog_and_accelerators_agree(self):
         self.assertIsNotNone(shortcuts_dialog())
         accels = {a for _, items in SHORTCUTS for _, a in items}
-        for accel in accels:
+        for accel in (one for many in accels for one in many.split()):
             ok, key, mods = Gtk.accelerator_parse(accel)
             self.assertTrue(ok and key, accel)
+
+    def test_the_app_sets_f2_and_f1(self):
+        from proccoli.app import Application
+        app = Application(argparse.Namespace(demo=True, debug=False))
+        self.assertEqual(app.get_accels_for_action("app.preferences"), ["F2", "<Control>comma"])
+        self.assertEqual(app.get_accels_for_action("app.shortcuts"), ["F1", "<Control>question"])
+        self.assertEqual(app.get_accels_for_action("app.quit"), ["<Control>q"])
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display")
@@ -614,7 +638,7 @@ class ApplicationTest(unittest.TestCase):
             self.assertIsNotNone(app.lookup_action(name), name)
         self.assertIsNone(app.history)                             # never in --demo
         self.assertFalse(app.lookup_action("export-statistics").get_enabled())
-        self.assertEqual(app.get_accels_for_action("app.preferences"), ["<Control>comma"])
+        self.assertEqual(app.get_accels_for_action("app.preferences"), ["F2", "<Control>comma"])
         app.activate()
         win = app.get_active_window()
         self.assertIn("gpu-demo", win.containers)

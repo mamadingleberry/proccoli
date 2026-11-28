@@ -16,6 +16,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from . import APP_ID, APP_NAME, WINDOW, __version__  # noqa: E402
+from .ui.shortcuts import accels_for  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -43,16 +44,17 @@ class Application(Adw.Application):
         self.profile = None          # core.profile.Profile, chosen in do_startup
         self.restart_requested = False
 
-        for name, callback, accels in (
-                ("quit", lambda *_: self.quit(), ["<Control>q"]),
-                ("preferences", lambda *_: self.show_preferences(), ["<Control>comma"]),
-                ("shortcuts", lambda *_: self.show_shortcuts(), ["<Control>question"]),
-                ("about", lambda *_: self.show_about(), []),
-                ("export-statistics", lambda *_: self.export_statistics(), []),
-                ("restart", lambda *_: self.restart(), [])):
+        for name, callback in (
+                ("quit", lambda *_: self.quit()),
+                ("preferences", lambda *_: self.show_preferences()),
+                ("shortcuts", lambda *_: self.show_shortcuts()),
+                ("about", lambda *_: self.show_about()),
+                ("export-statistics", lambda *_: self.export_statistics()),
+                ("restart", lambda *_: self.restart())):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", callback)
             self.add_action(action)
+            accels = accels_for(f"app.{name}")
             if accels:
                 self.set_accels_for_action(f"app.{name}", accels)
 
@@ -80,16 +82,18 @@ class Application(Adw.Application):
         from .core.profile import apply_renderer
         renderer = apply_renderer(self.profile, os.environ)   # before any window
         settings = profile_settings(base, self.profile)
-        from .core.applog import FileLog, log_path
-        self.file_log = FileLog(settings, self.log_file or log_path())
+        from .core.applog import log_path
+        from .core.runtime import Runtime
+        # the log file, the stall watchdog (logs stalls with stacks) and the
+        # uncaught-exception hook
+        self.runtime = Runtime(settings, self.log_file or log_path()).start()
+        self.file_log = self.runtime.file_log
+        self.watchdog = self.runtime.watchdog
         for change in changes:
             log.info("settings: %s", change)
         if renderer:
             log.info("renderer: %s", renderer)
         log.info("%s %s starting (demo=%s)", APP_NAME, __version__, self.args.demo)
-        from .core.watchdog import StallWatchdog
-        self.watchdog = StallWatchdog()     # logs stalls with stacks
-        self.watchdog.start()
         if self.context_factory is None:
             from .context import build_context
             # The window reads no devices: proccoli does.
@@ -132,11 +136,9 @@ class Application(Adw.Application):
             if self.theme_css is not None:
                 self.theme_css.shutdown()
             self.ctx.theme.shutdown()
-        if getattr(self, "watchdog", None) is not None:
-            self.watchdog.stop()
-        if getattr(self, "file_log", None) is not None:
+        if getattr(self, "runtime", None) is not None:
             log.info("%s stopping", APP_NAME)
-            self.file_log.shutdown()
+            self.runtime.shutdown()
         Adw.Application.do_shutdown(self)
 
     # -- dialogs ------------------------------------------------------------------
@@ -273,11 +275,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    console_level = logging.DEBUG if args.debug else logging.WARNING
-    logging.basicConfig(level=console_level, format="%(levelname)s %(name)s: %(message)s")
-    # The terminal keeps its level even when the log file records more.
-    for handler in logging.getLogger().handlers:
-        handler.setLevel(console_level)
+    from .core.runtime import console_logging
+    console_logging(logging.DEBUG if args.debug else logging.WARNING)
     log.debug("starting %s %s (demo=%s)", APP_NAME, __version__, args.demo)
 
     GLib.set_prgname(APP_ID)
